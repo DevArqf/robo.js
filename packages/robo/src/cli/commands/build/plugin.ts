@@ -47,8 +47,6 @@ async function pluginAction(_args: string[], options: PluginCommandOptions) {
 
 	// Set NODE_ENV if not already set
 	if (!process.env.NODE_ENV) {
-		// TODO: Generate different .manifest files for each mode, always keeping the default one
-		// TODO: Also update `deploy` command for plugins to use correct manifest and update package.json files
 		process.env.NODE_ENV = options.dev ? 'development' : 'production'
 	}
 

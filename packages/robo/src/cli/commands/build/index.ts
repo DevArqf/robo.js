@@ -70,8 +70,6 @@ export async function buildAction(files: string[], options: BuildCommandOptions)
 
 	// Set NODE_ENV if not already set
 	if (!process.env.NODE_ENV) {
-		// TODO: Generate different .manifest files for each mode, always keeping the default one
-		// TODO: Also update `deploy` command for plugins to use correct manifest and update package.json files
 		process.env.NODE_ENV = options.dev ? 'development' : 'production'
 	}
 
@@ -84,7 +82,6 @@ export async function buildAction(files: string[], options: BuildCommandOptions)
 	const { shardModes } = setMode(options.mode)
 
 	if (shardModes) {
-		// TODO: Generate different .manifest files for each mode, always keeping the default one
 		logger.error(`Mode sharding is not available for builds.`)
 		process.exit(1)
 	}

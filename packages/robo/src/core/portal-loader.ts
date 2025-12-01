@@ -74,6 +74,7 @@ export async function populatePortal(mode: string, options?: PopulateOptions): P
 
 			// Load route manifest entries
 			const entries = await Manifest.load(namespace, routeName)
+			logger.debug(`Loaded ${entries.length} entries for route: ${namespace}.${routeName}`)
 
 			if (entries.length === 0) {
 				logger.debug(`No entries for route: ${namespace}.${routeName}`)
@@ -82,6 +83,7 @@ export async function populatePortal(mode: string, options?: PopulateOptions): P
 
 			// Create handler records
 			const handlers = createHandlerRecords(entries, namespace, routeName, routeConfig)
+			logger.debug(`Created ${Object.keys(handlers).length} handler records for ${namespace}.${routeName}`)
 
 			// Register with portal
 			portal.registerRoute(namespace, routeName, handlers)
