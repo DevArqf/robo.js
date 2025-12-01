@@ -28,7 +28,7 @@ export { createContextController as controller }
 export const NamespaceController = (portal: PortalAPI): ContextNamespaceController => ({
 	async get(name: string): Promise<ContextHandler | null> {
 		try {
-			const handler = await portal.getHandler<ContextHandler>('discord', 'context', name)
+			const handler = await portal.getHandler<ContextHandler>('discordjs', 'context', name)
 			return handler?.default ?? null
 		} catch {
 			return null
@@ -37,7 +37,7 @@ export const NamespaceController = (portal: PortalAPI): ContextNamespaceControll
 
 	list(): string[] {
 		const portalApi = portal as unknown as { getByType: (type: string) => Record<string, unknown> }
-		const contextData = portalApi.getByType('discord:context')
+		const contextData = portalApi.getByType('discordjs:context')
 		return Object.keys(contextData)
 	}
 })

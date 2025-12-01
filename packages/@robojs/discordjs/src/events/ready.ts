@@ -29,7 +29,7 @@ export default async (client: Client) => {
 
 	// Check for missing intents
 	const portalApi = portal as unknown as { getByType: (type: string) => Record<string, unknown[]> }
-	const eventsData = portalApi.getByType('discord:events')
+	const eventsData = portalApi.getByType('discordjs:events')
 	checkIntents(client, eventsData)
 
 	// Send update message if this Robo was just restarted

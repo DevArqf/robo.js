@@ -34,13 +34,13 @@ export { createMiddlewareController as controller }
 export const NamespaceController = (portal: PortalAPI): MiddlewareNamespaceController => ({
 	list(): string[] {
 		const portalApi = portal as unknown as { getByType: (type: string) => Record<string, unknown> }
-		const middlewareData = portalApi.getByType('discord:middleware')
+		const middlewareData = portalApi.getByType('discordjs:middleware')
 		return Object.keys(middlewareData)
 	},
 
 	async chain(): Promise<MiddlewareChainEntry[]> {
 		const portalApi = portal as unknown as { getByType: (type: string) => Record<string, unknown> }
-		const middlewareData = portalApi.getByType('discord:middleware')
+		const middlewareData = portalApi.getByType('discordjs:middleware')
 		const entries: MiddlewareChainEntry[] = []
 
 		for (const [key, recordOrArray] of Object.entries(middlewareData)) {
@@ -52,7 +52,7 @@ export const NamespaceController = (portal: PortalAPI): MiddlewareNamespaceContr
 
 			// Import handler if needed
 			if (!record.handler) {
-				await portal.importHandler('discord', 'middleware', key)
+				await portal.importHandler('discordjs', 'middleware', key)
 			}
 
 			// Check if handler exists and middleware is enabled (default true)

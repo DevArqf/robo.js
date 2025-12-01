@@ -30,7 +30,7 @@ export { createEventController as controller }
 export const NamespaceController = (portal: PortalAPI): EventsNamespaceController => ({
 	async get<K extends keyof ClientEvents = keyof ClientEvents>(name: K): Promise<EventHandler<K>[]> {
 		const portalApi = portal as unknown as { getByType: (type: string) => Record<string, unknown[]> }
-		const eventsData = portalApi.getByType('discord:events')
+		const eventsData = portalApi.getByType('discordjs:events')
 		const records = eventsData[name as string]
 
 		if (!records) {
@@ -43,7 +43,7 @@ export const NamespaceController = (portal: PortalAPI): EventsNamespaceControlle
 		for (const record of recordArray) {
 			const rec = record as { handler?: { default?: EventHandler<K> } }
 			if (!rec.handler) {
-				await portal.importHandler('discord', 'events', name as string)
+				await portal.importHandler('discordjs', 'events', name as string)
 			}
 			if (rec.handler?.default) {
 				handlers.push(rec.handler.default)
@@ -55,7 +55,7 @@ export const NamespaceController = (portal: PortalAPI): EventsNamespaceControlle
 
 	list(): string[] {
 		const portalApi = portal as unknown as { getByType: (type: string) => Record<string, unknown> }
-		const eventsData = portalApi.getByType('discord:events')
+		const eventsData = portalApi.getByType('discordjs:events')
 		return Object.keys(eventsData)
 	},
 

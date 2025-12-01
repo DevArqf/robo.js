@@ -30,7 +30,7 @@ export { createCommandController as controller }
 export const NamespaceController = (portal: PortalAPI): CommandsNamespaceController => ({
 	async get(name: string): Promise<CommandHandler | null> {
 		try {
-			const handler = await portal.getHandler<CommandHandler>('discord', 'commands', name)
+			const handler = await portal.getHandler<CommandHandler>('discordjs', 'commands', name)
 			return handler?.default ?? null
 		} catch {
 			return null
@@ -39,7 +39,7 @@ export const NamespaceController = (portal: PortalAPI): CommandsNamespaceControl
 
 	list(): string[] {
 		const portalApi = portal as unknown as { getByType: (type: string) => Record<string, unknown> }
-		const commandsData = portalApi.getByType('discord:commands')
+		const commandsData = portalApi.getByType('discordjs:commands')
 		return Object.keys(commandsData)
 	},
 
