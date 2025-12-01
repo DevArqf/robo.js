@@ -163,8 +163,8 @@ export async function buildAction(files: string[], options: BuildCommandOptions)
 	}
 
 	// Merge plugin manifests into route entries
-	// This reads each plugin's pre-built manifest and merges their commands, events, etc.
-	routeEntries = await mergePluginManifests(plugins, routeEntries)
+	// This reads each plugin's granular manifest and merges their commands, events, etc.
+	routeEntries = await mergePluginManifests(plugins, routeEntries, buildMode)
 
 	// Execute build/complete hooks with route entries
 	const { metadataRegistry } = await executeBuildCompleteHooks(plugins, config, buildMode, manifest, buildStore, routeEntries)

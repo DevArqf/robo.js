@@ -156,32 +156,36 @@ function generateKey(segments: string[], keyConfig: KeyConfig): string {
 		return ''
 	}
 
-	// For filename style, use only the last segment
+	let key: string
+
+	// Generate base key based on style
 	if (keyConfig.style === 'filename') {
-		return segments[segments.length - 1]
+		// Use only the last segment
+		key = segments[segments.length - 1]
+	} else if (keyConfig.style === 'parentOrFilename') {
+		// Use parent folder for nested files, filename for root files
+		// events/ready.ts → "ready"
+		// events/messageCreate/chat.ts → "messageCreate"
+		key = segments.length > 1 ? segments[0] : segments[segments.length - 1]
+	} else {
+		// filepath style - join with separator
+		const separator = keyConfig.separator ?? '/'
+
+		// Apply nested transformation if specified
+		if (keyConfig.nested === 'camelCase') {
+			// guild/memberAdd → guildMemberAdd
+			key = segments.map((seg, i) => (i === 0 ? seg : seg.charAt(0).toUpperCase() + seg.slice(1))).join('')
+		} else if (keyConfig.nested === 'dotNotation') {
+			key = segments.join('.')
+		} else {
+			// Default: join with separator
+			key = segments.join(separator)
+		}
 	}
 
-	// For filepath style, join with separator
-	const separator = keyConfig.separator ?? '/'
-
-	// Apply nested transformation if specified
-	if (keyConfig.nested === 'camelCase') {
-		// guild/memberAdd → guildMemberAdd
-		return segments
-			.map((seg, i) => (i === 0 ? seg : seg.charAt(0).toUpperCase() + seg.slice(1)))
-			.join('')
-	}
-
-	if (keyConfig.nested === 'dotNotation') {
-		return segments.join('.')
-	}
-
-	// Default: join with separator
-	let key = segments.join(separator)
-
-	// Apply custom transform if provided
+	// Apply custom transform if provided (receives both key and segments for full flexibility)
 	if (keyConfig.transform) {
-		key = keyConfig.transform(key)
+		key = keyConfig.transform(key, segments)
 	}
 
 	return key

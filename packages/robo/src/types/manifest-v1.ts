@@ -299,6 +299,42 @@ export interface HookEntry {
 export type HooksManifest = Record<string, HookEntry[]>
 
 // ============================================================================
+// Seeds (seeds/@.json, seeds/{plugin}.json)
+// ============================================================================
+
+/**
+ * Seed configuration for a plugin.
+ * Defines environment variables and setup logic.
+ */
+export interface SeedConfig {
+	/** Description of what this seed provides */
+	description?: string
+	/** Environment variable configuration */
+	env?: {
+		/** Description shown when prompting for env vars */
+		description?: string
+		/** Variables to seed */
+		variables?: Record<
+			string,
+			| {
+					description?: string
+					overwrite?: boolean
+					value?: string
+			  }
+			| string
+		>
+	}
+	/** Path to custom seed hook (relative to plugin) */
+	hook?: string
+}
+
+/**
+ * Seeds index stored in seeds/@.json.
+ * Maps plugin names to whether they have seed config.
+ */
+export type SeedsIndex = Record<string, boolean>
+
+// ============================================================================
 // Metadata Aggregation
 // ============================================================================
 
@@ -460,6 +496,18 @@ export interface ManifestAPI {
 	 * Get project metadata.
 	 */
 	project(options?: ManifestOptions): ProjectMetadata
+
+	/**
+	 * Get seed configuration for a specific plugin.
+	 * Loads from seeds/{pluginName}.json
+	 */
+	seeds(pluginName: string, options?: ManifestOptions): SeedConfig | undefined
+
+	/**
+	 * Get seeds index (list of plugins with seeds).
+	 * Loads from seeds/@.json
+	 */
+	seedsIndex(options?: ManifestOptions): SeedsIndex
 
 	// Lazy loading methods
 

@@ -14,11 +14,17 @@ import type { AggregatedMetadata, HandlerEntry, MetadataAggregator } from './man
  * Use for early setup like log drains, monkey-patching internals.
  */
 export interface InitContext {
-	config: Config
-	logger: Logger
-	env: typeof Env
 	/** Current runtime mode (supports custom modes like 'beta', 'staging', etc.) */
 	mode: string
+
+	/** Full project configuration */
+	projectConfig: Config
+
+	/** Logger instance */
+	logger: Logger
+
+	/** Environment variable access */
+	env: typeof Env
 }
 
 /**
@@ -84,21 +90,25 @@ export interface PluginState {
 }
 
 /**
- * Context provided to start and stop hooks.
- * Start runs SEQUENTIALLY: plugins in registration order → project.
- * Stop runs SEQUENTIALLY: project first → plugins in REVERSE order.
+ * Context provided to start hooks.
+ * Runs SEQUENTIALLY: plugins in registration order → project.
  */
-export interface PluginContext<TConfig = unknown> {
+export interface StartContext<TConfig = unknown> {
 	/**
 	 * Current runtime mode (supports custom modes like 'beta', 'staging', etc.).
 	 */
 	mode: string
 
 	/**
+	 * Full project configuration.
+	 */
+	projectConfig: Config
+
+	/**
 	 * Plugin's configuration from user's /config/plugins/.
 	 * Typed based on plugin's config schema.
 	 */
-	config: TConfig
+	pluginConfig: TConfig
 
 	/**
 	 * Plugin-scoped state storage.
@@ -134,16 +144,10 @@ export interface PluginContext<TConfig = unknown> {
 }
 
 /**
- * Context provided to start.ts hooks.
- * Alias for PluginContext for clarity.
+ * Context provided to stop hooks.
+ * Runs SEQUENTIALLY: project first → plugins in REVERSE order.
  */
-export type StartContext<TConfig = unknown> = PluginContext<TConfig>
-
-/**
- * Context provided to stop.ts hooks.
- * Extends PluginContext with shutdown reason.
- */
-export interface StopContext<TConfig = unknown> extends PluginContext<TConfig> {
+export interface StopContext<TConfig = unknown> extends StartContext<TConfig> {
 	/**
 	 * Reason for shutdown.
 	 * - 'signal': SIGTERM/SIGINT received

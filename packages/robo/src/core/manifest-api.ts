@@ -21,7 +21,9 @@ import type {
 	PluginInfo,
 	PluginRegistry,
 	ProjectMetadata,
-	RouteDefinitions
+	RouteDefinitions,
+	SeedConfig,
+	SeedsIndex
 } from '../types/manifest-v1.js'
 
 /**
@@ -33,10 +35,12 @@ interface ManifestCache {
 	env?: EnvMetadata
 	plugins?: PluginRegistry
 	routeDefinitions?: RouteDefinitions
+	seedsIndex?: SeedsIndex
 	routes: Map<string, HandlerEntry[]>
 	hooks: Map<string, HookEntry[]>
 	metadata: Map<string, AggregatedMetadata>
 	pluginConfigs: Map<string, Record<string, unknown>>
+	seeds: Map<string, SeedConfig>
 }
 
 /**
@@ -49,7 +53,8 @@ class ManifestLoader implements ManifestAPI {
 		routes: new Map(),
 		hooks: new Map(),
 		metadata: new Map(),
-		pluginConfigs: new Map()
+		pluginConfigs: new Map(),
+		seeds: new Map()
 	}
 
 	get mode(): string {
@@ -290,6 +295,49 @@ class ManifestLoader implements ManifestAPI {
 	}
 
 	/**
+	 * Get seed configuration for a plugin.
+	 * If not cached, attempts synchronous load from disk.
+	 */
+	seeds(pluginName: string, options?: ManifestOptions): SeedConfig | undefined {
+		const cached = this._cache.seeds.get(pluginName)
+		if (cached) {
+			return cached
+		}
+
+		// Sanitize plugin name for filename (same logic as generator)
+		const fileName = pluginName.replace(/@/g, '').replace(/\//g, '__')
+
+		try {
+			const filePath = this.manifestPath(`seeds/${fileName}.json`)
+			const content = fsSync.readFileSync(filePath, 'utf-8')
+			const seedConfig = JSON.parse(content) as SeedConfig
+			this._cache.seeds.set(pluginName, seedConfig)
+			return seedConfig
+		} catch {
+			return undefined
+		}
+	}
+
+	/**
+	 * Get the seeds index (map of plugin names to boolean indicating they have seeds).
+	 */
+	seedsIndex(options?: ManifestOptions): SeedsIndex {
+		if (this._cache.seedsIndex) {
+			return this._cache.seedsIndex
+		}
+
+		try {
+			const filePath = this.manifestPath('seeds/@.json')
+			const content = fsSync.readFileSync(filePath, 'utf-8')
+			const index = JSON.parse(content) as SeedsIndex
+			this._cache.seedsIndex = index
+			return index
+		} catch {
+			return {}
+		}
+	}
+
+	/**
 	 * Get project metadata.
 	 */
 	project(options?: ManifestOptions): ProjectMetadata {
@@ -308,6 +356,7 @@ class ManifestLoader implements ManifestAPI {
 
 	/**
 	 * Load a route manifest into memory.
+	 * Merges routes from the project manifest AND all plugin manifests.
 	 */
 	async load(namespace: string, route: string): Promise<HandlerEntry[]> {
 		const key = this.routeKey(namespace, route)
@@ -316,17 +365,44 @@ class ManifestLoader implements ManifestAPI {
 			return this._cache.routes.get(key)!
 		}
 
-		const filePath = this.manifestPath(`routes/${namespace}.${route}.json`)
+		const allEntries: HandlerEntry[] = []
+		const routeFile = `routes/${namespace}.${route}.json`
 
+		// 1. Load from project manifest
+		const projectPath = this.manifestPath(routeFile)
 		try {
-			const content = await fs.readFile(filePath, 'utf-8')
+			const content = await fs.readFile(projectPath, 'utf-8')
 			const entries = JSON.parse(content) as HandlerEntry[]
-			this._cache.routes.set(key, entries)
-			return entries
-		} catch (error) {
-			logger.debug(`Failed to load route ${namespace}:${route}:`, error)
-			return []
+			allEntries.push(...entries)
+		} catch {
+			// Project may not have this route - that's fine
 		}
+
+		// 2. Load from each plugin's manifest
+		// Plugins typically ship with production manifests, so fall back to production if current mode doesn't exist
+		if (this._cache.plugins) {
+			for (const plugin of Object.values(this._cache.plugins)) {
+				const pluginManifestBase = path.join(process.cwd(), plugin.path, '.robo', 'manifest')
+
+				// Try current mode first, then fall back to production
+				const modesToTry = this._mode === 'production' ? ['production'] : [this._mode, 'production']
+
+				for (const mode of modesToTry) {
+					const pluginPath = path.join(pluginManifestBase, mode, routeFile)
+					try {
+						const content = await fs.readFile(pluginPath, 'utf-8')
+						const entries = JSON.parse(content) as HandlerEntry[]
+						allEntries.push(...entries)
+						break // Found it, no need to try other modes
+					} catch {
+						// Try next mode
+					}
+				}
+			}
+		}
+
+		this._cache.routes.set(key, allEntries)
+		return allEntries
 	}
 
 	/**
@@ -354,7 +430,8 @@ class ManifestLoader implements ManifestAPI {
 			routes: new Map(),
 			hooks: new Map(),
 			metadata: new Map(),
-			pluginConfigs: new Map()
+			pluginConfigs: new Map(),
+			seeds: new Map()
 		}
 		this._initialized = false
 	}

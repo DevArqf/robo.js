@@ -43,6 +43,7 @@ async function fileExists(filePath: string): Promise<boolean> {
  * Get possible paths for a plugin hook.
  */
 function getPluginHookPaths(pluginName: string, hookType: HookType): string[] {
+	// Hook path: robo/{hookType} for lifecycle hooks, {hookType} for build hooks
 	const hookPath = hookType.includes('/') ? hookType : `robo/${hookType}`
 
 	return [

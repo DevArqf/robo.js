@@ -167,6 +167,15 @@ export interface PluginData {
 		priority?: number
 		phase?: 'start' | 'transform' | 'complete'
 	}>
+	/** Seed configuration from the plugin's manifest */
+	seed?: {
+		description?: string
+		env?: {
+			description?: string
+			variables?: Record<string, { description?: string; overwrite?: boolean; value?: string } | string>
+		}
+		hook?: string
+	}
 }
 
 export interface PluginMetaOptions {

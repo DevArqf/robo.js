@@ -674,20 +674,86 @@ function collectEnvAssignments(
 
 async function loadPluginManifest(pkg: string): Promise<ManifestRecord | null> {
 	const candidates = getPluginBasePathCandidates(pkg)
+
 	for (const basePath of candidates) {
-		const manifestPath = path.join(basePath, '.robo', 'manifest.json')
-		if (!(await fileExists(manifestPath))) {
-			continue
+		// Try granular manifest first (new format)
+		const granularPath = path.join(basePath, '.robo', 'manifest', 'production')
+		if (await directoryExists(granularPath)) {
+			try {
+				const manifest = await loadGranularManifest(basePath, pkg)
+				if (manifest) {
+					return { basePath, manifest }
+				}
+			} catch (error) {
+				logger.debug(`Failed to load granular manifest for ${pkg}:`, error)
+			}
 		}
-		try {
-			const manifest = await Compiler.useManifest({ basePath, name: pkg, safe: true })
-			return { basePath, manifest }
-		} catch (error) {
-			logger.debug(`Failed to load manifest for ${pkg} at ${manifestPath}:`, error)
+
+		// Fall back to legacy manifest.json (for backwards compatibility during transition)
+		const manifestPath = path.join(basePath, '.robo', 'manifest.json')
+		if (await fileExists(manifestPath)) {
+			try {
+				const manifest = await Compiler.useManifest({ basePath, name: pkg, safe: true })
+				return { basePath, manifest }
+			} catch (error) {
+				logger.debug(`Failed to load manifest for ${pkg} at ${manifestPath}:`, error)
+			}
 		}
 	}
 
 	return null
+}
+
+/**
+ * Load manifest data from granular format and convert to legacy Manifest structure.
+ */
+async function loadGranularManifest(basePath: string, pkg: string): Promise<Manifest | null> {
+	const manifestBase = path.join(basePath, '.robo', 'manifest', 'production')
+
+	try {
+		// Read robo.json for project metadata
+		const roboPath = path.join(manifestBase, 'robo.json')
+		const roboContent = await fs.readFile(roboPath, 'utf-8')
+		const roboData = JSON.parse(roboContent) as { language?: string; version?: string }
+
+		// Read seeds from seeds/{plugin}.json
+		let seedConfig: { description?: string; env?: object; hook?: string } | undefined
+		const pluginFileName = pkg.replace(/\//g, '__')
+		const seedPath = path.join(manifestBase, 'seeds', `${pluginFileName}.json`)
+		try {
+			const seedContent = await fs.readFile(seedPath, 'utf-8')
+			seedConfig = JSON.parse(seedContent)
+		} catch {
+			// Seed file may not exist
+		}
+
+		// Build a legacy-compatible manifest structure
+		const manifest: Manifest = {
+			__robo: {
+				language: roboData.language === 'typescript' ? 'typescript' : 'javascript',
+				seed: seedConfig
+			},
+			commands: {},
+			events: {},
+			context: {},
+			scopes: ['bot', 'applications.commands'],
+			permissions: []
+		}
+
+		return manifest
+	} catch (error) {
+		logger.debug(`Failed to read granular manifest at ${manifestBase}:`, error)
+		return null
+	}
+}
+
+async function directoryExists(dirPath: string): Promise<boolean> {
+	try {
+		const stat = await fs.stat(dirPath)
+		return stat.isDirectory()
+	} catch {
+		return false
+	}
 }
 
 function getPluginBasePathCandidates(pkg: string): string[] {

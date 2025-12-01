@@ -4,7 +4,7 @@ import { Env } from './env.js'
 import { state } from './state.js'
 import { DEFAULT_CONFIG, TIMEOUT } from './constants.js'
 import { timeout } from '../cli/utils/utils.js'
-import type { InitContext, PluginContext, PluginState, StopContext } from '../types/lifecycle.js'
+import type { InitContext, StartContext, PluginState, StopContext } from '../types/lifecycle.js'
 import type { PluginData } from '../types/common.js'
 import path from 'node:path'
 import fs from 'node:fs/promises'
@@ -33,13 +33,9 @@ export async function resolvePluginHookPath(
 	hookName: 'init' | 'start' | 'stop' | 'setup'
 ): Promise<string | null> {
 	const possiblePaths = [
-		// Plugin package: node_modules/@robojs/discord/.robo/build/robo/hooks/init.js
-		path.join(process.cwd(), 'node_modules', pluginName, '.robo', 'build', 'robo', 'hooks', `${hookName}.js`),
-		// Legacy: node_modules/@robojs/discord/.robo/build/robo/init.js
+		// Plugin package: node_modules/@robojs/discord/.robo/build/robo/init.js
 		path.join(process.cwd(), 'node_modules', pluginName, '.robo', 'build', 'robo', `${hookName}.js`),
-		// Alternative: node_modules/@robojs/discord/dist/robo/hooks/init.js
-		path.join(process.cwd(), 'node_modules', pluginName, 'dist', 'robo', 'hooks', `${hookName}.js`),
-		// Alternative legacy: node_modules/@robojs/discord/dist/robo/init.js
+		// Alternative: node_modules/@robojs/discord/dist/robo/init.js
 		path.join(process.cwd(), 'node_modules', pluginName, 'dist', 'robo', `${hookName}.js`)
 	]
 
@@ -129,10 +125,10 @@ export async function executeInitHooks(
 		}
 
 		const context: InitContext = {
-			config,
+			mode,
+			projectConfig: config,
 			logger: loggerInstance.fork(inferNamespace(pluginName)),
-			env: Env,
-			mode
+			env: Env
 		}
 
 		try {
@@ -158,10 +154,10 @@ export async function executeInitHooks(
 	const projectHookPath = await resolveProjectHookPath('init', mode)
 	if (projectHookPath) {
 		const context: InitContext = {
-			config,
+			mode,
+			projectConfig: config,
 			logger: loggerInstance,
-			env: Env,
-			mode
+			env: Env
 		}
 
 		try {
@@ -267,9 +263,10 @@ export async function executeStartHooks(
 		const pluginVersion = await getPluginVersion(pluginName)
 
 		// Create plugin-scoped context
-		const context: PluginContext = {
+		const context: StartContext = {
 			mode,
-			config: pluginData.options,
+			projectConfig: config,
+			pluginConfig: pluginData.options,
 			state: createPluginState(pluginName),
 			logger: loggerInstance.fork(inferNamespace(pluginName)),
 			env: Env,
@@ -318,11 +315,17 @@ export async function executeStartHooks(
 
 			if (typeof hookModule.default === 'function') {
 				const hookPromise = hookModule.default({
-					config,
+					mode,
+					projectConfig: config,
+					pluginConfig: {},
+					state: createPluginState('project'),
 					logger: loggerInstance,
 					env: Env,
-					mode
-				})
+					meta: {
+						name: 'project',
+						version: '0.0.0'
+					}
+				} as StartContext)
 
 				if (hookPromise instanceof Promise) {
 					const timeoutPromise = timeout(() => TIMEOUT, timeoutDuration)
@@ -369,12 +372,18 @@ export async function executeStopHooks(
 
 			if (typeof hookModule.default === 'function') {
 				const hookPromise = hookModule.default({
-					config,
+					mode,
+					reason,
+					projectConfig: config,
+					pluginConfig: {},
+					state: createPluginState('project'),
 					logger: loggerInstance,
 					env: Env,
-					mode,
-					reason
-				})
+					meta: {
+						name: 'project',
+						version: '0.0.0'
+					}
+				} as StopContext)
 
 				if (hookPromise instanceof Promise) {
 					const timeoutPromise = timeout(() => TIMEOUT, timeoutDuration)
@@ -408,7 +417,8 @@ export async function executeStopHooks(
 		const context: StopContext = {
 			mode,
 			reason,
-			config: pluginData.options,
+			projectConfig: config,
+			pluginConfig: pluginData.options,
 			state: createPluginState(pluginName),
 			logger: loggerInstance.fork(inferNamespace(pluginName)),
 			env: Env,

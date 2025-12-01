@@ -25,7 +25,9 @@ import type {
 	PluginRegistry,
 	ProjectMetadata,
 	RouteDefinition,
-	RouteDefinitions
+	RouteDefinitions,
+	SeedConfig,
+	SeedsIndex
 } from '../../types/manifest-v1.js'
 
 export interface ManifestGeneratorOptions {
@@ -43,6 +45,10 @@ export interface ManifestGeneratorOptions {
 	legacyManifest?: Manifest
 	/** Hook entries discovered during build */
 	hookEntries?: HooksManifest
+	/** Build type: 'robo' for projects, 'plugin' for plugin builds */
+	buildType?: 'robo' | 'plugin'
+	/** For plugin builds: the name of the plugin being built */
+	pluginName?: string
 }
 
 /**
@@ -57,6 +63,8 @@ export class ManifestGenerator {
 	private legacyManifest?: Manifest
 	private hookEntries: HooksManifest
 	private basePath: string
+	private buildType: 'robo' | 'plugin'
+	private pluginName?: string
 
 	constructor(options: ManifestGeneratorOptions) {
 		this.mode = options.mode
@@ -67,6 +75,8 @@ export class ManifestGenerator {
 		this.legacyManifest = options.legacyManifest
 		this.hookEntries = options.hookEntries ?? {}
 		this.basePath = path.join(process.cwd(), '.robo', 'manifest', this.mode)
+		this.buildType = options.buildType ?? 'robo'
+		this.pluginName = options.pluginName
 	}
 
 	/**
@@ -111,7 +121,8 @@ export class ManifestGenerator {
 			this.generatePluginsJson(),
 			this.generateRoutesIndex(),
 			this.generateRouteFiles(),
-			this.generateHooksFiles()
+			this.generateHooksFiles(),
+			this.generateSeedsFiles()
 		])
 
 		// Generate metadata files (depends on route entries being available)
@@ -246,17 +257,24 @@ export class ManifestGenerator {
 		const definitions: RouteDefinitions = {}
 
 		for (const route of this.routes) {
-			if (!definitions[route.namespace]) {
-				const pluginName = this.findPluginForNamespace(route.namespace)
+			// For plugin builds, remap "project" namespace to the plugin's namespace
+			const namespace = this.buildType === 'plugin' && route.namespace === 'project' && this.pluginName
+				? this.inferNamespace(this.pluginName)
+				: route.namespace
 
-				definitions[route.namespace] = {
+			if (!definitions[namespace]) {
+				const pluginName = this.buildType === 'plugin' && this.pluginName
+					? this.pluginName
+					: this.findPluginForNamespace(namespace)
+
+				definitions[namespace] = {
 					plugin: pluginName ?? 'project',
-					namespace: route.namespace,
+					namespace: namespace,
 					routes: {}
 				}
 			}
 
-			definitions[route.namespace].routes[route.name] = this.serializeRouteDefinition(route)
+			definitions[namespace].routes[route.name] = this.serializeRouteDefinition(route)
 		}
 
 		await this.writeJson('routes/@.json', definitions)
@@ -268,7 +286,12 @@ export class ManifestGenerator {
 	async generateRouteFiles(): Promise<void> {
 		const writes: Promise<void>[] = []
 
-		for (const [namespace, routes] of Object.entries(this.routeEntries)) {
+		for (const [originalNamespace, routes] of Object.entries(this.routeEntries)) {
+			// For plugin builds, remap "project" namespace to the plugin's namespace
+			const namespace = this.buildType === 'plugin' && originalNamespace === 'project' && this.pluginName
+				? this.inferNamespace(this.pluginName)
+				: originalNamespace
+
 			for (const [routeName, entries] of Object.entries(routes)) {
 				const handlerEntries = this.processEntriesToHandlers(entries, namespace)
 				const fileName = `${namespace}.${routeName}.json`
@@ -288,6 +311,40 @@ export class ManifestGenerator {
 
 		for (const [hookType, entries] of Object.entries(this.hookEntries)) {
 			writes.push(this.writeJson(`hooks/${hookType}.json`, entries))
+		}
+
+		await Promise.all(writes)
+	}
+
+	/**
+	 * Generate seeds files for plugins with seed configuration.
+	 * Creates:
+	 * - seeds/@.json: Index listing plugins with seeds
+	 * - seeds/{pluginName}.json: Individual seed config per plugin
+	 */
+	async generateSeedsFiles(): Promise<void> {
+		const seedsIndex: SeedsIndex = {}
+		const writes: Promise<void>[] = []
+
+		// Check each plugin for seed configuration
+		for (const [pluginName, pluginData] of this.plugins) {
+			if (pluginData.seed) {
+				const seedConfig: SeedConfig = {
+					description: pluginData.seed.description,
+					env: pluginData.seed.env,
+					hook: pluginData.seed.hook
+				}
+
+				// Sanitize plugin name for filename
+				const fileName = this.sanitizePluginName(pluginName)
+				writes.push(this.writeJson(`seeds/${fileName}.json`, seedConfig))
+				seedsIndex[pluginName] = true
+			}
+		}
+
+		// Only write index if there are seeds
+		if (Object.keys(seedsIndex).length > 0) {
+			writes.push(this.writeJson('seeds/@.json', seedsIndex))
 		}
 
 		await Promise.all(writes)
@@ -386,6 +443,11 @@ export class ManifestGenerator {
 		return JSON.stringify(
 			data,
 			(_key, value) => {
+				// Handle BigInt (must be checked before other type checks)
+				if (typeof value === 'bigint') {
+					return value.toString() + 'n'
+				}
+
 				// Handle non-object primitives
 				if (value === null || typeof value !== 'object') {
 					// Handle functions
@@ -531,10 +593,21 @@ export class ManifestGenerator {
 
 		if (route.controller) {
 			const pluginName = this.findPluginForNamespace(route.namespace)
+			// Determine the factory path based on whether this is a plugin route or project route
+			let factoryPath: string
+			if (pluginName) {
+				// Plugin route: use package name + dist path
+				// e.g., @robojs/discordjs/dist/robo/routes/commands.js#controller
+				factoryPath = `${pluginName}/dist/robo/routes/${route.name}.js#controller`
+			} else {
+				// Project route: use relative path from .robo/build
+				// e.g., ./robo/routes/commands.js#controller
+				factoryPath = `./.robo/build/robo/routes/${route.name}.js#controller`
+			}
 			definition.controller = {
 				type: route.typeInfo?.controllerType ?? 'unknown',
 				import: pluginName ?? 'robo.js',
-				factory: `${pluginName}/controllers#create${route.name.charAt(0).toUpperCase() + route.name.slice(1)}Controller`
+				factory: factoryPath
 			}
 		}
 
@@ -543,9 +616,15 @@ export class ManifestGenerator {
 
 	private processEntriesToHandlers(entries: ProcessedEntry[], namespace: string): HandlerEntry[] {
 		return entries.map((entry, index) => {
-			// Determine source
-			const isPlugin = entry.module?.startsWith('@') || entry.module?.startsWith('robo-plugin-')
-			const plugin = isPlugin ? entry.module : null
+			// Determine source based on build type and entry module
+			let isPlugin = entry.module?.startsWith('@') || entry.module?.startsWith('robo-plugin-')
+			let plugin = isPlugin ? entry.module : null
+
+			// For plugin builds, all entries are from the plugin being built
+			if (this.buildType === 'plugin' && this.pluginName) {
+				isPlugin = true
+				plugin = this.pluginName
+			}
 
 			// Generate ID
 			let id = entry.key
@@ -559,7 +638,7 @@ export class ManifestGenerator {
 			const handlerEntry: HandlerEntry = {
 				...entry,
 				id,
-				source: plugin ? 'plugin' : 'project',
+				source: isPlugin ? 'plugin' : 'project',
 				plugin
 			}
 
@@ -649,14 +728,20 @@ export async function discoverProjectHooks(buildDir?: string): Promise<Map<strin
 
 /**
  * Create hook entries from discovered hooks during build.
+ *
+ * @param plugins - Plugin data map
+ * @param projectHooks - Discovered hooks from project/plugin build
+ * @param buildPluginName - For plugin builds, the name of the plugin being built.
+ *                          When provided, discovered hooks are attributed to this plugin.
  */
 export function createHookEntries(
 	plugins: Map<string, PluginData>,
-	projectHooks: Map<string, string>
+	projectHooks: Map<string, string>,
+	buildPluginName?: string
 ): HooksManifest {
 	const hooks: HooksManifest = {}
 
-	// Add plugin hooks
+	// Add plugin hooks (from already-registered plugins)
 	for (const [pluginName, data] of plugins) {
 		const pluginHooks = data.hooks ?? []
 
@@ -681,7 +766,9 @@ export function createHookEntries(
 		}
 	}
 
-	// Add project hooks
+	// Add project/plugin hooks (discovered from build directory)
+	// For plugin builds, attribute these to the plugin being built
+	const isPluginBuild = !!buildPluginName
 	for (const [hookType, hookPath] of projectHooks) {
 		// Determine the canonical hook type (handle build:phase format)
 		let canonicalType = hookType
@@ -697,11 +784,11 @@ export function createHookEntries(
 		}
 
 		const entry: HookEntry = {
-			id: `project:${hookType}`,
-			source: 'project',
-			plugin: null,
+			id: isPluginBuild ? `${buildPluginName}:${hookType}` : `project:${hookType}`,
+			source: isPluginBuild ? 'plugin' : 'project',
+			plugin: isPluginBuild ? buildPluginName : null,
 			path: hookPath,
-			priority: 0
+			priority: isPluginBuild ? 10 : 0
 		}
 
 		if (phase) {
