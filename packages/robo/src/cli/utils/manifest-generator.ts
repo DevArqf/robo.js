@@ -13,7 +13,6 @@ import { packageJson } from './utils.js'
 import { generateEnvMetadata, extractEnvVarsFromConfig } from './env-manifest.js'
 import { Compiler } from './compiler.js'
 import type { Config } from '../../types/config.js'
-import type { Manifest } from '../../types/manifest.js'
 import type { DiscoveredRoute, ProcessedEntry, RouteEntries } from '../../types/routes.js'
 import type { PluginData } from '../../types/common.js'
 import type {
@@ -41,8 +40,6 @@ export interface ManifestGeneratorOptions {
 	routeEntries: RouteEntries
 	/** Plugin data map */
 	plugins: Map<string, PluginData>
-	/** Legacy manifest for backward compatibility data */
-	legacyManifest?: Manifest
 	/** Hook entries discovered during build */
 	hookEntries?: HooksManifest
 	/** Build type: 'robo' for projects, 'plugin' for plugin builds */
@@ -60,7 +57,6 @@ export class ManifestGenerator {
 	private routes: DiscoveredRoute[]
 	private routeEntries: RouteEntries
 	private plugins: Map<string, PluginData>
-	private legacyManifest?: Manifest
 	private hookEntries: HooksManifest
 	private basePath: string
 	private buildType: 'robo' | 'plugin'
@@ -72,7 +68,6 @@ export class ManifestGenerator {
 		this.routes = options.routes
 		this.routeEntries = options.routeEntries
 		this.plugins = options.plugins
-		this.legacyManifest = options.legacyManifest
 		this.hookEntries = options.hookEntries ?? {}
 		this.basePath = path.join(process.cwd(), '.robo', 'manifest', this.mode)
 		this.buildType = options.buildType ?? 'robo'

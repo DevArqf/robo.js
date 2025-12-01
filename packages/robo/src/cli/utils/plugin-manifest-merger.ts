@@ -145,11 +145,6 @@ export async function mergePluginManifests(
 	loggerInstance.debug(`Merging manifests from ${plugins.size} plugin(s) using mode: ${mode}...`)
 
 	for (const [pluginName, pluginData] of plugins) {
-		// Skip the discordjs plugin itself - it provides routes, not entries
-		if (pluginName === '@robojs/discordjs') {
-			continue
-		}
-
 		// Find the plugin's package path
 		const packagePath = await findPackagePath(pluginName, process.cwd())
 		if (!packagePath) {

@@ -1,18 +1,23 @@
-import type { CommandEntry } from './commands.js'
-import type { PermissionsString } from './config.js'
-import type { Config, Scope, SeedEnvVariableConfig } from './config.js'
-import type { EventConfig } from './events.js'
-import type { ApiEntry, ContextEntry, MiddlewareEntry } from './index.js'
-import type { ProcessedEntry } from './routes.js'
+import type { SeedEnvVariableConfig } from './config.js'
 
+/**
+ * Seed environment variable configuration.
+ */
 export type ManifestSeedEnvVariables = Record<string, SeedEnvVariableConfig | string>
 
+/**
+ * Seed environment configuration.
+ */
 export interface ManifestSeedEnv {
 	description?: string
 	variables?: ManifestSeedEnvVariables
 	hook?: string
 }
 
+/**
+ * Seed configuration for a plugin.
+ * Defines environment variables and setup logic.
+ */
 export interface ManifestSeed {
 	description?: string
 	env?: ManifestSeedEnv
@@ -20,41 +25,21 @@ export interface ManifestSeed {
 }
 
 /**
- * Route entries organized by namespace and route name.
- * This is the new plugin-based route system format.
+ * Minimal plugin manifest info for seed operations.
+ * Used during CLI operations (robo add) to seed files and env variables.
+ *
+ * This is NOT the runtime manifest. For runtime access, use the `Manifest` API:
+ * - `Manifest.routes(namespace, route)` - Get handler entries
+ * - `Manifest.hooks(hookType)` - Get lifecycle hooks
+ * - `Manifest.config()` - Get project config
+ * - `Manifest.seeds(pluginName)` - Get seed config
+ * - `Manifest.project()` - Get project metadata
  */
-export type ManifestRoutes = {
-	[namespace: string]: {
-		[routeName: string]: ProcessedEntry[]
-	}
-}
-
-export interface Manifest {
-	__README: string
-	__robo: {
-		config: Config | null
-		language: 'javascript' | 'typescript'
-		mode: string
-		seed?: ManifestSeed
-		type: 'plugin' | 'robo'
-		updatedAt?: string
-		version?: string
-	}
-	/**
-	 * Route entries from the new plugin-based route system.
-	 * Organized by namespace (plugin) and route name.
-	 */
-	__routes?: ManifestRoutes
-	api: Record<string, ApiEntry>
-	commands: Record<string, CommandEntry>
-	context: {
-		message: Record<string, ContextEntry>
-		user: Record<string, ContextEntry>
-	}
-	events: Record<string, EventConfig[]>
-	permissions?: PermissionsString[] | number
-	middleware?: MiddlewareEntry[]
-	scopes?: Scope[]
+export interface PluginManifestInfo {
+	/** Source language of the plugin */
+	language: 'javascript' | 'typescript'
+	/** Seed configuration for the plugin */
+	seed?: ManifestSeed
 }
 
 export default {}

@@ -67,9 +67,10 @@ async function startAction(_args: string[], options: StartCommandOptions) {
 	logger.log(Indent, '  ', bootMessage.content)
 	logger.log('')
 
-	// Check if .robo/manifest.json is missing
+	// Check if granular manifest is missing
+	const manifestPath = path.join('.robo', 'manifest', envMode, 'robo.json')
 	try {
-		await fs.access(path.join('.robo', 'manifest.json'))
+		await fs.access(manifestPath)
 	} catch (err) {
 		logger.error(
 			`The manifest file is missing. Make sure your project structure is correct and run ${composeColors(

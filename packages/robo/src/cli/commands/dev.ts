@@ -14,7 +14,6 @@ import { Highlight } from '../../core/constants.js'
 import { Flashcore } from '../../core/flashcore.js'
 import { getPackageExecutor, getPackageManager } from '../utils/runtime-utils.js'
 import { Mode, resolveCliMode, setMode } from '../../core/mode.js'
-import { Compiler } from '../utils/compiler.js'
 import { Env } from '../../core/env.js'
 import { Boot } from '../../internal/boot.js'
 import { Nanocore } from '../../internal/nanocore.js'
@@ -209,9 +208,6 @@ async function devAction(_args: string[], options: DevCommandOptions) {
 		logger.wait(`Build failed! Waiting for changes before retrying...`)
 	}
 
-	// Load manifest to compare later
-	let manifest = await Compiler.useManifest()
-
 	// Watch for changes in the "src" directory alongside special files
 	const watchedPaths = ['src']
 	const ignoredPaths = ['node_modules', '.git', ...(config.watcher?.ignore ?? [])]
@@ -252,20 +248,6 @@ async function devAction(_args: string[], options: DevCommandOptions) {
 			// Rebuild and restart
 			roboSpirit = await rebuildRobo(roboSpirit, config, options.verbose, changes)
 			spirits.on(roboSpirit, restartCallback)
-
-			// Compare manifest to warn about permission changes
-			if (config.experimental?.disableBot !== true) {
-				const newManifest = await Compiler.useManifest()
-				const oldPermissions = manifest.permissions ?? []
-				const newPermissions = newManifest.permissions ?? []
-				manifest = newManifest
-
-				if (JSON.stringify(oldPermissions) !== JSON.stringify(newPermissions)) {
-					logger.warn(
-						`Permissions have changed! Run ${color.bold('robo invite')} to update your Robo's guild permissions.`
-					)
-				}
-			}
 		} finally {
 			isUpdating = false
 		}

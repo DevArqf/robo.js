@@ -1,5 +1,4 @@
 import { Command } from '../../utils/cli-handler.js'
-import { generateManifest } from '../../utils/manifest.js'
 import { logger as defaultLogger, Logger } from '../../../core/logger.js'
 import { loadConfig } from '../../../core/config.js'
 import { getProjectSize, printBuildSummary } from '../../utils/build-summary.js'
@@ -7,15 +6,12 @@ import plugin from './plugin.js'
 import path from 'node:path'
 import { Env } from '../../../core/env.js'
 import { Mode, resolveCliMode, setMode } from '../../../core/mode.js'
-import { findCommandDifferences, registerCommands } from '../../utils/commands.js'
 import { generateDefaults } from '../../utils/generate-defaults.js'
 import { Compiler } from '../../utils/compiler.js'
-import { Flashcore } from '../../../core/flashcore.js'
-import { bold } from '../../../core/color.js'
 import { buildPublicDirectory } from '../../utils/public.js'
-import { discordLogger, FLASHCORE_KEYS } from '../../../core/constants.js'
 import {
 	executeBuildStartHooks,
+	executeBuildTransformHooks,
 	executeBuildCompleteHooks,
 	loadPluginData
 } from '../../utils/build-hooks.js'
@@ -33,8 +29,6 @@ import type { RouteEntries } from '../../../types/routes.js'
 const command = new Command('build')
 	.description('Builds your bot for production.')
 	.option('-d', '--dev', 'build for development')
-	.option('-f', '--force', 'force register commands')
-	.option('-nr', '--no-register', 'skip automatic command registration')
 	.option('-m', '--mode', 'specify the mode(s) to run in (dev, beta, prod, etc...)')
 	.option('-s', '--silent', 'do not print anything')
 	.option('-v', '--verbose', 'print more information for debugging')
@@ -49,8 +43,6 @@ export interface BuildCommandOptions {
 	dev?: boolean
 	exit?: boolean
 	files?: string[]
-	force?: boolean
-	'no-register'?: boolean
 	mode?: string
 	silent?: boolean
 	verbose?: boolean
@@ -68,9 +60,6 @@ export async function buildAction(files: string[], options: BuildCommandOptions)
 	logger.debug('CLI options:', options)
 	logger.debug(`Current working directory:`, process.cwd())
 	const startTime = Date.now()
-
-	// Normalize the --no-register flag to a boolean registerFlag
-	const registerFlag = !options['no-register']
 
 	// Make sure the user isn't trying to watch builds
 	// This only makes sense for plugins anyway
@@ -110,9 +99,6 @@ export async function buildAction(files: string[], options: BuildCommandOptions)
 	// Load plugin data for build hooks
 	const plugins = loadPluginData(config)
 
-	// Initialize Flashcore to persist build error data
-	await Flashcore.$init({ keyvOptions: config.flashcore?.keyv, namespaceSeparator: config.flashcore?.namespaceSeparator })
-
 	// Determine build mode
 	// Use custom mode from --mode flag if specified, otherwise fall back to dev/production
 	const defaultBuildMode = options.dev ? 'development' : 'production'
@@ -131,13 +117,7 @@ export async function buildAction(files: string[], options: BuildCommandOptions)
 	logger.debug(`Compiled in ${compileTime}ms`)
 
 	// Assign default commands and events (now handled by plugins)
-	const generatedFiles = await generateDefaults()
-
-	// Generate manifest.json (legacy)
-	const oldManifest = await Compiler.useManifest({ safe: true })
-	const manifestTime = Date.now()
-	const manifest = await generateManifest(generatedFiles, 'robo', { config, mode: buildMode, plugins })
-	logger.debug(`Generated manifest in ${Date.now() - manifestTime}ms`)
+	await generateDefaults()
 
 	// Discover and process routes for granular manifest
 	let routeEntries: RouteEntries = {}
@@ -166,80 +146,81 @@ export async function buildAction(files: string[], options: BuildCommandOptions)
 	// This reads each plugin's granular manifest and merges their commands, events, etc.
 	routeEntries = await mergePluginManifests(plugins, routeEntries, buildMode)
 
+	// Execute build/transform hooks (filter/transform entries)
+	// Runs AFTER plugin merge so hooks can validate/transform ALL entries (project + plugins)
+	routeEntries = await executeBuildTransformHooks(plugins, config, buildMode, buildStore, routeEntries)
+
 	// Execute build/complete hooks with route entries
-	const { metadataRegistry } = await executeBuildCompleteHooks(plugins, config, buildMode, manifest, buildStore, routeEntries)
+	const { metadataRegistry } = await executeBuildCompleteHooks(plugins, config, buildMode, buildStore, routeEntries)
 
-	// Generate granular manifest (enabled by default)
-	if (!config.experimental?.disableGranularManifest) {
-		const granularStartTime = Date.now()
+	// Generate granular manifest
+	const granularStartTime = Date.now()
 
-		// Discover all hooks from plugins and project (for manifest generation)
-		const hookEntries = await discoverAllHooks(plugins)
+	// Discover all hooks from plugins and project (for manifest generation)
+	const hookEntries = await discoverAllHooks(plugins)
 
-		const manifestGenerator = new ManifestGenerator({
-			mode: buildMode,
-			config,
-			routes,
-			routeEntries,
-			plugins,
-			legacyManifest: manifest,
-			hookEntries
-		})
+	const manifestGenerator = new ManifestGenerator({
+		mode: buildMode,
+		config,
+		routes,
+		routeEntries,
+		plugins,
+		hookEntries
+	})
 
-		await manifestGenerator.generateAll(metadataRegistry)
+	await manifestGenerator.generateAll(metadataRegistry)
 
-		// Generate manifest types
-		await generateManifestTypes({
-			routes,
-			routeEntries,
-			hooks: hookEntries,
-			plugins: Object.fromEntries(
-				Array.from(plugins.entries()).map(([name, data]) => [
+	// Generate manifest types
+	await generateManifestTypes({
+		routes,
+		routeEntries,
+		hooks: hookEntries,
+		plugins: Object.fromEntries(
+			Array.from(plugins.entries()).map(([name, data]) => [
+				name,
+				{
 					name,
-					{
-						name,
-						version: data.version ?? '0.0.0',
-						path: data.path ?? `node_modules/${name}`,
-						namespace: data.namespace ?? name.replace('@robojs/', '').replace('robo-plugin-', ''),
-						routes: routes.filter((r) => r.namespace === data.namespace).map((r) => r.name),
-						hooks: Object.keys(hookEntries).filter((h) => hookEntries[h].some((e) => e.plugin === name))
-					}
-				])
-			)
-		})
+					version: data.version ?? '0.0.0',
+					path: data.path ?? `node_modules/${name}`,
+					namespace: data.namespace ?? name.replace('@robojs/', '').replace('robo-plugin-', ''),
+					routes: routes.filter((r) => r.namespace === data.namespace).map((r) => r.name),
+					hooks: Object.keys(hookEntries).filter((h) => hookEntries[h].some((e) => e.plugin === name))
+				}
+			])
+		)
+	})
 
-		// Generate portal types (auto-typed portal access)
-		const { isTypeScript } = Compiler.isTypescriptProject()
-		const typesDir = path.join(process.cwd(), '.robo', 'types')
-		const portalTypesPath = path.join(typesDir, 'portal.d.ts')
+	// Generate portal types (auto-typed portal access)
+	const { isTypeScript } = Compiler.isTypescriptProject()
+	const typesDir = path.join(process.cwd(), '.robo', 'types')
+	const portalTypesPath = path.join(typesDir, 'portal.d.ts')
 
-		// Build route definitions for portal type generation
-		const routeDefinitions: Record<string, { routes: Record<string, { directory: string; multiple?: boolean; singular?: string }> }> = {}
-		for (const route of routes) {
-			if (!routeDefinitions[route.namespace]) {
-				routeDefinitions[route.namespace] = { routes: {} }
-			}
-			routeDefinitions[route.namespace].routes[route.name] = {
-				directory: route.directory,
-				multiple: route.config?.multiple,
-				singular: route.config?.singular
-			}
+	// Build route definitions for portal type generation
+	const routeDefinitions: Record<string, { routes: Record<string, { directory: string; multiple?: boolean; singular?: string }> }> = {}
+	for (const route of routes) {
+		if (!routeDefinitions[route.namespace]) {
+			routeDefinitions[route.namespace] = { routes: {} }
 		}
-
-		// Collect plugin routes for type extraction
-		const pluginRoutesInfo = Array.from(plugins.entries()).map(([name, data]) => ({
-			name,
-			path: data.path ?? path.join(process.cwd(), 'node_modules', name),
-			namespace: data.namespace ?? name.replace('@robojs/', '').replace('robo-plugin-', '')
-		}))
-
-		const pluginRoutes = await collectPluginRoutes(pluginRoutesInfo, routeDefinitions)
-		await generatePortalTypes(pluginRoutes, portalTypesPath, isTypeScript)
-		await generateTypesIndex(typesDir)
-
-		logger.debug(`Generated portal types at ${portalTypesPath}`)
-		logger.debug(`Generated granular manifest in ${Date.now() - granularStartTime}ms`)
+		routeDefinitions[route.namespace].routes[route.name] = {
+			directory: route.directory,
+			multiple: route.config?.multiple,
+			singular: route.config?.singular
+		}
 	}
+
+	// Collect plugin routes for type extraction
+	const pluginRoutesInfo = Array.from(plugins.entries()).map(([name, data]) => ({
+		name,
+		path: data.path ?? path.join(process.cwd(), 'node_modules', name),
+		namespace: data.namespace ?? name.replace('@robojs/', '').replace('robo-plugin-', '')
+	}))
+
+	const pluginRoutes = await collectPluginRoutes(pluginRoutesInfo, routeDefinitions)
+	await generatePortalTypes(pluginRoutes, portalTypesPath, isTypeScript)
+	await generateTypesIndex(typesDir)
+
+	logger.debug(`Generated portal types at ${portalTypesPath}`)
+	logger.debug(`Generated granular manifest in ${Date.now() - granularStartTime}ms`)
 
 	if (!options.dev) {
 		// Build /public for production if available
@@ -250,71 +231,8 @@ export async function buildAction(files: string[], options: BuildCommandOptions)
 		const totalSize = await getProjectSize(process.cwd())
 		logger.debug(`Computed Robo size in ${Date.now() - sizeStartTime}ms`)
 
-		// Log commands and events from the manifest
-		printBuildSummary(manifest, totalSize, startTime, false)
-	}
-
-	// Compare the old manifest with the new one
-	const oldCommands = oldManifest.commands
-	const newCommands = manifest.commands
-	const addedCommands = findCommandDifferences(oldCommands, newCommands, 'added')
-	const removedCommands = findCommandDifferences(oldCommands, newCommands, 'removed')
-	const changedCommands = findCommandDifferences(oldCommands, newCommands, 'changed')
-	const hasCommandChanges = addedCommands.length > 0 || removedCommands.length > 0 || changedCommands.length > 0
-
-	// Do the same but for context commands
-	const oldContextCommands = { ...(oldManifest.context?.message ?? {}), ...(oldManifest.context?.user ?? {}) }
-	const newContextCommands = { ...manifest.context.message, ...manifest.context.user }
-	const addedContextCommands = findCommandDifferences(oldContextCommands, newContextCommands, 'added')
-	const removedContextCommands = findCommandDifferences(oldContextCommands, newContextCommands, 'removed')
-	const changedContextCommands = findCommandDifferences(oldContextCommands, newContextCommands, 'changed')
-	const hasContextCommandChanges =
-		addedContextCommands.length > 0 || removedContextCommands.length > 0 || changedContextCommands.length > 0
-
-	// Determine if auto-registration is enabled
-	const autoRegisterEnabled =
-		registerFlag === false
-			? false
-			: config?.autoRegisterCommands === false
-				? false
-				: true
-
-	// Register command changes
-	const shouldRegister = autoRegisterEnabled && (options.force || hasCommandChanges || hasContextCommandChanges)
-
-	// Provide feedback when auto-registration is disabled
-	if (!autoRegisterEnabled && config.experimental?.disableBot !== true) {
-		if (registerFlag === false) {
-			logger.debug(`Command registration skipped due to ${bold('--no-register')} flag.`)
-		} else {
-			logger.debug(`Command registration skipped due to ${bold('autoRegisterCommands: false')} in config.`)
-		}
-		logger.debug(`Use the ${bold('registerSlashCommands()')} API for manual command registration.`)
-	}
-
-	if (config.experimental?.disableBot !== true && autoRegisterEnabled && options.force) {
-		discordLogger.warn('Forcefully registering commands.')
-	}
-
-	if (config.experimental?.disableBot !== true && autoRegisterEnabled && shouldRegister) {
-		await registerCommands(
-			options.dev,
-			options.force,
-			newCommands,
-			manifest.context.message,
-			manifest.context.user,
-			changedCommands,
-			addedCommands,
-			removedCommands,
-			changedContextCommands,
-			addedContextCommands,
-			removedContextCommands
-		)
-	} else if (config.experimental?.disableBot !== true && autoRegisterEnabled) {
-		const hasPreviousError = await Flashcore.get<boolean>(FLASHCORE_KEYS.commandRegisterError)
-		if (hasPreviousError) {
-			discordLogger.warn(`Previous command registration failed. Run ${bold('robo build --force')} to try again.`)
-		}
+		// Log build summary
+		printBuildSummary(routeEntries, totalSize, startTime, false)
 	}
 
 	// Gracefully exit

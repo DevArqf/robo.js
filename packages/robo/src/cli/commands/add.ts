@@ -4,7 +4,7 @@ import path from 'node:path'
 import { color } from '../../core/color.js'
 import { loadConfig } from '../../core/config.js'
 import { logger } from '../../core/logger.js'
-import type { Manifest } from '../../types/index.js'
+import type { PluginManifestInfo } from '../../types/index.js'
 import { Command } from '../utils/cli-handler.js'
 import { createRequire } from 'node:module'
 import { PackageDir, exec } from '../utils/utils.js'
@@ -16,6 +16,7 @@ import type { EnvApplyResult, EnvFileDescriptor, EnvVariableAssignment } from '.
 import { runSeedHook } from '../utils/seed-hook.js'
 import { runSetupHook } from '../utils/setup-hook.js'
 import type { NormalizedSeedHookResult } from '../utils/seed-hook.js'
+import { loadPluginManifestInfo, hasPluginManifest } from '../utils/plugin-manifest.js'
 import readline from 'node:readline'
 
 const require = createRequire(import.meta.url)
@@ -210,7 +211,7 @@ export async function addAction(packages: string[], options: AddCommandOptions) 
 	} else if (seed && pluginsWithSeeds.length > 0) {
 		const pluginSeeds = pluginsWithSeeds.map((pkg) => {
 			const manifestRecord = manifestMap[pkg]
-			const description = manifestRecord?.manifest.__robo?.seed?.description
+			const description = manifestRecord?.manifestInfo.seed?.description
 			const display = nameMap[pkg] ?? pkg
 			return `${Indent}    - ${Highlight(display)}${description ? ': ' + description : ''}`
 		})
@@ -438,7 +439,7 @@ interface EnvDuplicateNotice {
 
 interface ManifestRecord {
 	basePath: string
-	manifest: Manifest
+	manifestInfo: PluginManifestInfo
 }
 
 interface KeyStatus {
@@ -465,16 +466,16 @@ async function buildEnvPlans(
 			continue
 		}
 
-		const { manifest, basePath } = manifestRecord
+		const { manifestInfo, basePath } = manifestRecord
 
 		let hookResult: NormalizedSeedHookResult | null = null
 		try {
-			hookResult = await runSeedHook(pkg, manifest, basePath)
+			hookResult = await runSeedHook(pkg, manifestInfo, basePath)
 		} catch (error) {
 			logger.warn(`Seed hook for ${pkg} failed:`, error)
 		}
 
-		const assignments = collectEnvAssignments(manifest, hookResult)
+		const assignments = collectEnvAssignments(manifestInfo, hookResult)
 		if (assignments.length === 0) {
 			continue
 		}
@@ -499,7 +500,7 @@ async function buildEnvPlans(
 
 		if (planVariables.length > 0) {
 			plans.push({
-				description: hookResult?.env?.description ?? manifest.__robo?.seed?.env?.description,
+				description: hookResult?.env?.description ?? manifestInfo.seed?.env?.description,
 				displayName,
 				plugin: pkg,
 				variables: planVariables
@@ -529,9 +530,9 @@ async function pluginHasCopyableSeed(
 		return false
 	}
 
-	const hookPath = manifestRecord.manifest.__robo?.seed?.env?.hook ?? manifestRecord.manifest.__robo?.seed?.hook
+	const hookPath = manifestRecord.manifestInfo.seed?.env?.hook ?? manifestRecord.manifestInfo.seed?.hook
 	const excludePaths = new Set(resolveHookAbsolutePaths(manifestRecord.basePath, hookPath))
-	const identifiesAsTypeScript = manifestRecord.manifest.__robo?.language === 'typescript'
+	const identifiesAsTypeScript = manifestRecord.manifestInfo.language === 'typescript'
 	const { isTypeScript } = Compiler.isTypescriptProject()
 	const excludeExts = identifiesAsTypeScript && isTypeScript ? ['.js', '.jsx'] : ['.ts', '.tsx']
 
@@ -612,10 +613,10 @@ function resolveHookAbsolutePaths(basePath: string, hookPath?: string): string[]
 
 
 function collectEnvAssignments(
-	manifest: Manifest,
+	manifestInfo: PluginManifestInfo,
 	hookResult: NormalizedSeedHookResult | null
 ): EnvVariableAssignment[] {
-	const manifestVariables = manifest.__robo?.seed?.env?.variables ?? {}
+	const manifestVariables = manifestInfo.seed?.env?.variables ?? {}
 	const hookVariables = hookResult?.env?.variables ?? {}
 	const keys = new Set<string>([...Object.keys(manifestVariables), ...Object.keys(hookVariables)])
 	const assignments: EnvVariableAssignment[] = []
@@ -676,75 +677,18 @@ async function loadPluginManifest(pkg: string): Promise<ManifestRecord | null> {
 	const candidates = getPluginBasePathCandidates(pkg)
 
 	for (const basePath of candidates) {
-		// Try granular manifest first (new format)
-		const granularPath = path.join(basePath, '.robo', 'manifest', 'production')
-		if (await directoryExists(granularPath)) {
+		// Check if granular manifest exists
+		if (await hasPluginManifest(basePath)) {
 			try {
-				const manifest = await loadGranularManifest(basePath, pkg)
-				if (manifest) {
-					return { basePath, manifest }
-				}
+				const manifestInfo = await loadPluginManifestInfo(basePath, pkg)
+				return { basePath, manifestInfo }
 			} catch (error) {
-				logger.debug(`Failed to load granular manifest for ${pkg}:`, error)
-			}
-		}
-
-		// Fall back to legacy manifest.json (for backwards compatibility during transition)
-		const manifestPath = path.join(basePath, '.robo', 'manifest.json')
-		if (await fileExists(manifestPath)) {
-			try {
-				const manifest = await Compiler.useManifest({ basePath, name: pkg, safe: true })
-				return { basePath, manifest }
-			} catch (error) {
-				logger.debug(`Failed to load manifest for ${pkg} at ${manifestPath}:`, error)
+				logger.debug(`Failed to load manifest info for ${pkg}:`, error)
 			}
 		}
 	}
 
 	return null
-}
-
-/**
- * Load manifest data from granular format and convert to legacy Manifest structure.
- */
-async function loadGranularManifest(basePath: string, pkg: string): Promise<Manifest | null> {
-	const manifestBase = path.join(basePath, '.robo', 'manifest', 'production')
-
-	try {
-		// Read robo.json for project metadata
-		const roboPath = path.join(manifestBase, 'robo.json')
-		const roboContent = await fs.readFile(roboPath, 'utf-8')
-		const roboData = JSON.parse(roboContent) as { language?: string; version?: string }
-
-		// Read seeds from seeds/{plugin}.json
-		let seedConfig: { description?: string; env?: object; hook?: string } | undefined
-		const pluginFileName = pkg.replace(/\//g, '__')
-		const seedPath = path.join(manifestBase, 'seeds', `${pluginFileName}.json`)
-		try {
-			const seedContent = await fs.readFile(seedPath, 'utf-8')
-			seedConfig = JSON.parse(seedContent)
-		} catch {
-			// Seed file may not exist
-		}
-
-		// Build a legacy-compatible manifest structure
-		const manifest: Manifest = {
-			__robo: {
-				language: roboData.language === 'typescript' ? 'typescript' : 'javascript',
-				seed: seedConfig
-			},
-			commands: {},
-			events: {},
-			context: {},
-			scopes: ['bot', 'applications.commands'],
-			permissions: []
-		}
-
-		return manifest
-	} catch (error) {
-		logger.debug(`Failed to read granular manifest at ${manifestBase}:`, error)
-		return null
-	}
 }
 
 async function directoryExists(dirPath: string): Promise<boolean> {
@@ -765,15 +709,6 @@ function getPluginBasePathCandidates(pkg: string): string[] {
 		candidates.add(path.resolve(process.cwd(), 'node_modules', pkg))
 	}
 	return Array.from(candidates)
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-	try {
-		const stat = await fs.stat(filePath)
-		return stat.isFile()
-	} catch {
-		return false
-	}
 }
 
 function formatEnvFileTarget(file: EnvFileDescriptor): string {

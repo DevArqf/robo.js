@@ -1,11 +1,12 @@
 import { rm } from 'fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'path'
-import type { Manifest } from '../../types/index.js'
+import type { PluginManifestInfo } from '../../types/index.js'
 import { copyDir, PackageDir } from '../utils/utils.js'
 import { color } from '../../core/color.js'
 import { compilerLogger } from '../utils/loggers.js'
 import { Compiler } from '../utils/compiler.js'
+import { loadPluginManifestInfo } from '../utils/plugin-manifest.js'
 
 const SeedDir = path.join(process.cwd(), 'seed')
 const SeedBuildDir = path.join('.robo', 'seed')
@@ -74,9 +75,9 @@ export function hasSeed(packageName: string) {
  *
  * Use this after installing a plugin.
  */
-function buildSeedExcludePaths(seedPath: string, manifest: Manifest) {
+function buildSeedExcludePaths(seedPath: string, manifestInfo: PluginManifestInfo) {
 	const exclude = [path.join(seedPath, '_root')]
-	const hookPath = manifest.__robo?.seed?.env?.hook ?? manifest.__robo?.seed?.hook
+	const hookPath = manifestInfo.seed?.env?.hook ?? manifestInfo.seed?.hook
 
 	if (hookPath) {
 		const pluginRoot = path.resolve(seedPath, '..', '..')
@@ -100,6 +101,7 @@ export async function useSeed(packageName: string) {
 	const fallbackPath = path.resolve(process.cwd(), 'node_modules', packageName, '.robo', 'seed')
 	const projectSrc = path.join(process.cwd(), 'src')
 	let seedPath = path.resolve(base, packageName, '.robo', 'seed')
+	const basePath = path.resolve(seedPath, '..', '..')
 	compilerLogger.debug('Looking in seed path:', seedPath, 'or', fallbackPath)
 
 	// Use the fallback path if the plugin doesn't have a seed directory
@@ -109,17 +111,14 @@ export async function useSeed(packageName: string) {
 
 	// See if the plugin has a seed directory
 	if (existsSync(seedPath)) {
-		compilerLogger.debug('Seed folder exists! Verifying manifest...')
-		const manifest = await Compiler.useManifest({
-			basePath: path.resolve(seedPath, '..', '..'),
-			name: packageName
-		})
-		const identifiesAsTypeScript = manifest.__robo.language === 'typescript'
+		compilerLogger.debug('Seed folder exists! Loading manifest info...')
+		const manifestInfo = await loadPluginManifestInfo(basePath, packageName)
+		const identifiesAsTypeScript = manifestInfo.language === 'typescript'
 		const { isTypeScript } = Compiler.isTypescriptProject()
 
 		// Copy the files recursively
 		const excludeExts = identifiesAsTypeScript && isTypeScript ? ['.js', '.jsx'] : ['.ts', '.tsx']
-		const excludePaths = buildSeedExcludePaths(seedPath, manifest)
+		const excludePaths = buildSeedExcludePaths(seedPath, manifestInfo)
 		await copyDir(seedPath, projectSrc, excludeExts, excludePaths, false)
 		compilerLogger.debug(`Successfully copied seed files from`, color.bold(packageName))
 

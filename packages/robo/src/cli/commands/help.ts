@@ -18,7 +18,6 @@ type CommandName =
 	| 'remove'
 	| 'start'
 	| 'upgrade'
-	| 'why'
 
 interface CommandGroup {
 	groupId: number
@@ -44,7 +43,7 @@ export function helpCommandHandler() {
 	const groups = splitCommandsIntoGroups([
 		['dev', 'start', 'build'],
 		['add', 'remove', 'upgrade'],
-		['deploy', 'invite', 'why'],
+		['deploy', 'invite'],
 		['help']
 	])
 	prettyPrint(formatCommand(groups))

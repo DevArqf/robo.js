@@ -153,7 +153,8 @@ export async function sendDebugError(error: unknown): Promise<boolean> {
  * Handles debug button interactions
  */
 export async function handleDebugButton(interaction: ButtonInteraction): Promise<boolean> {
-	if (!interaction.customId.startsWith(DEBUG_ID_PREFIX)) {
+	// Only handle button interactions with the debug prefix
+	if (!interaction.isButton?.() || !interaction.customId?.startsWith(DEBUG_ID_PREFIX)) {
 		return false
 	}
 

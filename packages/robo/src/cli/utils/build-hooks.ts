@@ -1,7 +1,7 @@
 import { logger } from '../../core/logger.js'
 import { Env } from '../../core/env.js'
 import { inferNamespace } from '../../core/hooks.js'
-import type { BuildContext, BuildTransformContext, BuildCompleteContext, BuildStore } from '../../types/lifecycle.js'
+import type { BuildContext, BuildCompleteContext, BuildTransformContext, BuildStore, EntriesAccessor } from '../../types/lifecycle.js'
 import type { PluginData } from '../../types/common.js'
 import type { Config } from '../../types/config.js'
 import type { ProcessedEntry, RouteEntries } from '../../types/routes.js'
@@ -184,27 +184,59 @@ export async function executeBuildStartHooks(
 
 /**
  * Execute build/transform hooks for project and all registered plugins.
- * Runs SEQUENTIALLY (project first, then plugins in order) because each hook
- * can modify entries and pass them to the next hook in the chain.
+ * Project hook runs first, then all plugin hooks run in parallel.
+ * Each hook can filter/transform the entries array.
  *
  * @param plugins - Plugin data map
  * @param config - Project configuration
- * @param mode - Build mode (supports custom modes like 'beta', 'staging', etc.)
- * @param entries - Handler entries to transform
+ * @param mode - Build mode
  * @param store - BuildStore from previous hooks
+ * @param entries - Route entries to transform
+ * @returns Transformed route entries
  */
 export async function executeBuildTransformHooks(
 	plugins: Map<string, PluginData>,
 	config: Config,
 	mode: string,
-	entries: BuildTransformContext['entries'],
-	store: BuildStore
-): Promise<BuildTransformContext['entries']> {
+	store: BuildStore,
+	entries: RouteEntries
+): Promise<RouteEntries> {
 	const loggerInstance = logger()
-	let currentEntries = entries
 
-	// Create base context
-	const baseContext: Omit<BuildTransformContext, 'entries'> = {
+	// Create entries accessor for read-only inspection via context
+	const entriesAccessor: EntriesAccessor = {
+		get(namespace: string, route: string): ProcessedEntry[] {
+			return entries?.[namespace]?.[route] ?? []
+		},
+		all(): RouteEntries {
+			return entries ?? {}
+		},
+		handlers(namespace: string, route: string): HandlerEntry[] {
+			const routeEntries = entries?.[namespace]?.[route] ?? []
+			return routeEntries.map((entry, index) => {
+				const plugin =
+					entry.module?.startsWith('@') || entry.module?.startsWith('robo-plugin-') ? entry.module : null
+				let id = entry.key
+				if (plugin) {
+					id = `${plugin}:${entry.key}`
+				}
+				if (routeEntries.filter((e) => e.key === entry.key).length > 1) {
+					id = `${id}:${index}`
+				}
+
+				return {
+					...entry,
+					id,
+					source: plugin ? 'plugin' : 'project',
+					plugin,
+					index: routeEntries.filter((e) => e.key === entry.key).length > 1 ? index : undefined
+				} as HandlerEntry
+			})
+		}
+	}
+
+	// Create base context with entries accessor
+	const baseContext: BuildTransformContext = {
 		mode,
 		env: Env,
 		logger: loggerInstance,
@@ -214,8 +246,13 @@ export async function executeBuildTransformHooks(
 			output: path.join(process.cwd(), '.robo', 'build')
 		},
 		config,
-		store
+		store,
+		entries: entriesAccessor
 	}
+
+	// Flatten entries for transform hooks
+	// Transform hooks receive ProcessedEntry[] as first argument
+	let flatEntries = flattenRouteEntries(entries)
 
 	// 1. Execute project's build/transform hook first (if exists)
 	const projectHookPath = await resolveProjectBuildHookPath('transform')
@@ -225,63 +262,132 @@ export async function executeBuildTransformHooks(
 			const hookModule = await import(pathToFileURL(projectHookPath).href)
 
 			if (typeof hookModule.default === 'function') {
-				const context: BuildTransformContext = {
-					...baseContext,
-					entries: currentEntries
-				}
-				const result = await hookModule.default(context)
-				// Transform hooks must return entries
-				if (result) {
-					currentEntries = result
+				const result = await hookModule.default(flatEntries, baseContext)
+				if (Array.isArray(result)) {
+					flatEntries = result
 				}
 			}
 		} catch (error) {
-			// Project build hook failure is always fatal
 			loggerInstance.error('Project build/transform hook failed:', error)
 			throw error
 		}
 	}
 
-	// 2. Execute plugin build/transform hooks in registration order
+	// 2. Execute plugin build/transform hooks in parallel
+	// Note: Per architecture doc, these run in parallel
+	// Each plugin sees the same entries (after project transform)
+	const hookPromises: Promise<ProcessedEntry[]>[] = []
+
 	for (const [pluginName, pluginData] of plugins) {
-		const hookPath = await resolvePluginBuildHookPath(pluginName, 'transform')
+		const hookPromise = (async () => {
+			const hookPath = await resolvePluginBuildHookPath(pluginName, 'transform')
 
-		if (!hookPath) {
-			continue // Plugin doesn't have a build/transform hook
-		}
+			if (!hookPath) {
+				return flatEntries // Plugin doesn't have a build/transform hook
+			}
 
-		const context: BuildTransformContext = {
-			...baseContext,
-			logger: loggerInstance.fork(inferNamespace(pluginName)),
-			entries: currentEntries
-		}
+			const context: BuildTransformContext = {
+				...baseContext,
+				logger: loggerInstance.fork(inferNamespace(pluginName))
+			}
 
-		try {
-			loggerInstance.debug(`Executing build/transform hook for ${pluginName}...`)
-			const hookModule = await import(pathToFileURL(hookPath).href)
+			try {
+				loggerInstance.debug(`Executing build/transform hook for ${pluginName}...`)
+				const hookModule = await import(pathToFileURL(hookPath).href)
 
-			if (typeof hookModule.default === 'function') {
-				const result = await hookModule.default(context)
-				// Transform hooks must return entries
-				if (result) {
-					currentEntries = result
+				if (typeof hookModule.default === 'function') {
+					const result = await hookModule.default(flatEntries, context)
+					if (Array.isArray(result)) {
+						return result
+					}
+				}
+				return flatEntries
+			} catch (error) {
+				const failSafe = pluginData.metaOptions?.failSafe ?? false
+
+				if (failSafe) {
+					loggerInstance.warn(`Build/transform hook for ${pluginName} failed (failSafe enabled):`, error)
+					return flatEntries
+				} else {
+					loggerInstance.error(`Build/transform hook for ${pluginName} failed:`, error)
+					throw error
 				}
 			}
-		} catch (error) {
-			// Check failSafe meta option
-			const failSafe = pluginData.metaOptions?.failSafe ?? false
+		})()
 
-			if (failSafe) {
-				loggerInstance.warn(`Build/transform hook for ${pluginName} failed (failSafe enabled):`, error)
-				// Continue with other plugins
-			} else {
-				loggerInstance.error(`Build/transform hook for ${pluginName} failed:`, error)
-				throw error
+		hookPromises.push(hookPromise)
+	}
+
+	// Wait for all plugin transforms
+	const results = await Promise.all(hookPromises)
+
+	// Merge results - intersection of all transforms
+	// Entries that any plugin removed are removed from final result
+	if (results.length > 0) {
+		const entryKeys = new Set(flatEntries.map((e) => `${e.key}:${e.path}`))
+		for (const result of results) {
+			const resultKeys = new Set(result.map((e) => `${e.key}:${e.path}`))
+			for (const key of entryKeys) {
+				if (!resultKeys.has(key)) {
+					entryKeys.delete(key)
+				}
+			}
+		}
+		flatEntries = flatEntries.filter((e) => entryKeys.has(`${e.key}:${e.path}`))
+	}
+
+	// Reconstruct RouteEntries structure
+	return unflattenRouteEntries(flatEntries)
+}
+
+/**
+ * Flatten RouteEntries into ProcessedEntry[] array.
+ */
+function flattenRouteEntries(entries: RouteEntries): ProcessedEntry[] {
+	const result: ProcessedEntry[] = []
+
+	for (const [namespace, routes] of Object.entries(entries)) {
+		for (const [route, entryList] of Object.entries(routes)) {
+			for (const entry of entryList) {
+				result.push({
+					...entry,
+					// Store namespace:route in a way we can reconstruct
+					_routeType: `${namespace}:${route}`
+				} as ProcessedEntry & { _routeType: string })
 			}
 		}
 	}
 
-	return currentEntries
+	return result
+}
+
+/**
+ * Reconstruct RouteEntries from flattened ProcessedEntry[].
+ */
+function unflattenRouteEntries(entries: ProcessedEntry[]): RouteEntries {
+	const result: RouteEntries = {}
+
+	for (const entry of entries) {
+		const routeType = (entry as ProcessedEntry & { _routeType?: string })._routeType
+		if (!routeType) continue
+
+		const [namespace, route] = routeType.split(':')
+
+		if (!result[namespace]) {
+			result[namespace] = {}
+		}
+		if (!result[namespace][route]) {
+			result[namespace][route] = []
+		}
+
+		// Remove internal _routeType field
+		const cleanEntry = { ...entry }
+		delete (cleanEntry as Record<string, unknown>)._routeType
+
+		result[namespace][route].push(cleanEntry)
+	}
+
+	return result
 }
 
 /**
@@ -302,7 +408,6 @@ export interface BuildCompleteResult {
  * @param plugins - Plugin data map
  * @param config - Project configuration
  * @param mode - Build mode (supports custom modes like 'beta', 'staging', etc.)
- * @param manifest - Generated manifest
  * @param store - BuildStore from previous hooks
  * @param routeEntries - Optional route entries for metadata aggregation
  */
@@ -310,7 +415,6 @@ export async function executeBuildCompleteHooks(
 	plugins: Map<string, PluginData>,
 	config: Config,
 	mode: string,
-	manifest: BuildCompleteContext['manifest'],
 	store: BuildStore,
 	routeEntries?: RouteEntries
 ): Promise<BuildCompleteResult> {
@@ -365,7 +469,6 @@ export async function executeBuildCompleteHooks(
 		},
 		config,
 		store,
-		manifest,
 		entries: entriesAccessor,
 		registerMetadataAggregator<T extends AggregatedMetadata>(
 			namespace: string,

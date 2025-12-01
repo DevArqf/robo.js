@@ -1,5 +1,4 @@
 import { registerProcessEvents } from './process.js'
-import { Compiler } from '../cli/utils/compiler.js'
 import { getConfig, loadConfig } from './config.js'
 import { FLASHCORE_KEYS } from './constants.js'
 import { logger, LogLevel } from './logger.js'
@@ -95,10 +94,7 @@ async function start(options?: StartOptions) {
 		// Init hooks run very early and can modify config/env before manifest processing
 		await executeInitHooks(plugins, mode)
 
-		// 5. Now load manifest (init hooks may have modified config/env)
-		await Compiler.useManifest()
-
-		// 5.5 Initialize the new Manifest API
+		// 5. Initialize the Manifest API (loads granular manifest files)
 		await Manifest.initialize(mode)
 
 		// 6. Initialize Flashcore and other services

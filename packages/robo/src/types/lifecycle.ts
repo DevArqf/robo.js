@@ -1,10 +1,6 @@
 import type { Logger } from '../core/logger.js'
 import type { Env } from '../core/env.js'
 import type { Config } from './config.js'
-import type { ApiEntry, ContextEntry, MiddlewareEntry } from './index.js'
-import type { CommandEntry } from './commands.js'
-import type { EventConfig } from './events.js'
-import type { Manifest } from './manifest.js'
 import type { ProcessedEntry, RouteEntries } from './routes.js'
 import type { AggregatedMetadata, HandlerEntry, MetadataAggregator } from './manifest-v1.js'
 
@@ -159,7 +155,7 @@ export interface StopContext<TConfig = unknown> extends StartContext<TConfig> {
 
 /**
  * Key-value store for passing data between build hooks.
- * Data persists across build/start, build/transform, and build/complete hooks
+ * Data persists across build/start and build/complete hooks
  * within the same build session.
  */
 export interface BuildStore {
@@ -190,6 +186,31 @@ export interface BuildStore {
 }
 
 /**
+ * Accessor interface for route entries during build.
+ * Provides methods to query and inspect processed entries.
+ */
+export interface EntriesAccessor {
+	/**
+	 * Get entries for a specific route.
+	 * @param namespace - Plugin namespace (e.g., 'discordjs', 'server')
+	 * @param route - Route name (e.g., 'commands', 'api')
+	 */
+	get(namespace: string, route: string): ProcessedEntry[]
+
+	/**
+	 * Get all entries organized by namespace and route.
+	 */
+	all(): RouteEntries
+
+	/**
+	 * Get handler entries (with source tracking) for a route.
+	 * @param namespace - Plugin namespace
+	 * @param route - Route name
+	 */
+	handlers(namespace: string, route: string): HandlerEntry[]
+}
+
+/**
  * Context provided to build hooks.
  * Base context shared by all build hook types.
  */
@@ -215,71 +236,84 @@ export interface BuildContext {
 
 	/**
 	 * Key-value store for passing data between build hooks.
-	 * Use to share computed values between build/start, build/transform, and build/complete.
+	 * Use to share computed values between build/start and build/complete.
 	 */
 	store: BuildStore
+
+	/**
+	 * Access to processed route entries.
+	 *
+	 * **Availability by hook:**
+	 * - `build/start`: `undefined` - entries have not been scanned yet
+	 * - `build/transform`: Available - use to inspect entries (modification via return value)
+	 * - `build/complete`: Available - use to inspect final entries after transformation
+	 *
+	 * @example
+	 * ```typescript
+	 * // In build/transform or build/complete hooks:
+	 * if (context.entries) {
+	 *   const commands = context.entries.get('discordjs', 'commands')
+	 *   console.log(`Found ${commands.length} commands`)
+	 * }
+	 * ```
+	 */
+	entries?: EntriesAccessor
 }
 
 /**
  * Context provided to build/transform.ts hooks.
- * Extends BuildContext with collected handler entries.
- * Runs AFTER entries are scanned, BEFORE manifest is written.
+ * Runs AFTER entries are processed but BEFORE manifest generation.
+ * Allows filtering and transforming processed entries.
+ *
+ * **Hook signature:** `(entries: ProcessedEntry[], context: BuildTransformContext) => ProcessedEntry[]`
+ *
+ * The entries are passed as the first argument for modification.
+ * The context also provides `entries` accessor for convenience (read-only inspection).
+ *
+ * @example
+ * ```typescript
+ * export default function (entries: ProcessedEntry[], context: BuildTransformContext) {
+ *   // Use context.entries for read-only inspection
+ *   const commands = context.entries?.get('discordjs', 'commands') ?? []
+ *   context.logger.info(`Processing ${commands.length} commands`)
+ *
+ *   // Filter/transform and return modified entries
+ *   return entries.filter(e => !e.key.startsWith('debug'))
+ * }
+ * ```
  */
 export interface BuildTransformContext extends BuildContext {
-	/**
-	 * Collected handler entries by type.
-	 * Can be filtered/modified by plugins.
-	 */
-	entries: {
-		api: Record<string, ApiEntry>
-		commands: Record<string, CommandEntry>
-		context: {
-			message: Record<string, ContextEntry>
-			user: Record<string, ContextEntry>
-		}
-		events: Record<string, EventConfig[]>
-		middleware: MiddlewareEntry[]
-	}
+	/** Entries accessor is always available in transform hooks */
+	entries: EntriesAccessor
 }
 
 /**
  * Context provided to build/complete.ts hooks.
- * Extends BuildContext with the generated manifest.
  * Runs AFTER manifest is written.
+ *
+ * **Hook signature:** `(context: BuildCompleteContext) => void | Promise<void>`
+ *
+ * Use this hook to perform post-build tasks like:
+ * - Registering commands with Discord
+ * - Generating additional files
+ * - Logging build summaries
+ *
+ * @example
+ * ```typescript
+ * export default function (context: BuildCompleteContext) {
+ *   const commands = context.entries.get('discordjs', 'commands')
+ *   context.logger.info(`Built ${commands.length} commands`)
+ * }
+ * ```
  */
 export interface BuildCompleteContext extends BuildContext {
-	/** The generated manifest */
-	manifest: Manifest
-
-	/**
-	 * Access to processed route entries.
-	 * Enables plugins to inspect all handlers during build.
-	 */
-	entries: {
-		/**
-		 * Get entries for a specific route.
-		 * @param namespace - Plugin namespace (e.g., 'discord', 'server')
-		 * @param route - Route name (e.g., 'commands', 'api')
-		 */
-		get(namespace: string, route: string): ProcessedEntry[]
-
-		/**
-		 * Get all entries organized by namespace and route.
-		 */
-		all(): RouteEntries
-
-		/**
-		 * Get handler entries (with source tracking) for a route.
-		 * @param namespace - Plugin namespace
-		 * @param route - Route name
-		 */
-		handlers(namespace: string, route: string): HandlerEntry[]
-	}
+	/** Entries accessor is always available in complete hooks */
+	entries: EntriesAccessor
 
 	/**
 	 * Register a metadata aggregator for a namespace.
 	 * Aggregators combine metadata from all handlers into a summary.
-	 * @param namespace - Plugin namespace to aggregate (e.g., 'discord')
+	 * @param namespace - Plugin namespace to aggregate (e.g., 'discordjs')
 	 * @param aggregator - Function that processes entries into aggregated metadata
 	 */
 	registerMetadataAggregator<T extends AggregatedMetadata>(

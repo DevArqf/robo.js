@@ -3,7 +3,7 @@ import path from 'node:path'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { logger } from '../../core/logger.js'
-import type { Manifest } from '../../types/index.js'
+import type { PluginManifestInfo } from '../../types/index.js'
 import { PackageDir } from './utils.js'
 
 export interface NormalizedSeedHookVariable {
@@ -30,10 +30,10 @@ interface SeedHookApi {
 
 export async function runSeedHook(
 	packageName: string,
-	manifest: Manifest,
+	manifestInfo: PluginManifestInfo,
 	basePath?: string
 ): Promise<NormalizedSeedHookResult | null> {
-	const hookPathInManifest = manifest.__robo?.seed?.hook ?? manifest.__robo?.seed?.env?.hook
+	const hookPathInManifest = manifestInfo.seed?.hook ?? manifestInfo.seed?.env?.hook
 
 	if (!hookPathInManifest) {
 		return null

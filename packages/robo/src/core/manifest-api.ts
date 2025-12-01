@@ -356,7 +356,8 @@ class ManifestLoader implements ManifestAPI {
 
 	/**
 	 * Load a route manifest into memory.
-	 * Merges routes from the project manifest AND all plugin manifests.
+	 * Loads from the project's granular manifest which already includes merged plugin entries.
+	 * Plugin entries are merged during build by mergePluginManifests().
 	 */
 	async load(namespace: string, route: string): Promise<HandlerEntry[]> {
 		const key = this.routeKey(namespace, route)
@@ -365,44 +366,20 @@ class ManifestLoader implements ManifestAPI {
 			return this._cache.routes.get(key)!
 		}
 
-		const allEntries: HandlerEntry[] = []
 		const routeFile = `routes/${namespace}.${route}.json`
 
-		// 1. Load from project manifest
+		// Load from project manifest (which includes merged plugin entries from build)
 		const projectPath = this.manifestPath(routeFile)
 		try {
 			const content = await fs.readFile(projectPath, 'utf-8')
 			const entries = JSON.parse(content) as HandlerEntry[]
-			allEntries.push(...entries)
+			this._cache.routes.set(key, entries)
+			return entries
 		} catch {
-			// Project may not have this route - that's fine
+			// Route file doesn't exist
+			this._cache.routes.set(key, [])
+			return []
 		}
-
-		// 2. Load from each plugin's manifest
-		// Plugins typically ship with production manifests, so fall back to production if current mode doesn't exist
-		if (this._cache.plugins) {
-			for (const plugin of Object.values(this._cache.plugins)) {
-				const pluginManifestBase = path.join(process.cwd(), plugin.path, '.robo', 'manifest')
-
-				// Try current mode first, then fall back to production
-				const modesToTry = this._mode === 'production' ? ['production'] : [this._mode, 'production']
-
-				for (const mode of modesToTry) {
-					const pluginPath = path.join(pluginManifestBase, mode, routeFile)
-					try {
-						const content = await fs.readFile(pluginPath, 'utf-8')
-						const entries = JSON.parse(content) as HandlerEntry[]
-						allEntries.push(...entries)
-						break // Found it, no need to try other modes
-					} catch {
-						// Try next mode
-					}
-				}
-			}
-		}
-
-		this._cache.routes.set(key, allEntries)
-		return allEntries
 	}
 
 	/**

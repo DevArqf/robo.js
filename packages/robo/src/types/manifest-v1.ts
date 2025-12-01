@@ -376,30 +376,6 @@ export type MetadataAggregator<T extends AggregatedMetadata = AggregatedMetadata
 export type MetadataAggregatorRegistry = Map<string, MetadataAggregator>
 
 // ============================================================================
-// BuildCompleteContext Extensions
-// ============================================================================
-
-/**
- * Accessor for route entries in BuildCompleteContext.
- */
-export interface EntriesAccessor {
-	/**
-	 * Get entries for a specific route.
-	 */
-	get(namespace: string, route: string): ProcessedEntry[]
-
-	/**
-	 * Get all entries organized by namespace and route.
-	 */
-	all(): Map<string, Map<string, ProcessedEntry[]>>
-
-	/**
-	 * Get handler entries (with source tracking) for a route.
-	 */
-	handlers(namespace: string, route: string): HandlerEntry[]
-}
-
-// ============================================================================
 // Manifest API
 // ============================================================================
 

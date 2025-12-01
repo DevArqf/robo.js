@@ -183,9 +183,7 @@ export interface PluginMetaOptions {
 }
 
 export interface BaseConfig {
-	__auto?: true
-	__module?: string
-	__path?: string
+	/** Plugin that provides this handler (set during plugin manifest merge) */
 	__plugin?: {
 		name: string
 		path: string

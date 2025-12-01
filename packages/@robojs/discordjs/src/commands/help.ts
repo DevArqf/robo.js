@@ -3,7 +3,7 @@
  *
  * Displays a list of available commands with pagination and category filtering.
  */
-import { getManifest, portal } from 'robo.js'
+import { Manifest, portal } from 'robo.js'
 import {
 	ActionRowBuilder,
 	AutocompleteInteraction,
@@ -20,7 +20,7 @@ import {
 	StringSelectMenuInteraction
 } from 'discord.js'
 import type { CommandConfig } from '../types/index.js'
-import type { CommandEntry } from 'robo.js'
+import type { HandlerEntry, CommandOption } from 'robo.js'
 
 const COMMANDS_PER_PAGE = 20
 const NAMESPACE = '__robojs_discordjs_helpmenu'
@@ -46,17 +46,20 @@ export const config: CommandConfig = {
 }
 
 export default async (interaction: ChatInputCommandInteraction) => {
-	const manifest = getManifest()
-	if (!manifest) {
+	let commandEntries: HandlerEntry[]
+	try {
+		commandEntries = Manifest.routesSync('discordjs', 'commands')
+	} catch {
 		return { content: 'Commands not available.' }
 	}
-	const commands = getInnermostCommands(manifest.commands ?? {})
+
+	const commands = getCommandsWithMeta(commandEntries)
 
 	const serverId = interaction.guildId
 	const filteredByAvailability = commands.filter((cmd) => {
 		// Check if command controller exists and is enabled
 		try {
-			const controller = portal.getController('discord', 'commands', cmd.key)
+			const controller = portal.getController('discordjs', 'commands', cmd.key)
 			if (controller && typeof (controller as { isEnabled?: () => boolean }).isEnabled === 'function') {
 				if (!(controller as { isEnabled: () => boolean }).isEnabled()) return false
 			}
@@ -65,14 +68,14 @@ export default async (interaction: ChatInputCommandInteraction) => {
 		}
 
 		// Check module enabled state
-		if (cmd.command.__module && portal.module(cmd.command.__module)) {
-			if (!portal.module(cmd.command.__module).isEnabled()) return false
+		if (cmd.module && portal.module(cmd.module)) {
+			if (!portal.module(cmd.module).isEnabled()) return false
 		}
 
 		// Check server restrictions
 		if (serverId) {
 			try {
-				const controller = portal.getController('discord', 'commands', cmd.key) as {
+				const controller = portal.getController('discordjs', 'commands', cmd.key) as {
 					isEnabledForServer?: (serverId: string) => boolean
 				}
 				if (controller?.isEnabledForServer && !controller.isEnabledForServer(serverId)) {
@@ -114,16 +117,19 @@ export default async (interaction: ChatInputCommandInteraction) => {
 
 export const autocomplete = (interaction: AutocompleteInteraction) => {
 	const focusedOption = interaction.options.getFocused(true)
-	const manifest = getManifest()
-	if (!manifest) {
+	let commandEntries: HandlerEntry[]
+	try {
+		commandEntries = Manifest.routesSync('discordjs', 'commands')
+	} catch {
 		return []
 	}
-	const commands = getInnermostCommands(manifest.commands ?? {})
+
+	const commands = getCommandsWithMeta(commandEntries)
 	const serverId = interaction.guildId
 	const filteredByAvailability = commands.filter((cmd) => {
 		// Check if command controller exists and is enabled
 		try {
-			const controller = portal.getController('discord', 'commands', cmd.key)
+			const controller = portal.getController('discordjs', 'commands', cmd.key)
 			if (controller && typeof (controller as { isEnabled?: () => boolean }).isEnabled === 'function') {
 				if (!(controller as { isEnabled: () => boolean }).isEnabled()) return false
 			}
@@ -132,14 +138,14 @@ export const autocomplete = (interaction: AutocompleteInteraction) => {
 		}
 
 		// Check module enabled state
-		if (cmd.command.__module && portal.module(cmd.command.__module)) {
-			if (!portal.module(cmd.command.__module).isEnabled()) return false
+		if (cmd.module && portal.module(cmd.module)) {
+			if (!portal.module(cmd.module).isEnabled()) return false
 		}
 
 		// Check server restrictions
 		if (serverId) {
 			try {
-				const controller = portal.getController('discord', 'commands', cmd.key) as {
+				const controller = portal.getController('discordjs', 'commands', cmd.key) as {
 					isEnabledForServer?: (serverId: string) => boolean
 				}
 				if (controller?.isEnabledForServer && !controller.isEnabledForServer(serverId)) {
@@ -176,37 +182,30 @@ export const autocomplete = (interaction: AutocompleteInteraction) => {
 
 interface CommandWithMeta {
 	key: string
-	command: CommandEntry & { __module?: string }
+	description?: string
+	options?: CommandOption[]
+	module?: string
 	category?: string
 }
 
-function getInnermostCommands(
-	commands: Record<string, CommandEntry>,
-	prefix = '',
-	categoryPath = ''
-): CommandWithMeta[] {
-	let innermostCommands: CommandWithMeta[] = []
-	const keys = Object.keys(commands)
+/**
+ * Convert HandlerEntry[] to CommandWithMeta[] for display.
+ * The new manifest uses flat keys like "admin ban" instead of nested subcommands.
+ */
+function getCommandsWithMeta(entries: HandlerEntry[]): CommandWithMeta[] {
+	return entries.map((entry) => {
+		// Determine category from the key path
+		const pathParts = entry.key.split(' ')
+		const category = pathParts.length > 1 ? pathParts[0] : 'General'
 
-	for (const key of keys) {
-		if (commands[key].subcommands) {
-			const subCommandPrefix = prefix ? `${prefix} ${key}` : key
-			const subCategoryPath = categoryPath || key
-			const subInnermostCommands = getInnermostCommands(
-				commands[key].subcommands as Record<string, CommandEntry>,
-				subCommandPrefix,
-				subCategoryPath
-			)
-			innermostCommands = innermostCommands.concat(subInnermostCommands)
-		} else {
-			const commandPath = prefix ? `${prefix} ${key}` : key
-			const pathParts = commandPath.split(' ')
-			const category = categoryPath || (pathParts.length > 1 ? pathParts[0] : 'General')
-			innermostCommands.push({ key: commandPath, command: commands[key], category })
+		return {
+			key: entry.key,
+			description: entry.metadata?.description as string | undefined,
+			options: entry.metadata?.options as CommandOption[] | undefined,
+			module: entry.module,
+			category
 		}
-	}
-
-	return innermostCommands
+	})
 }
 
 function categorizeCommands(commands: CommandWithMeta[]) {
@@ -233,17 +232,17 @@ function getCategoryList(commands: CommandWithMeta[]) {
 	return Array.from(categories).sort()
 }
 
-function createCommandEmbed({ key, command }: CommandWithMeta) {
+function createCommandEmbed(cmd: CommandWithMeta) {
 	const poweredBy = process.env.ROBOPLAY_HOST
 		? 'Powered by [**RoboPlay** ✨](https://roboplay.dev)'
 		: 'Powered by [**Robo.js**](https://robojs.dev)'
 	const embed = new EmbedBuilder()
-		.setTitle(`/${key}`)
+		.setTitle(`/${cmd.key}`)
 		.setColor(Colors.Blurple)
-		.setDescription(`${command.description || 'No description provided.'}\n\n> ${poweredBy}`)
+		.setDescription(`${cmd.description || 'No description provided.'}\n\n> ${poweredBy}`)
 
-	if (command.options && command.options.length > 0) {
-		const optionsDescription = command.options
+	if (cmd.options && cmd.options.length > 0) {
+		const optionsDescription = cmd.options
 			.map((option) => {
 				const required = option.required ? 'Required' : 'Optional'
 				const autocomplete = option.autocomplete ? 'Suggested' : ''
@@ -280,9 +279,9 @@ function createEmbed(commands: CommandWithMeta[], page: number, totalPages: numb
 		.setTitle(title)
 		.setColor(Colors.Blurple)
 		.addFields(
-			...pageCommands.map(({ key, command }) => ({
-				name: `/${key}`,
-				value: command.description || 'No description provided.',
+			...pageCommands.map((cmd) => ({
+				name: `/${cmd.key}`,
+				value: cmd.description || 'No description provided.',
 				inline: false
 			})),
 			{ name: '\u200b', value: poweredBy, inline: false }
@@ -359,11 +358,13 @@ export async function handleHelpMenuInteraction(interaction: ButtonInteraction |
 		)
 	}
 
-	const manifest = getManifest()
-	if (!manifest) {
+	let commandEntries: HandlerEntry[]
+	try {
+		commandEntries = Manifest.routesSync('discordjs', 'commands')
+	} catch {
 		return
 	}
-	const commands = getInnermostCommands(manifest.commands ?? {})
+	const commands = getCommandsWithMeta(commandEntries)
 
 	if (interaction.isStringSelectMenu()) {
 		const selectedCategory = interaction.values[0]

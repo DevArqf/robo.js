@@ -14,7 +14,6 @@ import remove from './commands/remove.js'
 import start from './commands/start.js'
 import sync from './commands/sync.js'
 import upgrade from './commands/upgrade.js'
-import why from './commands/why.js'
 import help, { helpCommandHandler } from './commands/help.js'
 
 const command = new Command('robo')
@@ -34,7 +33,6 @@ command.addCommand(invite)
 command.addCommand(cloud)
 command.addCommand(login)
 command.addCommand(logout)
-command.addCommand(why)
 command.addCommand(help)
 command.handler(helpCommandHandler)
 command.parse()
