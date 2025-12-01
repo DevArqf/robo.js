@@ -20,12 +20,12 @@ interface RestartData {
 }
 
 export const config: EventConfig = {
-	description: 'Log when bot is ready and send restart notification'
+	description: 'Log when bot is ready and send restart notification',
+	frequency: 'once'
 }
 
 export default async (client: Client) => {
-	const readyAt = color.dim(`(${new Date().toLocaleString()})`)
-	discordLogger.ready(`On standby as ${color.bold(client.user?.tag ?? 'Unknown')}`, readyAt)
+	discordLogger.ready(`On standby as ${color.bold(client.user?.tag ?? 'Unknown')}`)
 
 	// Check for missing intents
 	const portalApi = portal as unknown as { getByType: (type: string) => Record<string, unknown[]> }

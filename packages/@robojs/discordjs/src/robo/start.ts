@@ -50,9 +50,6 @@ export default async function startHook(): Promise<void> {
 	// Register gateway event listeners
 	await registerEventListeners(client)
 
-	// Register special ready event handler
-	registerReadyHandler(client)
-
 	// Register interaction handler for commands/autocomplete/context menus
 	registerInteractionHandler(client)
 
@@ -93,22 +90,6 @@ async function eagerLoadHandlers(): Promise<void> {
 }
 
 /**
- * Register special ready event handler
- */
-function registerReadyHandler(client: Client): void {
-	client.once(Events.ClientReady, async (readyClient) => {
-		discordLogger.ready(`On standby as ${color.bold(readyClient.user.tag)}`)
-
-		// Execute _start lifecycle events (plugin and project)
-		// These run before user-defined ready handlers
-		await executeEventHandler('_start', readyClient)
-
-		// Dispatch to user's ready handlers
-		await executeEventHandler('ready', readyClient)
-	})
-}
-
-/**
  * Register event listeners for all gateway events defined in the portal
  */
 async function registerEventListeners(client: Client): Promise<void> {
@@ -124,16 +105,16 @@ async function registerEventListeners(client: Client): Promise<void> {
 			continue
 		}
 
-		// Skip ready event (handled specially above)
-		if (eventName === 'ready') {
-			continue
-		}
-
 		// Check if all handlers are auto-generated (for logging purposes)
 		const onlyAuto = eventHandlers.every((event: HandlerRecord<Event>) => event.auto)
 
-		// Register the event listener
-		client.on(eventName, async (...args: unknown[]) => {
+		// Check if any handler uses frequency: 'once'
+		const useOnce = eventHandlers.some(
+			(event: HandlerRecord<Event>) => event.metadata?.frequency === 'once'
+		)
+
+		// Create the event callback
+		const callback = async (...args: unknown[]) => {
 			if (!onlyAuto) {
 				discordLogger.event(`Event received: ${color.bold(eventName)}`)
 			}
@@ -141,9 +122,18 @@ async function registerEventListeners(client: Client): Promise<void> {
 
 			// Execute all event handlers
 			await executeEventHandler(eventName, ...args)
-		})
+		}
 
-		discordLogger.debug(`Registered event listener: ${eventName} (${eventHandlers.length} handler(s))`)
+		// Register with .once() or .on() based on frequency config
+		if (useOnce) {
+			client.once(eventName, callback)
+		} else {
+			client.on(eventName, callback)
+		}
+
+		discordLogger.debug(
+			`Registered event listener: ${eventName} (${eventHandlers.length} handler(s), ${useOnce ? 'once' : 'always'})`
+		)
 	}
 }
 
