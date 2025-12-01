@@ -2,7 +2,7 @@
  * Portal Type Augmentation for @robojs/discordjs
  *
  * This file provides TypeScript module augmentation to enhance IDE autocomplete
- * when accessing Discord handlers via the portal (e.g., portal.discord.commands).
+ * when accessing Discord handlers via the portal (e.g., portal.discordjs.commands).
  */
 import type { HandlerRecord } from 'robo.js'
 import type {
@@ -52,11 +52,11 @@ export interface DiscordPortalNamespace {
 
 /**
  * Augment the robo.js Portal type to include Discord namespace.
- * This enables IDE autocomplete for portal.discord.*
+ * This enables IDE autocomplete for portal.discordjs.*
  */
 declare module 'robo.js' {
 	interface PortalNamespaces {
-		discord: DiscordPortalNamespace
+		discordjs: DiscordPortalNamespace
 	}
 }
 

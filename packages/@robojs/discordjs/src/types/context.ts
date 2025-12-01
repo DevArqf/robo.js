@@ -69,7 +69,7 @@ export interface ContextConfig extends BaseConfig {
 export type ContextEntry = ContextConfig
 
 /**
- * Context menu controller for portal.discord.context()
+ * Context menu controller for portal.discordjs.context()
  */
 export interface ContextController {
 	/** Check if context menu is enabled */
@@ -95,7 +95,7 @@ export const ContextType = {
 export type ContextTypeValue = (typeof ContextType)[keyof typeof ContextType]
 
 /**
- * Namespace controller for portal.discord.context
+ * Namespace controller for portal.discordjs.context
  * Provides access to all context menus.
  */
 export interface ContextNamespaceController {

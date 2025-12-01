@@ -13,12 +13,12 @@ import type {
 import { createMiddlewareController } from '../../core/controllers.js'
 
 /**
- * Handler type for data access (portal.discord.middleware)
+ * Handler type for data access (portal.discordjs.middleware)
  */
 export type Handler = MiddlewareHandler
 
 /**
- * Controller type for method access (portal.discord.middleware())
+ * Controller type for method access (portal.discordjs.middleware())
  */
 export type Controller = MiddlewareController
 

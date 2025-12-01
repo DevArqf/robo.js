@@ -9,12 +9,12 @@ import { createEventController } from '../../core/controllers.js'
 import { executeEventHandler } from '../../core/handlers/event.js'
 
 /**
- * Handler type for data access (portal.discord.events)
+ * Handler type for data access (portal.discordjs.events)
  */
 export type Handler = EventHandler
 
 /**
- * Controller type for method access (portal.discord.event())
+ * Controller type for method access (portal.discordjs.event())
  */
 export type Controller = EventController
 
@@ -69,8 +69,10 @@ export const NamespaceController = (portal: PortalAPI): EventsNamespaceControlle
  */
 export const config: RouteConfig = {
 	key: {
-		style: 'filename', // events/messageCreate.ts → "messageCreate"
-		nested: 'camelCase' // events/guild/memberAdd.ts → "guildMemberAdd"
+		// parentOrFilename: use parent folder for nested files, filename for root files
+		// events/ready.ts → "ready"
+		// events/messageCreate/chat.ts → "messageCreate"
+		style: 'parentOrFilename'
 	},
 	multiple: true, // Multiple handlers per event
 	filter: /^(?!_)/, // Exclude lifecycle events (_start, _stop)

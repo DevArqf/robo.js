@@ -5,7 +5,7 @@
  */
 import type { BuildContext } from 'robo.js'
 import { Env } from 'robo.js'
-import { discordLogger } from '../../../core/logger.js'
+import { discordLogger } from '../../core/logger.js'
 
 export default function (context: BuildContext) {
 	const { mode } = context

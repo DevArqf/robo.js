@@ -60,7 +60,10 @@ export type {
 	MiddlewareResult
 } from './middleware.js'
 
-// Portal type augmentation (enables IDE autocomplete for portal.discord.*)
+// Portal type augmentation (enables IDE autocomplete for portal.discordjs.*)
 export type { DiscordPortalNamespace } from './portal.js'
 // Side-effect import to ensure module augmentation is applied
 import './portal.js'
+
+// Manifest metadata types
+export type { DiscordjsAggregatedMetadata } from './manifest.js'

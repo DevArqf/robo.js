@@ -9,12 +9,12 @@
  */
 import { Client, Events } from 'discord.js'
 import { portal, getPluginOptions, color, Mode } from 'robo.js'
-import { setClient, setPluginState } from '../../core/client.js'
-import { discordLogger } from '../../core/logger.js'
-import { getCommandKey } from '../../core/utils.js'
-import { handleInteraction } from '../../core/interactions.js'
-import { executeEventHandler } from '../../core/handlers/event.js'
-import type { DiscordConfig, PluginState } from '../../types/index.js'
+import { setClient, setPluginState } from '../core/client.js'
+import { discordLogger } from '../core/logger.js'
+import { getCommandKey } from '../core/utils.js'
+import { handleInteraction } from '../core/interactions.js'
+import { executeEventHandler } from '../core/handlers/event.js'
+import type { DiscordConfig, PluginState } from '../types/index.js'
 import type { Event, HandlerRecord } from 'robo.js'
 
 /**
@@ -98,6 +98,10 @@ async function eagerLoadHandlers(): Promise<void> {
 function registerReadyHandler(client: Client): void {
 	client.once(Events.ClientReady, async (readyClient) => {
 		discordLogger.ready(`On standby as ${color.bold(readyClient.user.tag)}`)
+
+		// Execute _start lifecycle events (plugin and project)
+		// These run before user-defined ready handlers
+		await executeEventHandler('_start', readyClient)
 
 		// Dispatch to user's ready handlers
 		await executeEventHandler('ready', readyClient)

@@ -7,12 +7,12 @@ import type { ContextHandler, ContextController, ContextConfig, ContextNamespace
 import { createContextController } from '../../core/controllers.js'
 
 /**
- * Handler type for data access (portal.discord.context)
+ * Handler type for data access (portal.discordjs.context)
  */
 export type Handler = ContextHandler
 
 /**
- * Controller type for method access (portal.discord.context())
+ * Controller type for method access (portal.discordjs.context())
  */
 export type Controller = ContextController
 

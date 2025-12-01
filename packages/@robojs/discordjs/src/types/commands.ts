@@ -160,7 +160,7 @@ type ValueOfOption<O extends CommandOption> = O extends { type: keyof CommandOpt
 	: string
 
 /**
- * Command controller for portal.discord.command()
+ * Command controller for portal.discordjs.command()
  */
 export interface CommandController {
 	/** Check if command is enabled */

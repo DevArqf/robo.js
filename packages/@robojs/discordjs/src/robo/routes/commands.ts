@@ -9,12 +9,12 @@ import { createCommandController } from '../../core/controllers.js'
 import { executeCommandHandler } from '../../core/handlers/command.js'
 
 /**
- * Handler type for data access (portal.discord.commands)
+ * Handler type for data access (portal.discordjs.commands)
  */
 export type Handler = CommandHandler
 
 /**
- * Controller type for method access (portal.discord.command())
+ * Controller type for method access (portal.discordjs.command())
  */
 export type Controller = CommandController
 

@@ -41,7 +41,7 @@ function ensurePluginState(pluginState: unknown): PluginState {
 
 /**
  * Factory function for command controllers.
- * Called by core when user accesses portal.discord.command()
+ * Called by core when user accesses portal.discordjs.command()
  */
 export function createCommandController(
 	name: string,
@@ -79,7 +79,7 @@ export function createCommandController(
 
 /**
  * Factory function for context menu controllers.
- * Called by core when user accesses portal.discord.context()
+ * Called by core when user accesses portal.discordjs.context()
  */
 export function createContextController(
 	name: string,
@@ -117,7 +117,7 @@ export function createContextController(
 
 /**
  * Factory function for event controllers.
- * Called by core when user accesses portal.discord.event()
+ * Called by core when user accesses portal.discordjs.event()
  */
 export function createEventController(
 	name: string,
@@ -151,7 +151,7 @@ export function createEventController(
 
 /**
  * Factory function for middleware controllers.
- * Called by core when user accesses portal.discord.middleware()
+ * Called by core when user accesses portal.discordjs.middleware()
  */
 export function createMiddlewareController(
 	name: string,
