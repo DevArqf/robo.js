@@ -2,19 +2,17 @@
 	"name": "robo.js",
 	"version": "0.10.32",
 	"private": false,
-	"description": "The Discord Framework - activities, bots, web servers, and more!",
+	"description": "The Universal App Framework - bots, web servers, and more!",
 	"keywords": [
-		"discord",
-		"bot",
 		"framework",
-		"discord.js",
+		"bot",
+		"server",
 		"javascript",
 		"typescript",
 		"waveplay",
 		"robo",
 		"robo.js",
-		"roboplay",
-		"discordjs"
+		"roboplay"
 	],
 	"main": "dist/index.js",
 	"engines": {
@@ -100,7 +98,7 @@
 			"optional": true
 		},
 		"discord.js": {
-			"optional": false
+			"optional": true
 		},
 		"keyv": {
 			"optional": true

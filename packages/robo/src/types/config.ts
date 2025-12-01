@@ -1,5 +1,4 @@
 import type { LogDrain, LogLevel } from '../core/logger.js'
-import type { ClientOptions, PermissionsString, ShardingManagerOptions } from 'discord.js'
 import type { CommandContext, CommandIntegrationType, Plugin, SageOptions } from './index.js'
 
 export interface SeedHookGenerators {

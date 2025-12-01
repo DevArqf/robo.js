@@ -8,7 +8,6 @@ import type {
 	HandlerRecord,
 	Middleware
 } from '../types/index.js'
-import type { Collection } from 'discord.js'
 import type Keyv from 'keyv'
 
 interface PortalEnabledState {
@@ -20,10 +19,10 @@ interface PortalEnabledState {
 }
 
 interface PortalValues {
-	apis: Collection<string, HandlerRecord<Api>> | null;
-	commands: Collection<string, HandlerRecord<Command>> | null;
-	context: Collection<string, HandlerRecord<Context>> | null;
-	events: Collection<string, HandlerRecord<Event>[]> | null;
+	apis: Map<string, HandlerRecord<Api>> | null;
+	commands: Map<string, HandlerRecord<Command>> | null;
+	context: Map<string, HandlerRecord<Context>> | null;
+	events: Map<string, HandlerRecord<Event>[]> | null;
 	middleware: HandlerRecord<Middleware>[];
 	moduleKeys: Set<string>;
 	enabledState: PortalEnabledState;
@@ -106,10 +105,10 @@ export const Globals = {
 		globalThis.robo.flashcore._adapter = adapter
 	},
 	registerPortal: (
-		apis: Collection<string, HandlerRecord<Api>>,
-		commands: Collection<string, HandlerRecord<Command>>,
-		context: Collection<string, HandlerRecord<Context>>,
-		events: Collection<string, HandlerRecord<Event>[]>,
+		apis: Map<string, HandlerRecord<Api>>,
+		commands: Map<string, HandlerRecord<Command>>,
+		context: Map<string, HandlerRecord<Context>>,
+		events: Map<string, HandlerRecord<Event>[]>,
 		middleware: HandlerRecord<Middleware>[]
 	) => {
 		if (!globalThis.robo) {

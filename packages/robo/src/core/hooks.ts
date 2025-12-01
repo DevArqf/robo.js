@@ -33,9 +33,13 @@ export async function resolvePluginHookPath(
 	hookName: 'init' | 'start' | 'stop' | 'setup'
 ): Promise<string | null> {
 	const possiblePaths = [
-		// Plugin package: node_modules/@robojs/discord/.robo/build/robo/init.js
+		// Plugin package: node_modules/@robojs/discord/.robo/build/robo/hooks/init.js
+		path.join(process.cwd(), 'node_modules', pluginName, '.robo', 'build', 'robo', 'hooks', `${hookName}.js`),
+		// Legacy: node_modules/@robojs/discord/.robo/build/robo/init.js
 		path.join(process.cwd(), 'node_modules', pluginName, '.robo', 'build', 'robo', `${hookName}.js`),
-		// Alternative: node_modules/@robojs/discord/dist/robo/init.js
+		// Alternative: node_modules/@robojs/discord/dist/robo/hooks/init.js
+		path.join(process.cwd(), 'node_modules', pluginName, 'dist', 'robo', 'hooks', `${hookName}.js`),
+		// Alternative legacy: node_modules/@robojs/discord/dist/robo/init.js
 		path.join(process.cwd(), 'node_modules', pluginName, 'dist', 'robo', `${hookName}.js`)
 	]
 

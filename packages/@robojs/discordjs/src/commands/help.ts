@@ -19,7 +19,8 @@ import {
 	StringSelectMenuBuilder,
 	StringSelectMenuInteraction
 } from 'discord.js'
-import type { CommandConfig, CommandEntry } from '../types/index.js'
+import type { CommandConfig } from '../types/index.js'
+import type { CommandEntry } from 'robo.js'
 
 const COMMANDS_PER_PAGE = 20
 const NAMESPACE = '__robojs_discordjs_helpmenu'

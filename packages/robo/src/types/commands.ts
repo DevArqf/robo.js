@@ -1,19 +1,3 @@
-import type {
-	ApplicationCommandOptionAllowedChannelTypes,
-	ApplicationCommandOptionChoiceData,
-	ApplicationIntegrationType,
-	Attachment,
-	AutocompleteInteraction,
-	CommandInteraction,
-	GuildBasedChannel,
-	GuildMember,
-	InteractionContextType,
-	InteractionReplyOptions,
-	MessagePayload,
-	RestOrArray,
-	Role,
-	User
-} from 'discord.js'
 import type { BaseConfig, SageOptions } from './index.js'
 import type { EnforceConfig, ExactConfig, ValueOfOption } from './helpers.js'
 

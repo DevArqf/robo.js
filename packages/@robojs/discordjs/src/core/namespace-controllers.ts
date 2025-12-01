@@ -29,7 +29,7 @@ export function createCommandsNamespaceController(): CommandsNamespaceController
 	return {
 		async get(name: string): Promise<CommandHandler | null> {
 			try {
-				const handler = await portal.getHandler<CommandHandler>('discord', 'commands', name)
+				const handler = await portal.getHandler<CommandHandler>('discordjs', 'commands', name)
 				return handler?.default ?? null
 			} catch {
 				return null
@@ -37,7 +37,7 @@ export function createCommandsNamespaceController(): CommandsNamespaceController
 		},
 
 		list(): string[] {
-			const commandsData = portal.getByType('discord:commands')
+			const commandsData = portal.getByType('discordjs:commands')
 			return Object.keys(commandsData)
 		},
 
@@ -54,7 +54,7 @@ export function createCommandsNamespaceController(): CommandsNamespaceController
 export function createEventsNamespaceController(): EventsNamespaceController {
 	return {
 		async get<K extends keyof ClientEvents = keyof ClientEvents>(name: K): Promise<EventHandler<K>[]> {
-			const eventsData = portal.getByType('discord:events')
+			const eventsData = portal.getByType('discordjs:events')
 			const records = eventsData[name as string]
 
 			if (!records) {
@@ -66,7 +66,7 @@ export function createEventsNamespaceController(): EventsNamespaceController {
 
 			for (const record of recordArray) {
 				if (!record.handler) {
-					await portal.importHandler('discord', 'events', name as string)
+					await portal.importHandler('discordjs', 'events', name as string)
 				}
 				if (record.handler?.default) {
 					handlers.push(record.handler.default as EventHandler<K>)
@@ -77,7 +77,7 @@ export function createEventsNamespaceController(): EventsNamespaceController {
 		},
 
 		list(): string[] {
-			const eventsData = portal.getByType('discord:events')
+			const eventsData = portal.getByType('discordjs:events')
 			return Object.keys(eventsData)
 		},
 
@@ -95,7 +95,7 @@ export function createContextNamespaceController(): ContextNamespaceController {
 	return {
 		async get(name: string): Promise<ContextHandler | null> {
 			try {
-				const handler = await portal.getHandler<ContextHandler>('discord', 'context', name)
+				const handler = await portal.getHandler<ContextHandler>('discordjs', 'context', name)
 				return handler?.default ?? null
 			} catch {
 				return null
@@ -103,7 +103,7 @@ export function createContextNamespaceController(): ContextNamespaceController {
 		},
 
 		list(): string[] {
-			const contextData = portal.getByType('discord:context')
+			const contextData = portal.getByType('discordjs:context')
 			return Object.keys(contextData)
 		}
 	}
@@ -116,12 +116,12 @@ export function createContextNamespaceController(): ContextNamespaceController {
 export function createMiddlewareNamespaceController(): MiddlewareNamespaceController {
 	return {
 		list(): string[] {
-			const middlewareData = portal.getByType('discord:middleware')
+			const middlewareData = portal.getByType('discordjs:middleware')
 			return Object.keys(middlewareData)
 		},
 
 		async chain(): Promise<MiddlewareChainEntry[]> {
-			const middlewareData = portal.getByType('discord:middleware')
+			const middlewareData = portal.getByType('discordjs:middleware')
 			const entries: MiddlewareChainEntry[] = []
 
 			for (const [key, recordOrArray] of Object.entries(middlewareData)) {
@@ -129,7 +129,7 @@ export function createMiddlewareNamespaceController(): MiddlewareNamespaceContro
 
 				// Import handler if needed
 				if (!record.handler) {
-					await portal.importHandler('discord', 'middleware', key)
+					await portal.importHandler('discordjs', 'middleware', key)
 				}
 
 				if (record.handler?.default && record.enabled) {

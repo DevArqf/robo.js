@@ -1,5 +1,5 @@
-import type { PermissionsString } from 'discord.js'
 import type { CommandEntry } from './commands.js'
+import type { PermissionsString } from './config.js'
 import type { Config, Scope, SeedEnvVariableConfig } from './config.js'
 import type { EventConfig } from './events.js'
 import type { ApiEntry, ContextEntry, MiddlewareEntry } from './index.js'

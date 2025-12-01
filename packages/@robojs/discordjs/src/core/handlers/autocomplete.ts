@@ -32,7 +32,7 @@ export async function executeAutocompleteHandler(
 	interaction: AutocompleteInteraction,
 	commandKey: string
 ): Promise<void> {
-	const command = portal.getRecord('discord', 'commands', commandKey)
+	const command = portal.getRecord('discordjs', 'commands', commandKey)
 	if (!command) {
 		discordLogger.error(`No command matching ${commandKey} was found.`)
 		return
@@ -60,7 +60,7 @@ export async function executeAutocompleteHandler(
 	try {
 		// Import handler if needed
 		if (!command.handler) {
-			await portal.importHandler('discord', 'commands', commandKey)
+			await portal.importHandler('discordjs', 'commands', commandKey)
 		}
 
 		const commandHandler = command.handler as HandlerWithAutocomplete | null

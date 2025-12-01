@@ -22,7 +22,7 @@ type HandlerWithDefault<T> = {
  * Get all middleware records from the portal
  */
 export function getMiddleware(): HandlerRecord[] {
-	const middlewareRecords = portal.getByType('discord:middleware')
+	const middlewareRecords = portal.getByType('discordjs:middleware')
 	if (!middlewareRecords) return []
 
 	const result: HandlerRecord[] = []
@@ -64,7 +64,7 @@ export async function executeMiddleware(payload: unknown[], record: HandlerRecor
 
 			// Import handler if needed
 			if (!mw.handler) {
-				await portal.importHandler('discord', 'middleware', mw.key)
+				await portal.importHandler('discordjs', 'middleware', mw.key)
 			}
 
 			const handler = mw.handler as HandlerWithDefault<MiddlewareHandler> | null

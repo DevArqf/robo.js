@@ -1,6 +1,8 @@
 export { color, composeColors } from './dist/core/color.js'
 export { cleanTempDir, getTempDir } from './dist/cli/utils/utils.js'
-export { extractCommandOptions } from './dist/core/handlers.js'
+
+// Note: extractCommandOptions has been moved to @robojs/discordjs
+// Import it from '@robojs/discordjs' instead of 'robo.js/utils.js'
 
 import { Env } from './dist/core/env.js'
 

@@ -22,6 +22,7 @@ import {
 import { discoverRoutes, validateRoutes } from '../../utils/route-discovery.js'
 import { scanAllRoutes } from '../../utils/route-scanner.js'
 import { processAllRoutes } from '../../utils/route-processor.js'
+import { mergePluginManifests } from '../../utils/plugin-manifest-merger.js'
 import { ManifestGenerator } from '../../utils/manifest-generator.js'
 import { discoverAllHooks } from '../../utils/hook-discovery.js'
 import { generateManifestTypes } from '../../utils/manifest-types.js'
@@ -129,8 +130,8 @@ export async function buildAction(files: string[], options: BuildCommandOptions)
 	})
 	logger.debug(`Compiled in ${compileTime}ms`)
 
-	// Assign default commands and events
-	const generatedFiles = await generateDefaults(config.experimental?.buildDirectory)
+	// Assign default commands and events (now handled by plugins)
+	const generatedFiles = await generateDefaults()
 
 	// Generate manifest.json (legacy)
 	const oldManifest = await Compiler.useManifest({ safe: true })
@@ -160,6 +161,10 @@ export async function buildAction(files: string[], options: BuildCommandOptions)
 		const scannedResults = await scanAllRoutes(routes, buildDir)
 		routeEntries = await processAllRoutes(scannedResults)
 	}
+
+	// Merge plugin manifests into route entries
+	// This reads each plugin's pre-built manifest and merges their commands, events, etc.
+	routeEntries = await mergePluginManifests(plugins, routeEntries)
 
 	// Execute build/complete hooks with route entries
 	const { metadataRegistry } = await executeBuildCompleteHooks(plugins, config, buildMode, manifest, buildStore, routeEntries)

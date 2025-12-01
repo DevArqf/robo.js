@@ -287,6 +287,53 @@ class PortalImpl implements PortalAPI {
 	}
 
 	/**
+	 * Import a handler directly from its record.
+	 * Use this when you already have a HandlerRecord reference
+	 * (e.g., iterating over multiple handlers for the same event).
+	 *
+	 * @param record - The handler record to import
+	 * @param bustCache - Use cache-busting URL for HMR reloads
+	 */
+	async importRecord(record: HandlerRecord, bustCache = false): Promise<void> {
+		if (record.handler !== null) {
+			return // Already imported
+		}
+
+		const importPath = this.getImportPath(record, bustCache)
+
+		try {
+			const module = await import(importPath)
+
+			// Build handler module with all exports
+			const handlerModule: HandlerModule = {
+				default: module.default,
+				config: module.config,
+				module: record.module
+			}
+
+			// Add named exports from manifest
+			if (record.exports?.named) {
+				for (const exportName of record.exports.named) {
+					handlerModule[exportName] = module[exportName]
+				}
+			}
+
+			// Also add any other exports not already included
+			for (const [exportKey, value] of Object.entries(module)) {
+				if (!(exportKey in handlerModule)) {
+					handlerModule[exportKey] = value
+				}
+			}
+
+			record.handler = handlerModule
+			logger.debug(`Imported handler record: ${record.type}['${record.key}']`)
+		} catch (error) {
+			logger.error(`Failed to import handler record ${record.type}['${record.key}']:`, error)
+			throw error
+		}
+	}
+
+	/**
 	 * Get a handler, importing if needed.
 	 * This is the primary way plugins should access handlers.
 	 */
@@ -490,9 +537,10 @@ class PortalImpl implements PortalAPI {
 	 * Includes cache buster for HMR support.
 	 */
 	private getImportPath(record: HandlerRecord, bustCache = false): string {
+		// Note: Build output goes to .robo/build/ directly without mode-specific subdirectories
 		const basePath = record.plugin
 			? path.join(process.cwd(), 'node_modules', record.plugin.name, '.robo', 'build')
-			: path.join(process.cwd(), '.robo', 'build', this._mode)
+			: path.join(process.cwd(), '.robo', 'build')
 
 		let url = pathToFileURL(path.join(basePath, record.path)).toString()
 
@@ -596,6 +644,7 @@ export const portal = new Proxy(portalImpl, {
 				'registerPluginState',
 				'registerSingularName',
 				'importHandler',
+				'importRecord',
 				'getHandler',
 				'getRecord',
 				'getController',

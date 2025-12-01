@@ -5,6 +5,8 @@
  * Supports both eager (production) and lazy (development) loading strategies.
  */
 
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { Manifest } from './manifest-api.js'
 import { portal } from './portal-impl.js'
 import { logger } from './logger.js'
@@ -204,7 +206,28 @@ async function registerControllerFactory(
 			return
 		}
 
-		const factoryModule = await import(modulePath)
+		// Resolve relative paths
+		let importPath = modulePath
+		if (modulePath.startsWith('./') || modulePath.startsWith('../')) {
+			// Look up the plugin that provides this namespace
+			const plugins = Manifest.plugins()
+			const plugin = plugins.find((p) => p.namespace === namespace)
+
+			let basePath: string
+			if (plugin) {
+				// Resolve from plugin's directory
+				basePath = path.resolve(process.cwd(), plugin.path)
+				logger.debug(`Resolving controller factory from plugin: ${plugin.name} at ${basePath}`)
+			} else {
+				// Fallback to project root
+				basePath = process.cwd()
+			}
+
+			const absolutePath = path.resolve(basePath, modulePath)
+			importPath = pathToFileURL(absolutePath).toString()
+		}
+
+		const factoryModule = await import(importPath)
 		const factory = factoryModule[exportName]
 
 		if (typeof factory !== 'function') {

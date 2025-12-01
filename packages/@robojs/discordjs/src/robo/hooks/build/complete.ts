@@ -20,9 +20,9 @@ export default async function (context: BuildCompleteContext) {
 	const envData = Env.data()
 
 	// Get command and context menu entries from the manifest
-	const commandEntries = entries.get('discord', 'commands') ?? []
-	const contextEntries = entries.get('discord', 'context') ?? []
-	const eventEntries = entries.get('discord', 'events') ?? []
+	const commandEntries = entries.get('discordjs', 'commands') ?? []
+	const contextEntries = entries.get('discordjs', 'context') ?? []
+	const eventEntries = entries.get('discordjs', 'events') ?? []
 
 	discordLogger.debug(`Found ${commandEntries.length} commands, ${contextEntries.length} context menus, ${eventEntries.length} events`)
 

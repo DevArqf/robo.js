@@ -25,24 +25,10 @@ export function registerProcessEvents() {
 	})
 
 	process.on('unhandledRejection', async (reason) => {
-		const { loadConfig } = await import('./config.js')
 		const { env } = await import('./env.js')
 		const { logger } = await import('./logger.js')
-		const { client, Robo } = await import('./robo.js')
+		const { Robo } = await import('./robo.js')
 		logger.error(reason)
-
-		// Load config file to see if we need handling
-		const config = await loadConfig()
-
-		if (config.experimental?.disableBot) {
-			return
-		}
-
-		// Exit right away if the client isn't ready yet
-		// We don't want to send a message to Discord nor notify handlers if we can't
-		if (!client?.isReady()) {
-			process.exit(1)
-		}
 
 		// Log error and ignore it in production
 		if (env.get('nodeEnv') === 'production') {

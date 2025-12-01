@@ -40,7 +40,7 @@ export async function executeCommandHandler(
 	commandKey: string
 ): Promise<void> {
 	// Find command handler
-	const command = portal.getRecord('discord', 'commands', commandKey)
+	const command = portal.getRecord('discordjs', 'commands', commandKey)
 	if (!command) {
 		discordLogger.error(`No command matching "${commandKey}" was found.`)
 		return
@@ -66,7 +66,7 @@ export async function executeCommandHandler(
 
 	// Import handler if needed
 	if (!command.handler) {
-		await portal.importHandler('discord', 'commands', commandKey)
+		await portal.importHandler('discordjs', 'commands', commandKey)
 	}
 
 	// Prepare options and config

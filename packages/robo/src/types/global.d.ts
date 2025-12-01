@@ -1,4 +1,3 @@
-import type { Collection } from 'discord.js'
 import type { Api, Command, Config, Context, Event, FlashcoreAdapter, HandlerRecord, Middleware } from './index.js'
 import type Keyv from 'keyv'
 
@@ -11,10 +10,10 @@ interface PortalEnabledState {
 }
 
 interface Portal {
-  apis: Collection<string, HandlerRecord<Api>> | null
-  commands: Collection<string, HandlerRecord<Command>> | null
-  context: Collection<string, HandlerRecord<Context>> | null
-  events: Collection<string, HandlerRecord<Event>[]> | null
+  apis: Map<string, HandlerRecord<Api>> | null
+  commands: Map<string, HandlerRecord<Command>> | null
+  context: Map<string, HandlerRecord<Context>> | null
+  events: Map<string, HandlerRecord<Event>[]> | null
   middleware: HandlerRecord<Middleware>[]
   moduleKeys: Set<string>
   enabledState: PortalEnabledState

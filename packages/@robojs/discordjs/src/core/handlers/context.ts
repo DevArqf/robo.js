@@ -30,7 +30,7 @@ export async function executeContextHandler(
 	commandKey: string
 ): Promise<void> {
 	// Find command handler
-	const command = portal.getRecord('discord', 'context', commandKey)
+	const command = portal.getRecord('discordjs', 'context', commandKey)
 	if (!command) {
 		discordLogger.error(`No context menu command matching "${commandKey}" was found.`)
 		return
@@ -56,7 +56,7 @@ export async function executeContextHandler(
 
 	// Import handler if needed
 	if (!command.handler) {
-		await portal.importHandler('discord', 'context', commandKey)
+		await portal.importHandler('discordjs', 'context', commandKey)
 	}
 
 	// Prepare options and config

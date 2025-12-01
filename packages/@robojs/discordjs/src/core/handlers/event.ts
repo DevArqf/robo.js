@@ -43,7 +43,7 @@ interface PluginData {
  * @param eventData - The event arguments
  */
 export async function executeEventHandler(eventName: string, ...eventData: unknown[]): Promise<void> {
-	const eventsData = portal.getByType('discord:events')
+	const eventsData = portal.getByType('discordjs:events')
 	const callbacks = eventsData[eventName] as HandlerRecord<Event>[] | undefined
 	if (!callbacks?.length) {
 		return
@@ -63,9 +63,9 @@ export async function executeEventHandler(eventName: string, ...eventData: unkno
 			try {
 				discordLogger.debug(`Executing event handler: ${color.bold(getHandlerPath(callback))}`)
 
-				// Import handler if needed
+				// Import handler if needed (use importRecord for multi-handler support)
 				if (!callback.handler) {
-					await portal.importHandler('discord', 'events', eventName)
+					await portal.importRecord(callback)
 				}
 
 				if (!callback.handler?.default) {

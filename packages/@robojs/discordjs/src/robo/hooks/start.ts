@@ -36,7 +36,7 @@ export default async function startHook(): Promise<void> {
 	setPluginState(pluginState)
 
 	// Register plugin state with portal for controller access
-	portal.registerPluginState('discord', pluginState)
+	portal.registerPluginState('discordjs', pluginState)
 
 	// Create the Discord client
 	const client = new Client(clientOptions)
@@ -74,19 +74,19 @@ export default async function startHook(): Promise<void> {
 async function eagerLoadHandlers(): Promise<void> {
 	// Load all route manifests
 	await Promise.all([
-		portal.ensureRoute('discord', 'commands'),
-		portal.ensureRoute('discord', 'context'),
-		portal.ensureRoute('discord', 'events')
+		portal.ensureRoute('discordjs', 'commands'),
+		portal.ensureRoute('discordjs', 'context'),
+		portal.ensureRoute('discordjs', 'events')
 	])
 
 	// Get all handler keys
-	const commands = Object.keys(portal.getByType('discord:commands'))
-	const contexts = Object.keys(portal.getByType('discord:context'))
+	const commands = Object.keys(portal.getByType('discordjs:commands'))
+	const contexts = Object.keys(portal.getByType('discordjs:context'))
 
 	// Import all handlers in parallel
 	await Promise.all([
-		...commands.map((k) => portal.importHandler('discord', 'commands', k)),
-		...contexts.map((k) => portal.importHandler('discord', 'context', k))
+		...commands.map((k) => portal.importHandler('discordjs', 'commands', k)),
+		...contexts.map((k) => portal.importHandler('discordjs', 'context', k))
 	])
 
 	discordLogger.debug(`Pre-loaded ${commands.length} commands, ${contexts.length} context menus`)
@@ -109,10 +109,10 @@ function registerReadyHandler(client: Client): void {
  */
 async function registerEventListeners(client: Client): Promise<void> {
 	// Ensure the events route is loaded
-	await portal.ensureRoute('discord', 'events')
+	await portal.ensureRoute('discordjs', 'events')
 
 	// Get events from portal
-	const events = portal.getByType('discord:events') as Record<string, HandlerRecord<Event>[]>
+	const events = portal.getByType('discordjs:events') as Record<string, HandlerRecord<Event>[]>
 
 	for (const [eventName, eventHandlers] of Object.entries(events)) {
 		// Skip lifecycle events (they're handled separately)
