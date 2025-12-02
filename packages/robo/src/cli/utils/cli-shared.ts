@@ -9,6 +9,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { logger as createLogger } from '../../core/logger.js'
+import { RoboPaths } from '../../core/paths.js'
 import type { CliCommandEntry, CliExtensionEntry, CliOptionConfig } from '../../types/cli.js'
 
 const logger = createLogger().fork('cli')
@@ -38,10 +39,11 @@ export async function pathExists(p: string): Promise<boolean> {
 
 /**
  * Get possible CLI directory paths for a plugin.
+ * Plugins don't use mode-specific builds - they're pre-built.
  */
 export function getPluginCliPaths(pluginName: string): string[] {
 	return [
-		path.join(process.cwd(), 'node_modules', pluginName, '.robo', 'build', 'robo', 'cli'),
+		path.join(RoboPaths.pluginBuild(pluginName), 'robo', 'cli'),
 		path.join(process.cwd(), 'node_modules', pluginName, 'dist', 'robo', 'cli')
 	]
 }
@@ -60,9 +62,12 @@ export async function getPluginCliDir(pluginName: string): Promise<string | null
 
 /**
  * Get the project CLI directory path.
+ * Uses mode-specific build directory: .robo/build/{mode}/robo/cli
+ *
+ * @param mode - Runtime mode for mode-specific path resolution (defaults to 'production')
  */
-export function getProjectCliDir(): string {
-	return path.join(process.cwd(), '.robo', 'build', 'robo', 'cli')
+export function getProjectCliDir(mode?: string): string {
+	return path.join(RoboPaths.build(mode ?? 'production'), 'robo', 'cli')
 }
 
 export interface ScanOptions {

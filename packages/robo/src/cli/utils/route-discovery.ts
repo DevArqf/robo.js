@@ -12,6 +12,7 @@ import { pathToFileURL } from 'node:url'
 import { logger } from '../../core/logger.js'
 import { inferNamespace } from '../../core/hooks.js'
 import { ALLOWED_EXTENSIONS } from '../../core/constants.js'
+import { RoboPaths } from '../../core/paths.js'
 import type { DiscoveredRoute, RouteConfig } from '../../types/routes.js'
 import type { PluginData } from '../../types/common.js'
 
@@ -30,12 +31,13 @@ async function pathExists(filePath: string): Promise<boolean> {
 /**
  * Get the routes directory path for a plugin.
  * Checks both .robo/build and dist locations.
+ * Plugins don't use mode-specific builds - they're pre-built.
  */
 async function getPluginRoutesDir(pluginName: string): Promise<string | null> {
 	const possiblePaths = [
 		// Plugin package: node_modules/@robojs/discord/.robo/build/robo/routes/
-		path.join(process.cwd(), 'node_modules', pluginName, '.robo', 'build', 'robo', 'routes'),
-		// Alternative: node_modules/@robojs/discord/dist/robo/routes/
+		RoboPaths.pluginRoutesDir(pluginName),
+		// Alternative: node_modules/@robojs/discord/dist/robo/routes/ (legacy)
 		path.join(process.cwd(), 'node_modules', pluginName, 'dist', 'robo', 'routes')
 	]
 
@@ -50,9 +52,12 @@ async function getPluginRoutesDir(pluginName: string): Promise<string | null> {
 
 /**
  * Get the routes directory path for the current project.
+ * Uses mode-specific build directory: .robo/build/{mode}/robo/routes/
+ *
+ * @param mode - Build mode for mode-specific path resolution
  */
-async function getProjectRoutesDir(): Promise<string | null> {
-	const routesDir = path.join(process.cwd(), '.robo', 'build', 'robo', 'routes')
+async function getProjectRoutesDir(mode?: string): Promise<string | null> {
+	const routesDir = RoboPaths.routesDir(mode ?? 'production')
 
 	if (await pathExists(routesDir)) {
 		return routesDir
@@ -173,9 +178,13 @@ async function discoverRoutesFromDir(
  * Routes are discovered in order:
  * 1. Plugin routes (in registration order)
  * 2. Project routes (can override plugin routes)
+ *
+ * @param plugins - Plugin data map
+ * @param mode - Build mode for mode-specific path resolution (defaults to 'production')
  */
 export async function discoverRoutes(
-	plugins: Map<string, PluginData>
+	plugins: Map<string, PluginData>,
+	mode?: string
 ): Promise<DiscoveredRoute[]> {
 	const loggerInstance = logger()
 	const allRoutes: DiscoveredRoute[] = []
@@ -208,8 +217,8 @@ export async function discoverRoutes(
 		}
 	}
 
-	// 2. Discover routes from the project
-	const projectRoutesDir = await getProjectRoutesDir()
+	// 2. Discover routes from the project (using mode-specific build directory)
+	const projectRoutesDir = await getProjectRoutesDir(mode)
 	if (projectRoutesDir) {
 		// Project routes use 'project' namespace by default
 		const projectRoutes = await discoverRoutesFromDir(projectRoutesDir, 'project')

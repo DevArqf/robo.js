@@ -9,6 +9,7 @@ import { Env } from '../../core/env.js'
 import { Mode, resolveCliMode, setMode } from '../../core/mode.js'
 import { Indent } from '../../core/constants.js'
 import { Boot } from '../../internal/boot.js'
+import { RoboPaths } from '../../core/paths.js'
 import type { CliContext } from '../../types/cli.js'
 
 const command = new Command('start')
@@ -95,13 +96,16 @@ async function startAction(context: CliContext) {
 		logger.warn(`Experimental flags enabled: ${features}.`)
 	}
 
-	// Check if the User has a custom build directory else set the default
-	const buildDirectory = config.experimental?.buildDirectory ?? path.join('.robo', 'build')
+	// Configure RoboPaths with custom build directory if specified
+	RoboPaths.configure({ customBuildDir: config.experimental?.buildDirectory })
 
-	// Check if .robo/build directory has .js files (recursively)
-	if (!(await hasFilesRecursively(path.join(buildDirectory)))) {
+	// Get mode-specific build directory
+	const buildDirectory = RoboPaths.build(envMode)
+
+	// Check if .robo/build/{mode} directory has .js files (recursively)
+	if (!(await hasFilesRecursively(buildDirectory))) {
 		logger.error(
-			`No production build found. Make sure to compile your Robo using ${composeColors(
+			`No production build found for mode "${envMode}". Make sure to compile your Robo using ${composeColors(
 				color.bold,
 				color.blue
 			)('"robo build"')} first.`

@@ -22,6 +22,7 @@ import { ManifestGenerator } from '../../utils/manifest-generator.js'
 import { discoverAllHooks } from '../../utils/hook-discovery.js'
 import { generateManifestTypes } from '../../utils/manifest-types.js'
 import { generatePortalTypes, collectPluginRoutes, generateTypesIndex } from '../../codegen/portal-types.js'
+import { RoboPaths } from '../../../core/paths.js'
 import type { CliContext } from '../../../types/cli.js'
 import type { LoggerOptions } from '../../../core/logger.js'
 import type { RouteEntries } from '../../../types/routes.js'
@@ -108,17 +109,21 @@ export async function buildAction(context: CliContext) {
 	// Create build store and execute start hooks
 	const buildStore = await executeBuildStartHooks(plugins, config, buildMode)
 
-	// Use the Robo Compiler to generate .robo/build
+	// Configure RoboPaths with custom build directory if specified
+	RoboPaths.configure({ customBuildDir: config.experimental?.buildDirectory })
+
+	// Use the Robo Compiler to generate .robo/build/{mode}
 	const compileTime = await Compiler.buildCode({
-		distDir: config.experimental?.buildDirectory,
+		customBuildDir: config.experimental?.buildDirectory,
+		mode: buildMode,
 		excludePaths: config.excludePaths?.map((p) => p.replaceAll('/', path.sep)),
 		files: files
 	})
 	logger.debug(`Compiled in ${compileTime}ms`)
 
-	// Discover and process routes for granular manifest
+	// Discover and process routes for granular manifest (using mode-specific build directory)
 	let routeEntries: RouteEntries = {}
-	const routes = await discoverRoutes(plugins)
+	const routes = await discoverRoutes(plugins, buildMode)
 
 	if (routes.length > 0) {
 		// Validate routes for conflicts
@@ -130,10 +135,8 @@ export async function buildAction(context: CliContext) {
 			throw new Error('Route validation failed')
 		}
 
-		// Scan and process routes
-		const buildDir = config.experimental?.buildDirectory
-			? path.join(process.cwd(), config.experimental.buildDirectory)
-			: path.join(process.cwd(), '.robo', 'build')
+		// Scan and process routes (using mode-specific build directory)
+		const buildDir = RoboPaths.build(buildMode)
 
 		const scannedResults = await scanAllRoutes(routes, buildDir)
 		routeEntries = await processAllRoutes(scannedResults)

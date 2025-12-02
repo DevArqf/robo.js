@@ -9,6 +9,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Manifest } from './manifest-api.js'
 import { logger } from './logger.js'
+import { RoboPaths } from './paths.js'
 import type { HandlerModule, HandlerRecord } from '../types/common.js'
 import type {
 	ControllerFactory,
@@ -535,12 +536,16 @@ class PortalImpl implements PortalAPI {
 	/**
 	 * Get the import path for a handler record.
 	 * Includes cache buster for HMR support.
+	 *
+	 * Uses mode-specific build directory for project handlers,
+	 * and standard .robo/build for plugin handlers (plugins don't have mode-specific builds).
 	 */
 	private getImportPath(record: HandlerRecord, bustCache = false): string {
-		// Note: Build output goes to .robo/build/ directly without mode-specific subdirectories
+		// Plugins don't use mode-specific builds - they're pre-built
+		// Project handlers use mode-specific build directory
 		const basePath = record.plugin
-			? path.join(process.cwd(), 'node_modules', record.plugin.name, '.robo', 'build')
-			: path.join(process.cwd(), '.robo', 'build')
+			? RoboPaths.pluginBuild(record.plugin.name)
+			: RoboPaths.build(this._mode)
 
 		let url = pathToFileURL(path.join(basePath, record.path)).toString()
 

@@ -312,22 +312,29 @@ export async function locateInHierarchy(targetPath: string, currentDir = process
 }
 
 /**
- * Replaces 'src/' with '.robo/build' in the given key-value record, if the path starts with 'src/'.
+ * Replaces 'src/' with '.robo/build/{mode}' in the given key-value record, if the path starts with 'src/'.
+ * Used for TypeScript path alias resolution in compiled output.
  *
  * @param record - The original key-value record
  * @param basePath - The base path (expected to be working directory by default)
+ * @param mode - Build mode for mode-specific path resolution
  * @returns - The modified key-value record
  */
-export function replaceSrcWithBuildInRecord(record: Record<string, string[]>, basePath = process.cwd()) {
+export function replaceSrcWithBuildInRecord(
+	record: Record<string, string[]>,
+	basePath = process.cwd(),
+	mode?: string
+) {
 	const result: Record<string, string[]> = {}
+	const buildPath = mode ? `../.robo/build/${mode}/` : '../.robo/build/'
 
 	for (const [key, values] of Object.entries(record)) {
 		result[key] = values.map((value) => {
 			const relativePath = path.relative(basePath, value)
 
-			// Replace 'src/' with the correct build path
+			// Replace 'src/' with the correct build path (mode-specific)
 			if (relativePath.startsWith('src' + path.sep)) {
-				return relativePath.replace('src/', '../.robo/build/')
+				return relativePath.replace('src/', buildPath)
 			}
 
 			// Otherwise, return the original path up one level to account for extra ".robo" folder

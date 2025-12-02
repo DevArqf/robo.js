@@ -1,6 +1,7 @@
 import { logger } from '../../core/logger.js'
 import { Env } from '../../core/env.js'
 import { inferNamespace } from '../../core/hooks.js'
+import { RoboPaths } from '../../core/paths.js'
 import type { BuildContext, BuildCompleteContext, BuildTransformContext, BuildStore, EntriesAccessor } from '../../types/lifecycle.js'
 import type { PluginData } from '../../types/common.js'
 import type { Config } from '../../types/config.js'
@@ -50,6 +51,7 @@ export function createBuildStore(): BuildStore {
 
 /**
  * Resolve the build hook path for a plugin (compiled JS only).
+ * Plugins don't use mode-specific builds - they're pre-built.
  */
 export async function resolvePluginBuildHookPath(
 	pluginName: string,
@@ -57,8 +59,8 @@ export async function resolvePluginBuildHookPath(
 ): Promise<string | null> {
 	const possiblePaths = [
 		// Plugin package: node_modules/@robojs/discord/.robo/build/robo/build/start.js
-		path.join(process.cwd(), 'node_modules', pluginName, '.robo', 'build', 'robo', 'build', `${hookName}.js`),
-		// Alternative: node_modules/@robojs/discord/dist/robo/build/start.js
+		RoboPaths.pluginBuildHook(pluginName, hookName),
+		// Alternative: node_modules/@robojs/discord/dist/robo/build/start.js (legacy)
 		path.join(process.cwd(), 'node_modules', pluginName, 'dist', 'robo', 'build', `${hookName}.js`)
 	]
 
@@ -73,11 +75,16 @@ export async function resolvePluginBuildHookPath(
 
 /**
  * Resolve the build hook path for the current project (compiled JS only).
+ * Uses mode-specific build directory: .robo/build/{mode}/robo/build/{hookName}.js
+ *
+ * @param hookName - The build hook to resolve
+ * @param mode - Build mode for mode-specific path resolution
  */
 export async function resolveProjectBuildHookPath(
-	hookName: 'start' | 'transform' | 'complete'
+	hookName: 'start' | 'transform' | 'complete',
+	mode?: string
 ): Promise<string | null> {
-	const hookPath = path.join(process.cwd(), '.robo', 'build', 'robo', 'build', `${hookName}.js`)
+	const hookPath = RoboPaths.buildHook(mode ?? 'production', hookName)
 
 	if (await fileExists(hookPath)) {
 		return hookPath
@@ -107,7 +114,7 @@ export async function executeBuildStartHooks(
 	// Create or use existing store
 	const buildStore = store ?? createBuildStore()
 
-	// Create base context
+	// Create base context with mode-specific output path
 	const baseContext: BuildContext = {
 		mode,
 		env: Env,
@@ -115,14 +122,14 @@ export async function executeBuildStartHooks(
 		paths: {
 			root: process.cwd(),
 			src: path.join(process.cwd(), 'src'),
-			output: path.join(process.cwd(), '.robo', 'build')
+			output: RoboPaths.build(mode)
 		},
 		config,
 		store: buildStore
 	}
 
 	// 1. Execute project's build/start hook first (if exists)
-	const projectHookPath = await resolveProjectBuildHookPath('start')
+	const projectHookPath = await resolveProjectBuildHookPath('start', mode)
 	if (projectHookPath) {
 		try {
 			loggerInstance.debug('Executing project build/start hook...')
@@ -235,7 +242,7 @@ export async function executeBuildTransformHooks(
 		}
 	}
 
-	// Create base context with entries accessor
+	// Create base context with entries accessor (using mode-specific output path)
 	const baseContext: BuildTransformContext = {
 		mode,
 		env: Env,
@@ -243,7 +250,7 @@ export async function executeBuildTransformHooks(
 		paths: {
 			root: process.cwd(),
 			src: path.join(process.cwd(), 'src'),
-			output: path.join(process.cwd(), '.robo', 'build')
+			output: RoboPaths.build(mode)
 		},
 		config,
 		store,
@@ -255,7 +262,7 @@ export async function executeBuildTransformHooks(
 	let flatEntries = flattenRouteEntries(entries)
 
 	// 1. Execute project's build/transform hook first (if exists)
-	const projectHookPath = await resolveProjectBuildHookPath('transform')
+	const projectHookPath = await resolveProjectBuildHookPath('transform', mode)
 	if (projectHookPath) {
 		try {
 			loggerInstance.debug('Executing project build/transform hook...')
@@ -457,7 +464,7 @@ export async function executeBuildCompleteHooks(
 		}
 	}
 
-	// Create base context with entries accessor and metadata methods
+	// Create base context with entries accessor and metadata methods (using mode-specific output path)
 	const baseContext: BuildCompleteContext = {
 		mode,
 		env: Env,
@@ -465,7 +472,7 @@ export async function executeBuildCompleteHooks(
 		paths: {
 			root: process.cwd(),
 			src: path.join(process.cwd(), 'src'),
-			output: path.join(process.cwd(), '.robo', 'build')
+			output: RoboPaths.build(mode)
 		},
 		config,
 		store,
@@ -483,7 +490,7 @@ export async function executeBuildCompleteHooks(
 	}
 
 	// 1. Execute project's build/complete hook first (if exists)
-	const projectHookPath = await resolveProjectBuildHookPath('complete')
+	const projectHookPath = await resolveProjectBuildHookPath('complete', mode)
 	if (projectHookPath) {
 		try {
 			loggerInstance.debug('Executing project build/complete hook...')
@@ -546,11 +553,14 @@ export async function executeBuildCompleteHooks(
 /**
  * Check if any build hooks exist for the project or plugins.
  * Used to determine if we need to load plugin data early.
+ *
+ * @param plugins - Plugin data map
+ * @param mode - Build mode for mode-specific path resolution (defaults to 'production')
  */
-export async function hasBuildHooks(plugins: Map<string, PluginData>): Promise<boolean> {
+export async function hasBuildHooks(plugins: Map<string, PluginData>, mode?: string): Promise<boolean> {
 	// Check project hooks
 	for (const hookName of ['start', 'transform', 'complete'] as const) {
-		if (await resolveProjectBuildHookPath(hookName)) {
+		if (await resolveProjectBuildHookPath(hookName, mode)) {
 			return true
 		}
 	}

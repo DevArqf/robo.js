@@ -4,10 +4,11 @@ import { Env } from './env.js'
 import { state } from './state.js'
 import { DEFAULT_CONFIG, TIMEOUT } from './constants.js'
 import { timeout } from '../cli/utils/utils.js'
+import { RoboPaths } from './paths.js'
 import type { InitContext, StartContext, PluginState, StopContext } from '../types/lifecycle.js'
 import type { PluginData } from '../types/common.js'
-import path from 'node:path'
 import fs from 'node:fs/promises'
+import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 // Cache for plugin versions to avoid repeated package.json reads
@@ -27,6 +28,7 @@ async function fileExists(filePath: string): Promise<boolean> {
 
 /**
  * Resolve the hook path for a plugin (compiled JS only).
+ * Plugins don't use mode-specific builds - they're pre-built.
  */
 export async function resolvePluginHookPath(
 	pluginName: string,
@@ -34,9 +36,9 @@ export async function resolvePluginHookPath(
 ): Promise<string | null> {
 	const possiblePaths = [
 		// Plugin package: node_modules/@robojs/discord/.robo/build/robo/init.js
-		path.join(process.cwd(), 'node_modules', pluginName, '.robo', 'build', 'robo', `${hookName}.js`),
-		// Alternative: node_modules/@robojs/discord/dist/robo/init.js
-		path.join(process.cwd(), 'node_modules', pluginName, 'dist', 'robo', `${hookName}.js`)
+		RoboPaths.pluginHook(pluginName, hookName),
+		// Alternative: node_modules/@robojs/discord/dist/robo/init.js (legacy)
+		`${process.cwd()}/node_modules/${pluginName}/dist/robo/${hookName}.js`
 	]
 
 	for (const hookPath of possiblePaths) {
@@ -50,24 +52,16 @@ export async function resolvePluginHookPath(
 
 /**
  * Resolve the hook path for the current project (compiled JS only).
- *
- * TODO: The `mode` parameter is currently unused. When mode-specific builds are
- * implemented, this function should resolve to `.robo/build/{mode}/robo/{hookName}.js`
- * instead of the current `.robo/build/robo/{hookName}.js` path.
- * See: packages/robo/docs/future-mode-specific-builds.md
+ * Uses mode-specific build directory: .robo/build/{mode}/robo/{hookName}.js
  *
  * @param hookName - The hook to resolve
  * @param mode - Runtime mode (supports custom modes like 'beta', 'staging', etc.)
  */
 export async function resolveProjectHookPath(
 	hookName: 'init' | 'start' | 'stop',
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	mode: string
 ): Promise<string | null> {
-	// Note: mode parameter is kept for future use when mode-specific builds are implemented
-	logger().debug(`[hooks] resolveProjectHookPath called with mode '${mode}' (currently unused - builds output to .robo/build/ directly)`)
-
-	const hookPath = path.join(process.cwd(), '.robo', 'build', 'robo', `${hookName}.js`)
+	const hookPath = RoboPaths.hook(mode, hookName)
 
 	if (await fileExists(hookPath)) {
 		return hookPath

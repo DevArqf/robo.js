@@ -1,5 +1,6 @@
 import type { LogDrain, LogLevel } from '../core/logger.js'
 import type { Plugin } from './index.js'
+import type { BuildDirectoryOption } from '../core/paths.js'
 
 export interface SeedHookGenerators {
 	randomBase64: (bytes?: number) => string
@@ -42,7 +43,21 @@ export interface SeedHookConfig {
 export interface Config {
 	excludePaths?: string[]
 	experimental?: {
-		buildDirectory?: string
+		/**
+		 * Custom build output directory.
+		 *
+		 * Can be a static string (bypasses mode logic) or a function that
+		 * receives context with the current mode for dynamic resolution.
+		 *
+		 * @example
+		 * // Static string
+		 * buildDirectory: 'dist'
+		 *
+		 * @example
+		 * // Dynamic function
+		 * buildDirectory: (ctx) => `dist/${ctx.mode}`
+		 */
+		buildDirectory?: BuildDirectoryOption
 		incrementalBuilds?: boolean
 	}
 	flashcore?: {

@@ -4,6 +4,7 @@ import { env } from '../../core/env.js'
 import { Compiler } from '../utils/compiler.js'
 import { IS_BUN_RUNTIME } from '../utils/runtime-utils.js'
 import { getTypeScriptCompilerOptions, preloadTransformers, transform } from '../compiler/typescript.js'
+import { RoboPaths, type BuildDirectoryOption } from '../../core/paths.js'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { CompilerOptions } from 'typescript'
@@ -15,10 +16,15 @@ interface BuildCodeOptions {
 	baseUrl?: string
 	clean?: boolean
 	copyOther?: boolean
+	/** Custom build directory option (string or function from config) */
+	customBuildDir?: BuildDirectoryOption
+	/** Direct path to output directory (overrides customBuildDir and mode) */
 	distDir?: string
 	distExt?: string
 	excludePaths?: string[]
 	files?: string[]
+	/** Build mode for mode-specific output directories */
+	mode?: string
 	parallel?: number
 	paths?: Record<string, string[]>
 	plugin?: boolean
@@ -28,9 +34,12 @@ interface BuildCodeOptions {
 export async function buildCode(options?: BuildCodeOptions) {
 	const { clean = true, copyOther = true, srcDir = SrcDir } = options ?? {}
 	const startTime = Date.now()
-	const distDir = options.distDir
-		? path.join(process.cwd(), options.distDir)
-		: path.join(process.cwd(), '.robo', 'build')
+
+	// Configure RoboPaths with custom build directory if provided
+	RoboPaths.configure({ customBuildDir: options?.customBuildDir })
+
+	// Get output directory: direct distDir override takes precedence, then mode-specific path
+	const distDir = options?.distDir ?? RoboPaths.build(options?.mode)
 
 	// Force load compilers for Bun in plugin builds
 	if (IS_BUN_RUNTIME && options?.plugin) {
@@ -62,7 +71,7 @@ export async function buildCode(options?: BuildCodeOptions) {
 	const baseUrl = tsOptions.baseUrl ?? process.cwd()
 	const compileOptions = {
 		baseUrl: baseUrl,
-		paths: replaceSrcWithBuildInRecord(tsOptions.paths ?? {}),
+		paths: replaceSrcWithBuildInRecord(tsOptions.paths ?? {}, process.cwd(), options?.mode),
 		...(options ?? {})
 	}
 	logger.debug(`Compiler options:`, compileOptions)
