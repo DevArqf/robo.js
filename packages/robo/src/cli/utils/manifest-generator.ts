@@ -12,6 +12,7 @@ import { logger } from '../../core/logger.js'
 import { packageJson } from './utils.js'
 import { generateEnvMetadata, extractEnvVarsFromConfig } from './env-manifest.js'
 import { Compiler } from './compiler.js'
+import { discoverAllCli } from './cli-discovery.js'
 import type { Config } from '../../types/config.js'
 import type { DiscoveredRoute, ProcessedEntry, RouteEntries } from '../../types/routes.js'
 import type { PluginData } from '../../types/common.js'
@@ -94,7 +95,8 @@ export class ManifestGenerator {
 			path.join(this.basePath, 'hooks'),
 			path.join(this.basePath, 'metadata'),
 			path.join(this.basePath, 'metadata', 'raw'),
-			path.join(this.basePath, 'seeds')
+			path.join(this.basePath, 'seeds'),
+			path.join(this.basePath, 'cli')
 		]
 
 		for (const dir of dirs) {
@@ -117,7 +119,8 @@ export class ManifestGenerator {
 			this.generateRoutesIndex(),
 			this.generateRouteFiles(),
 			this.generateHooksFiles(),
-			this.generateSeedsFiles()
+			this.generateSeedsFiles(),
+			this.generateCliFiles()
 		])
 
 		// Generate metadata files (depends on route entries being available)
@@ -343,6 +346,43 @@ export class ManifestGenerator {
 		}
 
 		await Promise.all(writes)
+	}
+
+	/**
+	 * Generate CLI manifest files.
+	 * Discovers CLI commands and extensions from plugins and project.
+	 * Creates:
+	 * - .robo/manifest/cli/@.json: Mode-agnostic CLI manifest
+	 */
+	async generateCliFiles(): Promise<void> {
+		// Skip CLI discovery for plugin builds (plugins don't aggregate other plugins' CLI)
+		if (this.buildType === 'plugin') {
+			return
+		}
+
+		try {
+			// Discover CLI commands and extensions
+			const cliManifest = await discoverAllCli(this.plugins)
+
+			// Only write if there are commands or extensions
+			const hasContent =
+				Object.keys(cliManifest.commands).length > 0 ||
+				Object.keys(cliManifest.extensions).length > 0
+
+			if (hasContent) {
+				// Write to mode-agnostic location (outside the mode folder)
+				const cliManifestPath = path.join(process.cwd(), '.robo', 'manifest', 'cli', '@.json')
+				await fs.mkdir(path.dirname(cliManifestPath), { recursive: true })
+				await fs.writeFile(cliManifestPath, this.safeStringify(cliManifest))
+				logger.debug(
+					`Discovered ${Object.keys(cliManifest.commands).length} CLI commands and ` +
+					`${Object.keys(cliManifest.extensions).length} command extensions`
+				)
+			}
+		} catch (error) {
+			// CLI discovery is optional - don't fail the build if it errors
+			logger.debug('CLI discovery failed:', error)
+		}
 	}
 
 	/**

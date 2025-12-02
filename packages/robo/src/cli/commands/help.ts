@@ -1,6 +1,7 @@
 import { color } from '../../core/color.js'
 import { Command, Option } from '../utils/cli-handler.js'
 import { logger } from '../../core/logger.js'
+import { loadCliManifest } from '../utils/cli-loader.js'
 import rootCommand from '../index.js'
 import { packageJson } from '../utils/utils.js'
 
@@ -14,7 +15,6 @@ type CommandName =
 	| 'dev'
 	| 'deploy'
 	| 'help'
-	| 'invite'
 	| 'remove'
 	| 'start'
 	| 'upgrade'
@@ -35,7 +35,7 @@ interface FormattedCommand {
  * Function that is being called when we use the help command in the CLI.
  *
  */
-export function helpCommandHandler() {
+export async function helpCommandHandler() {
 	logger.log(
 		color.bold(`\n ${color.blue('Robo.js')} - Where bot creation meets endless possibilities!`),
 		color.dim('(v' + packageJson.version + ')\n\n')
@@ -43,10 +43,13 @@ export function helpCommandHandler() {
 	const groups = splitCommandsIntoGroups([
 		['dev', 'start', 'build'],
 		['add', 'remove', 'upgrade'],
-		['deploy', 'invite'],
+		['deploy'],
 		['help']
 	])
 	prettyPrint(formatCommand(groups))
+
+	// Show plugin commands if available
+	await showPluginCommands()
 }
 
 /**
@@ -231,4 +234,41 @@ function formatCommand(commandGroup: CommandGroup[]): FormattedCommand[] {
 	})
 
 	return formattedCommands
+}
+
+/**
+ * Shows plugin-provided commands if any are available.
+ */
+async function showPluginCommands() {
+	const manifest = await loadCliManifest()
+
+	if (!manifest || Object.keys(manifest.commands).length === 0) {
+		return
+	}
+
+	const commands = Object.entries(manifest.commands)
+
+	// Group commands by plugin
+	const byPlugin = new Map<string, Array<{ name: string; description: string }>>()
+
+	for (const [name, entry] of commands) {
+		const source = entry.plugin ?? 'project'
+		if (!byPlugin.has(source)) {
+			byPlugin.set(source, [])
+		}
+		byPlugin.get(source)!.push({ name, description: entry.description })
+	}
+
+	logger.log(color.bold(color.yellow('\n Plugin Commands:\n')))
+
+	for (const [source, cmds] of byPlugin) {
+		logger.log(color.dim(` ${source}:`))
+		for (const cmd of cmds) {
+			const paddedName = cmd.name.padEnd(20)
+			logger.log(`   ${color.cyan(paddedName)} ${color.white(cmd.description)}`)
+		}
+		logger.log('')
+	}
+
+	logger.log(color.dim(' Use "robo cli --inspect" for more details about plugin commands.\n'))
 }

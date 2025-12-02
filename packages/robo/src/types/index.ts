@@ -1,5 +1,6 @@
 export default {}
 export type * from './api.js'
+export type * from './cli.js'
 export type * from './commands.js'
 export type * from './common.js'
 export type * from './config.js'

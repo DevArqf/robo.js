@@ -7,6 +7,15 @@ export interface Option {
 	description: string
 }
 
+/**
+ * Callback for handling unknown commands.
+ * Return true if the command was handled, false otherwise.
+ */
+export type UnknownCommandHandler = (
+	commandParts: string[],
+	args: string[]
+) => Promise<boolean> | boolean
+
 export class Command {
 	private _name: string
 	private _description: string
@@ -17,6 +26,7 @@ export class Command {
 	private _positionalArgs?: boolean
 	private _allowSpacesInOptions: boolean = true
 	protected _parent?: Command
+	private _unknownCommandHandler?: UnknownCommandHandler
 
 	constructor(name: string) {
 		this._name = name
@@ -136,6 +146,19 @@ export class Command {
 	 */
 	public handler(fn: (args: string[], options: Record<string, unknown>) => void): this {
 		this._handler = fn
+		return this
+	}
+
+	/**
+	 * Set a callback to handle unknown commands.
+	 * The callback receives the command parts and remaining args.
+	 * Return true if handled, false to show the default error.
+	 *
+	 * @param {UnknownCommandHandler} fn - Function to handle unknown commands.
+	 * @returns {Command} - Returns the current Command object for chaining.
+	 */
+	public onUnknownCommand(fn: UnknownCommandHandler): this {
+		this._unknownCommandHandler = fn
 		return this
 	}
 
@@ -276,8 +299,16 @@ export class Command {
 			// If arg is not an option or a subcommand, treat as a positional argument
 			positionalArgs.push(arg)
 
-			// if _positionalArgs is false show a message to inform the user.
+			// if _positionalArgs is false, check for unknown command handler or show error
 			if (!command._positionalArgs) {
+				// Try the unknown command handler first (for plugin commands)
+				if (this._unknownCommandHandler) {
+					const handled = await this._unknownCommandHandler(positionalArgs, args.slice(i + 1))
+					if (handled) {
+						return
+					}
+				}
+
 				logger.log('\n')
 				logger.error(color.red(`The command "${arg}" does not exist.`))
 				logger.info(`Try ${color.bold(color.blue('robo --help'))} to see all available commands.`)
