@@ -6,9 +6,13 @@
 import { portal, color } from 'robo.js'
 import { discordLogger } from '../logger.js'
 import { executeMiddleware, getHandlerPath } from '../middleware.js'
-import { timeout } from '../utils.js'
+import { TIMEOUT, timeout } from '../utils.js'
+import { getPluginConfig } from '../client.js'
 import type { AutocompleteInteraction } from 'discord.js'
 import type { CommandConfig } from '../../types/index.js'
+
+/** Default autocomplete timeout in ms */
+const DEFAULT_AUTOCOMPLETE_TIMEOUT = 3000
 
 /**
  * Handler module with autocomplete export
@@ -74,31 +78,24 @@ export async function executeAutocompleteHandler(
 		// Delegate to autocomplete handler
 		discordLogger.debug(`Executing autocomplete handler: ${color.bold(getHandlerPath(command))}`)
 		const commandConfig = commandHandler.config
-		const promises: Promise<Array<{ name: string; value: string | number }>>[] = [
+		const promises: Promise<Array<{ name: string; value: string | number }> | typeof TIMEOUT>[] = [
 			commandHandler.autocomplete(interaction)
 		]
 
-		// Get timeout from command config
-		const timeoutDuration = commandConfig?.timeout
+		// Get timeout from command config, fallback to global config, then default
+		const pluginConfig = getPluginConfig()
+		const timeoutDuration =
+			commandConfig?.timeout ?? pluginConfig?.timeouts?.autocomplete ?? DEFAULT_AUTOCOMPLETE_TIMEOUT
 
-		// Enforce timeout only if custom timeout is configured
-		if (timeoutDuration) {
-			promises.push(
-				timeout(
-					() =>
-						[] as Array<{
-							name: string
-							value: string | number
-						}>,
-					timeoutDuration
-				)
-			)
-		}
+		// Always enforce timeout to prevent hanging autocomplete requests
+		promises.push(timeout(() => TIMEOUT, timeoutDuration))
 
 		// Wait for response or timeout
 		const response = await Promise.race(promises)
-		if (!response) {
-			throw new Error('Autocomplete timed out')
+		if (response === TIMEOUT) {
+			discordLogger.warn(`Autocomplete timed out after ${timeoutDuration}ms`)
+			await interaction.respond([])
+			return
 		}
 
 		await interaction.respond(response)

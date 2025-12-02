@@ -202,20 +202,14 @@ export class ManifestGenerator {
 		// Add common variables
 		const commonVars = [
 			'NODE_ENV',
-			'DISCORD_TOKEN',
-			'DISCORD_CLIENT_ID',
-			'DISCORD_CLIENT_SECRET',
 			'PORT',
 			'DATABASE_URL'
 		]
 
 		const allVars = [...new Set([...configVars, ...commonVars])]
 
-		// Generate metadata
-		const envMetadata = generateEnvMetadata(
-			allVars,
-			['DISCORD_TOKEN', 'DISCORD_CLIENT_ID'] // Required for most bots
-		)
+		// Generate metadata (no required vars by default - plugins can register their own)
+		const envMetadata = generateEnvMetadata(allVars, [])
 
 		await this.writeJson('env.json', envMetadata)
 	}

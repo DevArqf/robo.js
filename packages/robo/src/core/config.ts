@@ -54,11 +54,7 @@ export async function loadConfig(file = 'robo', compile = false): Promise<Config
 			})
 		}
 	} else {
-		config = {
-			clientOptions: {
-				intents: []
-			}
-		}
+		config = {}
 	}
 
 	_config = config

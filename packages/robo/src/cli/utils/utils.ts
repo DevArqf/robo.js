@@ -1,9 +1,7 @@
 import { color } from '../../core/color.js'
 import fs, { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { DEFAULT_CONFIG } from '../../core/constants.js'
-import { CommandConfig, Config, SageOptions } from '../../types/index.js'
-import { getConfig } from '../../core/config.js'
+import type { Config } from '../../types/index.js'
 import { createRequire } from 'node:module'
 import { ChildProcess, SpawnOptions, execSync, exec as nodeExec, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -12,7 +10,6 @@ import path from 'node:path'
 import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { IS_BUN_PM } from './runtime-utils.js'
-import { InteractionDeferReplyOptions, InteractionReplyOptions, MessageFlags } from 'discord.js'
 import type { Pod } from '../../roboplay/types.js'
 
 export const __DIRNAME = path.dirname(fileURLToPath(import.meta.url))
@@ -35,22 +32,6 @@ export function cleanTempDir() {
 			throw error
 		}
 	}
-}
-
-const supportsEphemeralFlag = typeof MessageFlags !== 'undefined' && MessageFlags?.Ephemeral != null
-
-export function withEphemeralDefer<T extends InteractionDeferReplyOptions>(opts: T, on = true): T {
-	if (!on) return opts
-	if (supportsEphemeralFlag) opts.flags = MessageFlags.Ephemeral
-	else opts.ephemeral = true
-	return opts
-}
-
-export function withEphemeralReply<T extends InteractionReplyOptions>(opts: T, on = true): T {
-	if (!on) return opts
-	if (supportsEphemeralFlag) opts.flags = MessageFlags.Ephemeral
-	else opts.ephemeral = true
-	return opts
 }
 
 export function getPodStatusColor(status: Pod['status']) {
@@ -257,28 +238,6 @@ export async function findPackagePath(packageName: string, currentPath: string):
 
 	const parentPath = path.resolve(nodeModulesPath, '..')
 	return parentPath !== currentPath ? findPackagePath(packageName, parentPath) : null
-}
-
-export function getSage(commandConfig?: CommandConfig, config?: Config): SageOptions {
-	// Ensure config always has a value
-	if (!config) {
-		config = getConfig()
-	}
-
-	// Disable all sage options if commandConfig.sage is disabled or if it is undefined and config.sage is disabled
-	if (commandConfig?.sage === false || (commandConfig?.sage === undefined && config?.sage === false)) {
-		return {
-			defer: false,
-			deferBuffer: 0,
-			ephemeral: false,
-			errorReplies: false
-		}
-	}
-
-	return {
-		...DEFAULT_CONFIG.sage,
-		...(config?.sage === false ? {} : commandConfig?.sage ?? config?.sage ?? {})
-	}
 }
 
 interface WatchedPlugin {

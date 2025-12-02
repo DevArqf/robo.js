@@ -4,8 +4,26 @@
  * Runs before directory scanning. Validates environment and prepares build context.
  */
 import type { BuildContext } from 'robo.js'
-import { Env } from 'robo.js'
+import { Env, registerEnvPattern } from 'robo.js'
 import { discordLogger } from '../../core/logger.js'
+
+// Register Discord-specific environment variable patterns
+registerEnvPattern('DISCORD_TOKEN', {
+	name: 'Discord Bot Token',
+	minLength: 70,
+	maxLength: 80
+})
+registerEnvPattern('DISCORD_CLIENT_ID', {
+	name: 'Discord Client ID',
+	minLength: 17,
+	maxLength: 19,
+	regex: /^\d+$/
+})
+registerEnvPattern('DISCORD_CLIENT_SECRET', {
+	name: 'Discord Client Secret',
+	minLength: 32,
+	maxLength: 32
+})
 
 export default function (context: BuildContext) {
 	const { mode } = context

@@ -11,7 +11,7 @@ export type Styler = Wrapper & { readonly [K in StyleName]: Styler }
 export type ChainablePalette = { readonly [K in StyleName]: Styler }
 
 const {
-	env = {},
+	env = {} as NodeJS.ProcessEnv,
 	argv = [],
 	platform = '',
 	stdout = {}

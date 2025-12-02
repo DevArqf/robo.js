@@ -17,7 +17,7 @@ import type { BuildCommandOptions } from '../cli/commands/build/index.js'
 import type { CliContext } from '../types/cli.js'
 
 /**
- * Robo is the main entry point for your bot. It provides a simple API for starting, stopping, and restarting your Robo.
+ * Robo is the main entry point for your app. It provides a simple API for starting, stopping, and restarting your Robo.
  *
  * ```ts
  * import { Robo } from 'robo.js'
@@ -27,7 +27,7 @@ import type { CliContext } from '../types/cli.js'
  *
  * You do not normally need to use this API directly, as the CLI will handle starting and stopping for you.
  *
- * [**Learn more:** Robo](https://robojs.dev/discord-bots/migrate)
+ * [**Learn more:** Robo](https://robojs.dev/robojs/overview)
  */
 export const Robo = { restart, start, stop, build }
 

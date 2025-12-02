@@ -53,7 +53,7 @@ type ValueAtPath<T, P extends string> = P extends `${infer Key}.${infer Rest}`
 let _globalOverwrites: string[] = []
 
 /**
- * Sometimes you need to store sensitive information, like API keys, database URLs, or Discord Credentials.
+ * Sometimes you need to store sensitive information, like API keys, database URLs, or other credentials.
  *
  * ```ts
  * import { Env } from 'robo.js'
@@ -75,8 +75,8 @@ export class Env<T> {
 	 *
 	 * ```ts
 	 * const env = new Env({
-	 * 	discord: {
-	 * 		clientId: { env: 'DISCORD_CLIENT_ID' }
+	 * 	database: {
+	 * 		url: { env: 'DATABASE_URL' }
 	 * 	},
 	 * 	example: {
 	 * 		default: 'This is an example',
@@ -85,8 +85,8 @@ export class Env<T> {
 	 * 	nodeEnv: { env: 'NODE_ENV' }
 	 * })
 	 *
-	 * // Returns the value of the DISCORD_CLIENT_ID environment variable
-	 * env.get('discord.clientId')
+	 * // Returns the value of the DATABASE_URL environment variable
+	 * env.get('database.url')
 	 * ```
 	 *
 	 * @param schema - The schema of environment variables to use for type-checking and default values.
@@ -185,12 +185,6 @@ export class Env<T> {
 export const env = new Env({
 	boot: {
 		disableCheck: { env: 'DISABLE_BOOT_CHECK' }
-	},
-	discord: {
-		clientId: { env: 'DISCORD_CLIENT_ID' },
-		debugChannelId: { env: 'DISCORD_DEBUG_CHANNEL_ID' },
-		guildId: { env: 'DISCORD_GUILD_ID' },
-		token: { env: 'DISCORD_TOKEN' }
 	},
 	nodeEnv: { env: 'NODE_ENV' },
 	roboplay: {

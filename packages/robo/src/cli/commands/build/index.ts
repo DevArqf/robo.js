@@ -6,7 +6,6 @@ import plugin from './plugin.js'
 import path from 'node:path'
 import { Env } from '../../../core/env.js'
 import { Mode, resolveCliMode, setMode } from '../../../core/mode.js'
-import { generateDefaults } from '../../utils/generate-defaults.js'
 import { Compiler } from '../../utils/compiler.js'
 import { buildPublicDirectory } from '../../utils/public.js'
 import {
@@ -28,7 +27,7 @@ import type { LoggerOptions } from '../../../core/logger.js'
 import type { RouteEntries } from '../../../types/routes.js'
 
 const command = new Command('build')
-	.description('Builds your bot for production.')
+	.description('Builds your Robo for production.')
 	.option('-d', '--dev', 'build for development')
 	.option('-m', '--mode', 'specify the mode(s) to run in (dev, beta, prod, etc...)')
 	.option('-s', '--silent', 'do not print anything')
@@ -116,9 +115,6 @@ export async function buildAction(context: CliContext) {
 		files: files
 	})
 	logger.debug(`Compiled in ${compileTime}ms`)
-
-	// Assign default commands and events (now handled by plugins)
-	await generateDefaults()
 
 	// Discover and process routes for granular manifest
 	let routeEntries: RouteEntries = {}

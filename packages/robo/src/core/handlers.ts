@@ -2,7 +2,7 @@ import { getConfig } from './config.js'
 import { DEFAULT_CONFIG, TIMEOUT } from './constants.js'
 import { logger } from './logger.js'
 import { timeout } from '../cli/utils/utils.js'
-import type { CommandConfig, PluginData, SmartCommandConfig } from '../types/index.js'
+import type { PluginData } from '../types/index.js'
 
 /**
  * Execute lifecycle event handlers (_start, _stop, _restart)
@@ -43,22 +43,4 @@ export async function executeEventHandler(
 export function createLifecycleTimeout(): Promise<symbol> {
 	const config = getConfig()
 	return timeout(() => TIMEOUT, config?.timeouts?.lifecycle || DEFAULT_CONFIG.timeouts.lifecycle)
-}
-
-/**
- * Creates a command configuration with proper type inference.
- * This is a type-safe identity function that helps TypeScript infer option types.
- *
- * @example
- * ```ts
- * export const config = createCommandConfig({
- *   description: 'Say hello',
- *   options: [
- *     { name: 'name', type: 'string', required: true }
- *   ]
- * })
- * ```
- */
-export function createCommandConfig<C extends CommandConfig>(config: SmartCommandConfig<C>): C {
-	return config as C
 }

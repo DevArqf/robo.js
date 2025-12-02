@@ -26,7 +26,7 @@ import cli from './commands/cli.js'
 const command = new Command('robo')
 export default command
 
-command.description('Power up Discord with effortless activities, bots, web servers, and more! ⚡')
+command.description('Build powerful apps with plugins, web servers, and more! ⚡')
 command.version(packageJson.version)
 command.option('-h', '--help', 'Shows this help menu')
 command.addCommand(build)

@@ -47,17 +47,50 @@ export interface SageOptions {
 }
 
 /**
+ * Default command/context menu configuration.
+ */
+export interface CommandDefaults {
+	/** Default interaction contexts for commands */
+	contexts?: ('Guild' | 'BotDM' | 'PrivateChannel')[]
+	/** Default integration types for commands */
+	integrationTypes?: ('GuildInstall' | 'UserInstall')[]
+	/** Default member permissions required for commands */
+	defaultMemberPermissions?: string | number | bigint
+}
+
+/**
+ * Timeout configuration for various operations.
+ */
+export interface TimeoutConfig {
+	/** Autocomplete response timeout in milliseconds (default: 3000) */
+	autocomplete?: number
+	/** Time before auto-deferring commands in milliseconds (default: 250, set via sage.deferBuffer) */
+	commandDeferral?: number
+	/** Command registration timeout in milliseconds (default: 30000) */
+	commandRegistration?: number
+}
+
+/**
  * Discord plugin configuration.
  */
 export interface DiscordConfig {
+	/**
+	 * Whether to automatically register commands with Discord API during builds.
+	 * - `true` (default): Always register commands
+	 * - `false`: Never register commands
+	 * - `string[]`: Only register in specified modes (e.g., ['production'], ['development', 'production'])
+	 */
+	autoRegisterCommands?: boolean | string[]
 	/** Discord.js Client options */
 	clientOptions?: ClientOptions
+	/** Default configuration for commands and context menus */
+	defaults?: CommandDefaults
 	/** Sage (auto-defer/reply) configuration. Set to false to disable. */
 	sage?: false | SageOptions
-	/** Whether to register commands in development mode */
-	registerOnDev?: boolean
 	/** Server IDs to use as test servers for command registration */
 	testServers?: string[]
+	/** Timeout configuration for various operations */
+	timeouts?: TimeoutConfig
 }
 
 /**

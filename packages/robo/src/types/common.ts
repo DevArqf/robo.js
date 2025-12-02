@@ -1,5 +1,4 @@
 import type { LogLevel } from '../core/logger.js'
-import type { CommandContext, CommandIntegrationType } from './commands.js'
 
 /**
  * Handler object returned after lazy import.
@@ -61,24 +60,6 @@ export interface HandlerRecord<THandler = unknown, TNamedExports = Record<string
 	enabled: boolean
 }
 
-export interface ContextConfig extends BaseConfig {
-	contexts?: CommandContext[]
-	defaultMemberPermissions?: string | number | bigint
-	/** @deprecated Use `contexts` instead */
-	dmPermission?: boolean
-	integrationTypes?: CommandIntegrationType[]
-	nameLocalizations?: Record<string, string>
-	sage?: false | SageOptions
-	timeout?: number
-}
-
-export type ContextEntry = ContextConfig
-
-export interface Context {
-	config?: ContextConfig
-	default: (...data: unknown[]) => unknown | Promise<unknown>
-}
-
 export interface FlashcoreAdapter<K = string, V = unknown> {
 	clear(): Promise<boolean> | Promise<void> | boolean | void
 	delete(key: K): Promise<boolean> | boolean
@@ -87,21 +68,6 @@ export interface FlashcoreAdapter<K = string, V = unknown> {
 	set(key: K, value: V): Promise<boolean> | boolean
 	has(key: K): Promise<boolean> | boolean
 }
-
-export interface MiddlewareData {
-	payload: unknown[]
-	record: HandlerRecord
-}
-
-export interface MiddlewareResult {
-	abort?: boolean
-}
-
-export interface Middleware {
-	default: (data: MiddlewareData) => void | MiddlewareResult | Promise<MiddlewareResult>
-}
-
-export type MiddlewareEntry = BaseConfig
 
 export interface PackageJson {
 	name: string
@@ -137,15 +103,6 @@ export interface SpiritMessage {
 	payload?: unknown
 	state?: Record<string, unknown>
 	verbose?: boolean
-}
-
-export type SageOptions = {
-	defer?: boolean
-	deferBuffer?: number
-	ephemeral?: boolean
-	errorChannelId?: string
-	errorMessage?: string
-	errorReplies?: boolean
 }
 
 export type Plugin = string | [string, unknown, PluginMetaOptions?]
@@ -190,6 +147,5 @@ export interface BaseConfig {
 	}
 	description?: string
 	disabled?: boolean
-	serverOnly?: string[] | string
 	timeout?: number
 }

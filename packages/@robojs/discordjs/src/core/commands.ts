@@ -14,6 +14,8 @@ import {
 	SlashCommandSubcommandBuilder
 } from 'discord.js'
 import type { ApplicationCommandOptionBase, APIApplicationCommand } from 'discord.js'
+import { color, Env, Flashcore, Logger, logger } from 'robo.js'
+import { Boot } from 'robo.js/unstable.js'
 import { discordLogger } from './logger.js'
 import type {
 	CommandContext,
@@ -32,25 +34,48 @@ const DEFAULT_INTEGRATION_TYPES: CommandIntegrationType[] = ['GuildInstall', 'Us
 const DEFAULT_REGISTRATION_TIMEOUT = 30000
 
 /**
+ * Flashcore key for tracking command registration errors.
+ * Can be used to check if previous command registration failed.
+ */
+export const FLASHCORE_KEY_COMMAND_REGISTER_ERROR = 'robo:discordjs:commandRegisterError'
+
+/**
+ * Mutable logger reference that can be swapped in dev mode.
+ */
+let commandLogger: Logger = discordLogger
+
+/**
  * Build context menu commands for Discord API.
  */
 export function buildContextCommands(
 	contextCommands: Record<string, ContextEntry>,
 	type: 'message' | 'user',
-	config?: DiscordConfig
+	config?: DiscordConfig,
+	dev?: boolean
 ): ContextMenuCommandBuilder[] {
+	if (dev) {
+		commandLogger = new Logger({
+			enabled: true,
+			level: 'info'
+		}).fork('discord')
+	}
+
+	const defaultContexts = config?.defaults?.contexts ?? DEFAULT_CONTEXTS
+	const defaultIntegrationTypes = config?.defaults?.integrationTypes ?? DEFAULT_INTEGRATION_TYPES
+
 	return Object.entries(contextCommands).map(([key, entry]): ContextMenuCommandBuilder => {
-		discordLogger.debug(`Building context command: ${key}`)
+		commandLogger.debug(`Building context command: ${key}`)
 
 		const commandBuilder = new ContextMenuCommandBuilder()
-			.setContexts((entry.contexts ?? DEFAULT_CONTEXTS).map(getContextType))
-			.setIntegrationTypes((entry.integrationTypes ?? DEFAULT_INTEGRATION_TYPES).map(getIntegrationType))
+			.setContexts((entry.contexts ?? defaultContexts).map(getContextType))
+			.setIntegrationTypes((entry.integrationTypes ?? defaultIntegrationTypes).map(getIntegrationType))
 			.setName(key)
 			.setNameLocalizations(entry.nameLocalizations || {})
 			.setType(type === 'message' ? 3 : 2)
 
-		if (entry.defaultMemberPermissions !== undefined) {
-			commandBuilder.setDefaultMemberPermissions(entry.defaultMemberPermissions)
+		const defaultMemberPermissions = entry.defaultMemberPermissions ?? config?.defaults?.defaultMemberPermissions
+		if (defaultMemberPermissions !== undefined) {
+			commandBuilder.setDefaultMemberPermissions(defaultMemberPermissions)
 		}
 		if (entry.dmPermission !== undefined) {
 			commandBuilder.setDMPermission(entry.dmPermission)
@@ -65,22 +90,33 @@ export function buildContextCommands(
  */
 export function buildSlashCommands(
 	commands: Record<string, CommandEntry>,
-	config?: DiscordConfig
+	config?: DiscordConfig,
+	dev?: boolean
 ): SlashCommandBuilder[] {
+	if (dev) {
+		commandLogger = new Logger({
+			enabled: true,
+			level: 'info'
+		}).fork('discord')
+	}
+
+	const defaultContexts = config?.defaults?.contexts ?? DEFAULT_CONTEXTS
+	const defaultIntegrationTypes = config?.defaults?.integrationTypes ?? DEFAULT_INTEGRATION_TYPES
+
 	return Object.entries(commands).map(([key, entry]): SlashCommandBuilder => {
-		discordLogger.debug(`Building slash command: ${key}`)
+		commandLogger.debug(`Building slash command: ${key}`)
 
 		let commandBuilder: SlashCommandBuilder
 		try {
 			commandBuilder = new SlashCommandBuilder()
 				.setName(key)
-				.setContexts((entry.contexts ?? DEFAULT_CONTEXTS).map(getContextType))
-				.setIntegrationTypes((entry.integrationTypes ?? DEFAULT_INTEGRATION_TYPES).map(getIntegrationType))
+				.setContexts((entry.contexts ?? defaultContexts).map(getContextType))
+				.setIntegrationTypes((entry.integrationTypes ?? defaultIntegrationTypes).map(getIntegrationType))
 				.setNameLocalizations(entry.nameLocalizations || {})
 				.setDescription(entry.description || 'No description provided')
 				.setDescriptionLocalizations(entry.descriptionLocalizations || {})
 		} catch (e) {
-			discordLogger.error(`Could not build slash command: /${key}`)
+			commandLogger.error('Could not build slash command:', color.bold(`/${key}`))
 			throw e
 		}
 
@@ -97,7 +133,7 @@ export function buildSlashCommands(
 								.setDescription(subcommandEntry.description || 'No description provided')
 								.setDescriptionLocalizations(subcommandEntry.descriptionLocalizations || {})
 						} catch (e) {
-							discordLogger.error(`Could not build subcommand: /${key} ${subcommandName}`)
+							commandLogger.error('Could not build subcommand:', color.bold(`/${key} ${subcommandName}`))
 							throw e
 						}
 
@@ -116,7 +152,7 @@ export function buildSlashCommands(
 
 									return subcommand
 								} catch (e) {
-									discordLogger.error(`Could not build subcommand group: /${key} ${subcommandName} ${subcommandGroupName}`)
+									commandLogger.error('Could not build subcommand group:', color.bold(`/${key} ${subcommandName} ${subcommandGroupName}`))
 									throw e
 								}
 							})
@@ -142,7 +178,7 @@ export function buildSlashCommands(
 
 						return subcommand
 					} catch (e) {
-						discordLogger.error(`Could not build subcommand: /${key} ${subcommandName}`)
+						commandLogger.error('Could not build subcommand:', color.bold(`/${key} ${subcommandName}`))
 						throw e
 					}
 				})
@@ -152,8 +188,9 @@ export function buildSlashCommands(
 				addOptionToCommandBuilder(commandBuilder, option.type, option)
 			})
 
-			if (entry.defaultMemberPermissions !== undefined) {
-				commandBuilder.setDefaultMemberPermissions(entry.defaultMemberPermissions)
+			const defaultMemberPermissions = entry.defaultMemberPermissions ?? config?.defaults?.defaultMemberPermissions
+			if (defaultMemberPermissions !== undefined) {
+				commandBuilder.setDefaultMemberPermissions(defaultMemberPermissions)
 			}
 			if (entry.dmPermission !== undefined) {
 				commandBuilder.setDMPermission(entry.dmPermission)
@@ -255,12 +292,42 @@ export function addOptionToCommandBuilder(
 			commandBuilder.addUserOption((builder) => optionPredicate(builder))
 			break
 		default:
-			discordLogger.warn(`Invalid option type: ${type}`)
+			commandLogger.warn(`Invalid option type: ${type}`)
 	}
 }
 
 /**
+ * Retry tracking entry for telemetry/debugging.
+ */
+export interface RetryEntry {
+	scope: string
+	attempt: number
+	reason: string
+	delay: number
+}
+
+/**
+ * Options for command registration.
+ */
+export interface RegisterCommandsOptions {
+	/** Whether to force re-registration of all commands */
+	force?: boolean
+	/** Registration timeout in milliseconds */
+	timeout?: number
+	/** Array to track retry attempts */
+	retries?: RetryEntry[]
+	/** Whether the embedded app SDK is installed (for Activities support) */
+	hasEmbeddedSdk?: boolean
+}
+
+/**
  * Register commands with Discord API.
+ *
+ * Supports:
+ * - Entry command detection and re-registration for Discord Activities
+ * - Retry tracking for telemetry/debugging
+ * - Configurable timeout
+ * - Rate limit handling with exponential backoff
  */
 export async function registerCommandsToDiscord(
 	rest: REST,
@@ -268,14 +335,23 @@ export async function registerCommandsToDiscord(
 	guildId: string | undefined,
 	commandData: unknown[],
 	force: boolean,
-	timeout: number = DEFAULT_REGISTRATION_TIMEOUT
+	options?: number | RegisterCommandsOptions
 ): Promise<void> {
+	// Handle legacy signature (timeout as number) and new options object
+	const opts: RegisterCommandsOptions =
+		typeof options === 'number' ? { timeout: options } : options ?? {}
+	const { timeout = DEFAULT_REGISTRATION_TIMEOUT, retries, hasEmbeddedSdk } = opts
+
 	// Get existing commands
 	const existingCommands = (await rest.get(
 		guildId ? Routes.applicationGuildCommands(clientId, guildId) : Routes.applicationCommands(clientId)
 	)) as APIApplicationCommand[]
 
-	discordLogger.debug(`Found ${existingCommands.length} existing commands`)
+	commandLogger.debug(`Found ${existingCommands.length} existing commands:`, existingCommands)
+
+	// See if an entry command already exists (for Discord Activities)
+	let entryCommand: APIApplicationCommand | undefined = existingCommands.find((command) => command.type === 4)
+	commandLogger.debug('Entry command:', entryCommand)
 
 	if (force) {
 		// Start clean by forcing a deletion of all existing commands
@@ -287,7 +363,30 @@ export async function registerCommandsToDiscord(
 			)
 		})
 		await Promise.all(deletions)
-		discordLogger.debug('Successfully cleaned up existing commands')
+		commandLogger.debug('Successfully cleaned up existing commands')
+
+		// Prepare entry command for re-registration
+		// @ts-expect-error - This is a valid command object
+		entryCommand = {
+			name: 'launch',
+			description: 'Launch an activity',
+			contexts: [0, 1, 2],
+			integration_types: [0, 1],
+			type: 4,
+			handler: 2
+		}
+	}
+
+	// Ensure entry command is added if already there (or if reset)
+	try {
+		if (entryCommand && !guildId && hasEmbeddedSdk) {
+			commandData.push(entryCommand)
+			commandLogger.debug('Added entry command to registration batch as @discord/embedded-app-sdk is installed')
+		} else if (entryCommand && !guildId && !hasEmbeddedSdk) {
+			commandLogger.debug('Skipping entry command registration as @discord/embedded-app-sdk is not installed')
+		}
+	} catch (e) {
+		commandLogger.debug('Error checking for @discord/embedded-app-sdk package:', e)
 	}
 
 	// Register commands with retry and timeout handling
@@ -298,43 +397,198 @@ export async function registerCommandsToDiscord(
 
 	while (attempt <= maxRetries) {
 		try {
-			const controller = new AbortController()
-			const timeoutId = setTimeout(() => controller.abort(), timeout)
-
-			try {
-				await (guildId
+			const registerCommandsPromise = (
+				guildId
 					? rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commandData })
-					: rest.put(Routes.applicationCommands(clientId), { body: commandData }))
+					: rest.put(Routes.applicationCommands(clientId), { body: commandData })
+			)
+				.then(() => ({ type: 'registerCommands' as const }))
+				.catch(async (error) => {
+					// Check for rate limit (429)
+					if (isRateLimitError(error)) {
+						const retryAfter = getRetryAfter(error)
+						const delay = retryAfter ?? Math.min(baseDelay * Math.pow(2, attempt), maxDelay)
 
-				clearTimeout(timeoutId)
-				return
-			} catch (error: unknown) {
-				clearTimeout(timeoutId)
+						// Track retry if array provided
+						if (retries) {
+							retries.push({
+								scope: guildId ? `guild:${guildId}` : 'global',
+								attempt: attempt + 1,
+								reason: 'rate_limit',
+								delay
+							})
+						}
 
-				// Check for rate limit (429)
-				if (isRateLimitError(error)) {
-					const retryAfter = getRetryAfter(error)
-					const delay = retryAfter ?? Math.min(baseDelay * Math.pow(2, attempt), maxDelay)
-
-					if (attempt < maxRetries) {
-						discordLogger.debug(`Rate limited, waiting ${delay}ms before retry ${attempt + 1}/${maxRetries}`)
-						await sleep(delay)
-						attempt++
-						continue
+						throw { type: 'rate_limit' as const, delay, error }
 					}
-				}
+					throw error
+				})
 
-				throw error
+			const timeoutPromise = createTimeout<{ type: 'timeout' }>(() => ({ type: 'timeout' }), timeout)
+
+			const result = await Promise.race([registerCommandsPromise, timeoutPromise])
+
+			if (result.type === 'timeout') {
+				throw { type: 'timeout' as const }
 			}
-		} catch (error) {
-			if (attempt >= maxRetries) {
-				throw error
+
+			// Success - exit retry loop
+			return
+		} catch (error: unknown) {
+			if (
+				typeof error === 'object' &&
+				error !== null &&
+				'type' in error &&
+				error.type === 'rate_limit' &&
+				attempt < maxRetries
+			) {
+				// Wait and retry
+				const delay =
+					('delay' in error && typeof error.delay === 'number' ? error.delay : undefined) ||
+					Math.min(baseDelay * Math.pow(2, attempt), maxDelay)
+				commandLogger.debug(`Rate limited, waiting ${delay}ms before retry ${attempt + 1}/${maxRetries}`)
+				await sleep(delay)
+				attempt++
+				continue
 			}
-			attempt++
+
+			// Max retries exceeded or other error
+			if (typeof error === 'object' && error !== null && 'type' in error && error.type === 'timeout') {
+				throw new Error('Command registration timed out')
+			}
+			if (typeof error === 'object' && error !== null && 'error' in error) {
+				throw error.error
+			}
+			throw error
 		}
 	}
 
 	throw new Error('Max retries exceeded for rate limiting')
+}
+
+/**
+ * High-level command registration function.
+ *
+ * Handles the full registration workflow including:
+ * - Loading environment variables
+ * - Building command structures
+ * - Logging changes with colors
+ * - Handling command deletions for removed commands
+ * - Error handling and user feedback
+ */
+export async function registerCommands(
+	dev: boolean,
+	force: boolean,
+	newCommands: Record<string, CommandEntry>,
+	newMessageContextCommands: Record<string, ContextEntry>,
+	newUserContextCommands: Record<string, ContextEntry>,
+	changedCommands: string[],
+	addedCommands: string[],
+	removedCommands: string[],
+	changedContextCommands: string[],
+	addedContextCommands: string[],
+	removedContextCommands: string[],
+	config?: DiscordConfig
+): Promise<void> {
+	const envData = Env.data()
+	const clientId = envData.DISCORD_CLIENT_ID
+	const guildId = envData.DISCORD_GUILD_ID ?? config?.testServers?.[0]
+	const token = envData.DISCORD_TOKEN
+	const commandType = guildId ? 'guild' : 'global'
+
+	if (!token || !clientId) {
+		commandLogger.error(
+			`${color.bold('DISCORD_TOKEN')} or ${color.bold('DISCORD_CLIENT_ID')} not found in environment variables`
+		)
+		return
+	}
+
+	const startTime = Date.now()
+	const rest = new REST({ version: '10' }).setToken(token)
+
+	try {
+		const slashCommands = buildSlashCommands(newCommands, config, dev)
+		const contextMessageCommands = buildContextCommands(newMessageContextCommands, 'message', config, dev)
+		const contextUserCommands = buildContextCommands(newUserContextCommands, 'user', config, dev)
+
+		// Log changes with colors
+		const addedChanges = addedCommands.map((cmd) => color.green(`/${color.bold(cmd)} (new)`))
+		const removedChanges = removedCommands.map((cmd) => color.red(`/${color.bold(cmd)} (deleted)`))
+		const updatedChanges = changedCommands.map((cmd) => color.blue(`/${color.bold(cmd)} (updated)`))
+		const addedContextChanges = addedContextCommands.map((cmd) => color.green(`${color.bold(cmd)} (new)`))
+		const removedContextChanges = removedContextCommands.map((cmd) => color.red(`${color.bold(cmd)} (deleted)`))
+		const updatedContextChanges = changedContextCommands.map((cmd) => color.blue(`${color.bold(cmd)} (updated)`))
+		const allChanges = [...addedChanges, ...removedChanges, ...updatedChanges]
+		const allContextChanges = [...addedContextChanges, ...removedContextChanges, ...updatedContextChanges]
+
+		if (allChanges.length > 0) {
+			commandLogger.info('Command changes: ' + allChanges.join(', '))
+		}
+		if (allContextChanges.length > 0) {
+			commandLogger.info('Context menu changes: ' + allContextChanges.join(', '))
+		}
+
+		const commandData = [
+			...slashCommands.map((command) => command.toJSON()),
+			...contextMessageCommands.map((command) => command.toJSON()),
+			...contextUserCommands.map((command) => command.toJSON())
+		]
+
+		// Handle command deletions for removed commands
+		if (!force && removedCommands.length > 0) {
+			const existingCommands = (await rest.get(
+				guildId ? Routes.applicationGuildCommands(clientId, guildId) : Routes.applicationCommands(clientId)
+			)) as APIApplicationCommand[]
+
+			const deletions = removedCommands.map((command) => {
+				const existingCommand = existingCommands.find((c) => c.name === command)
+
+				if (existingCommand) {
+					commandLogger.debug(`Deleting command /${existingCommand.name}...`)
+					return rest.delete(
+						guildId
+							? Routes.applicationGuildCommand(clientId, guildId, existingCommand.id)
+							: Routes.applicationCommand(clientId, existingCommand.id)
+					)
+				}
+			})
+			await Promise.all(deletions)
+			commandLogger.debug('Successfully removed deleted commands')
+		}
+
+		// Check for embedded SDK
+		const hasEmbeddedSdk = hasProjectPackage('@discord/embedded-app-sdk')
+
+		// Use the registration logic
+		await registerCommandsToDiscord(rest, clientId, guildId, commandData, force, {
+			timeout: config?.timeouts?.commandRegistration ?? DEFAULT_REGISTRATION_TIMEOUT,
+			hasEmbeddedSdk
+		})
+
+		const endTime = Date.now() - startTime
+
+		commandLogger.info(`Successfully updated ${commandData.length} ${color.bold(commandType + ' commands')} in ${endTime}ms`)
+		commandLogger.wait(color.dim('It may take a while for the changes to reflect in Discord.'))
+
+		// Clear any previous error state
+		await Flashcore.delete(FLASHCORE_KEY_COMMAND_REGISTER_ERROR)
+	} catch (error) {
+		commandLogger.error('Could not register commands!', error)
+		commandLogger.warn(`Run ${color.bold('robo build --force')} to try again.`)
+
+		// Track error state for debugging/recovery
+		await Flashcore.set(FLASHCORE_KEY_COMMAND_REGISTER_ERROR, true)
+
+		// Notify user with actionable fix
+		await Boot.notification({
+			action: {
+				command: 'npx robo build --force',
+				label: 'Fix'
+			},
+			message: 'Command registration failed.',
+			type: 'warning'
+		})
+	}
 }
 
 /**
@@ -464,4 +718,28 @@ function getRetryAfter(error: unknown): number | undefined {
  */
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Create a timeout promise that resolves with the callback result after the specified delay.
+ */
+function createTimeout<T>(callback: () => T, ms: number): Promise<T> {
+	return new Promise<T>((resolve) =>
+		setTimeout(() => {
+			resolve(callback())
+		}, ms)
+	)
+}
+
+/**
+ * Check if a package is installed in the current project.
+ */
+function hasProjectPackage(name: string): boolean {
+	try {
+		// Use dynamic import resolution to check for package existence
+		require.resolve(name, { paths: [process.cwd()] })
+		return true
+	} catch {
+		return false
+	}
 }

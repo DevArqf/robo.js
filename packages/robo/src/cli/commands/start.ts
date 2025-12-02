@@ -12,7 +12,7 @@ import { Boot } from '../../internal/boot.js'
 import type { CliContext } from '../../types/cli.js'
 
 const command = new Command('start')
-	.description('Starts your bot in production mode.')
+	.description('Starts your Robo in production mode.')
 	.option('-id', '--instance-id', 'specify the instance ID to use')
 	.option('-l', '--log-level', 'specify the log level to use (debug, info, warn, error)')
 	.option('-m', '--mode', 'specify the mode(s) to run in (dev, beta, prod, etc...)')
@@ -84,12 +84,11 @@ async function startAction(context: CliContext) {
 		process.exit(1)
 	}
 
-	// Experimental warning, except for the disableBot flag which is a special case
+	// Experimental warning
 	const config = await loadConfig()
 	const experimentalKeys = Object.entries(config.experimental ?? {})
 		.filter(([, value]) => value)
 		.map(([key]) => key)
-		.filter((key) => key !== 'disableBot')
 
 	if (experimentalKeys.length > 0) {
 		const features = experimentalKeys.map((key) => color.bold(key)).join(', ')
@@ -113,7 +112,6 @@ async function startAction(context: CliContext) {
 	// Start Roboooooooo!! :D (dynamic to avoid premature process hooks)
 	const { Robo } = await import('../../core/robo.js')
 	Robo.start({
-		logLevel: options['log-level'],
-		shard: !!config.experimental?.shard
+		logLevel: options['log-level']
 	})
 }

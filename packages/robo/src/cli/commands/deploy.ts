@@ -21,7 +21,7 @@ const Indent = ' '.repeat(3)
 const Space = ' '.repeat(8)
 
 const command = new Command('deploy')
-	.description('Deploys your bot to RoboPlay!')
+	.description('Deploys your Robo to RoboPlay!')
 	.option('-s', '--silent', 'do not print anything')
 	.option('-v', '--verbose', 'print more information for debugging')
 	.option('-h', '--help', 'Shows the available command options')
@@ -69,15 +69,8 @@ async function deployAction(context: CliContext) {
 		return
 	}
 
-	// Sorry, only bots are supported right now!
-	const config = await loadConfig('robo', true)
-
-	if (config.experimental?.disableBot) {
-		logger.warn('Sorry, only bots are supported right now!')
-		return
-	}
-
 	// Prepare fancy formatting
+	const config = await loadConfig('robo', true)
 	const spinner = new Spinner()
 	const roboPackageJson = await getRoboPackageJson()
 	const roboName = roboPackageJson?.name ?? 'unknown'

@@ -10,6 +10,7 @@ import type {
 } from 'discord.js'
 import type { SageOptions, BaseConfig } from './common.js'
 import type { CommandContext, CommandIntegrationType } from './commands.js'
+import type { ExactContextConfig, EnforceContextConfig } from './helpers.js'
 
 /**
  * Context menu handler function type (user context).
@@ -62,6 +63,12 @@ export interface ContextConfig extends BaseConfig {
 	/** Execution timeout in milliseconds */
 	timeout?: number
 }
+
+/**
+ * Smart context config type that enables TypeScript validation.
+ * Used with `createContextConfig()` for type safety.
+ */
+export type SmartContextConfig<C extends ContextConfig> = ExactContextConfig<C> & EnforceContextConfig<C>
 
 /**
  * Context menu entry in manifest.

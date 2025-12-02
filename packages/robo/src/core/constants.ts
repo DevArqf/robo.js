@@ -9,31 +9,17 @@ export const Indent = ' '.repeat(3)
 export const Space = ' '.repeat(8)
 
 export const cloudflareLogger = logger.fork('cloudflare')
-export const discordLogger = logger.fork('discord')
 
 // TODO: Test support for ['.js', '.jsx', '.ts', '.tsx'] in Bun
 export const ALLOWED_EXTENSIONS = IS_BUN_RUNTIME ? ['.js', '.jsx', '.ts', '.tsx'] : ['.js', '.jsx']
 
 export const DEFAULT_CONFIG: Config = {
-	clientOptions: null,
-	defaults: {
-		contexts: ['Guild', 'BotDM', 'PrivateChannel'],
-		integrationTypes: ['GuildInstall']
-	},
-	sage: {
-		defer: true,
-		deferBuffer: 250,
-		ephemeral: false,
-		errorReplies: true
-	},
 	timeouts: {
-		commandRegistration: 3 * 1000,
 		lifecycle: 5 * 1000
 	}
 }
 
 export const FLASHCORE_KEYS = {
-	commandRegisterError: '__robo_command_register_error',
 	lastUpdateCheck: '__robo_last_update_check',
 	state: '__robo_state'
 }

@@ -1,4 +1,2 @@
 export { color, composeColors } from './dist/core/color.js'
 export { cleanTempDir, getTempDir } from './dist/cli/utils/utils.js'
-
-// Note: extractCommandOptions has been moved to @robojs/discordjs

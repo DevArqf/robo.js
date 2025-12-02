@@ -55,7 +55,8 @@ export function withEphemeralReply<T extends InteractionReplyOptions>(opts: T, o
 }
 
 /**
- * Get effective Sage options from command config and plugin config
+ * Get effective Sage options from command config and plugin config.
+ * Priority order for deferBuffer: command.sage.deferBuffer > plugin.sage.deferBuffer > plugin.timeouts.commandDeferral > default
  */
 export function getSage(commandConfig?: CommandConfig): SageOptions {
 	const pluginConfig = getPluginConfig()
@@ -70,9 +71,19 @@ export function getSage(commandConfig?: CommandConfig): SageOptions {
 		}
 	}
 
+	// Merge sage options with proper fallback chain for deferBuffer
+	const commandSage = typeof commandConfig?.sage === 'object' ? commandConfig.sage : {}
+	const pluginSage = typeof pluginConfig?.sage === 'object' ? pluginConfig.sage : {}
+
+	// deferBuffer priority: command > plugin sage > timeouts.commandDeferral > default
+	const deferBuffer =
+		commandSage.deferBuffer ?? pluginSage.deferBuffer ?? pluginConfig?.timeouts?.commandDeferral ?? DEFAULT_SAGE.deferBuffer
+
 	return {
 		...DEFAULT_SAGE,
-		...(pluginConfig?.sage === false ? {} : commandConfig?.sage ?? pluginConfig?.sage ?? {})
+		...pluginSage,
+		...commandSage,
+		deferBuffer
 	}
 }
 

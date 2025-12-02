@@ -21,7 +21,7 @@ import type { CliContext } from '../../types/cli.js'
 import type { Config, SpiritMessage } from '../../types/index.js'
 
 const command = new Command('dev')
-	.description('Ready, set, code your bot to life! Starts development mode.')
+	.description('Ready, set, code your Robo to life! Starts development mode.')
 	.option('-h', '--help', 'Shows the available command options')
 	.option('-id', '--instance-id', 'specify the instance ID to use')
 	.option('-l', '--log-level', 'specify the log level to use (debug, info, warn, error)')
@@ -98,11 +98,10 @@ async function devAction(context: CliContext) {
 		process.exit(1)
 	}
 
-	// Experimental warning, except for the disableBot flag which is a special case
+	// Experimental warning
 	const experimentalKeys = Object.entries(config.experimental ?? {})
 		.filter(([, value]) => value)
 		.map(([key]) => key)
-		.filter((key) => key !== 'disableBot')
 
 	if (experimentalKeys.length > 0) {
 		const features = experimentalKeys.map((key) => color.bold(key)).join(', ')
@@ -274,7 +273,7 @@ async function devAction(context: CliContext) {
 
 /**
  * Building in a separate process/thread clears the import cache.
- * This is necessary to prevent the bot from using old code.
+ * This is necessary to prevent the Robo from using old code.
  */
 export async function buildAsync(command: string | null, config: Config, verbose: boolean, changes: Change[]) {
 	return new Promise<boolean>((resolve, reject) => {
@@ -446,8 +445,8 @@ async function rebuildRobo(spiritId: string, config: Config, verbose: boolean, c
 		spirits.send(roboSpirit, { event: 'restart', verbose })
 	})
 
-	// Force abort the bot if it doesn't exit after n seconds
-	// This is to prevent the bot from running multiple instances
+	// Force abort the Robo if it doesn't exit after n seconds
+	// This is to prevent the Robo from running multiple instances
 	const forceAbort = timeout(() => {
 		if (!isTerminated && isValid) {
 			logger.warn('Robo termination timed out. Force stopping...')
@@ -455,11 +454,11 @@ async function rebuildRobo(spiritId: string, config: Config, verbose: boolean, c
 		}
 	}, config?.timeouts?.lifecycle ?? DEFAULT_CONFIG.timeouts.lifecycle)
 
-	// Wait for the bot to exit or force abort
+	// Wait for the Robo to exit or force abort
 	const awaitStop = Promise.race([terminate, forceAbort])
 	const [success] = await Promise.all([buildAsync(null, config, verbose, changes), awaitStop])
 
-	// Return null for the bot if the build failed so we can retry later
+	// Return null for the Robo if the build failed so we can retry later
 	if (!success) {
 		const id = String(process.env.ROBO_INSTANCE_ID ?? process.pid)
 		await Nanocore.update('watch', { id, status: 'attention' })
@@ -467,7 +466,7 @@ async function rebuildRobo(spiritId: string, config: Config, verbose: boolean, c
 		return null
 	}
 
-	// Start bot via spirit
+	// Start Robo via spirit
 	const start = Date.now()
 	const newSpiritId = await spirits.newTask<string>({ event: 'start' })
 	logger.debug(`Robo spirit (${composeColors(color.bold, color.cyan)(newSpiritId)}) started in ${Date.now() - start}ms`)

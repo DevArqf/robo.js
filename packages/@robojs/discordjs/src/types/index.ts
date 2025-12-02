@@ -3,7 +3,7 @@
  */
 
 // Common types
-export type { BaseConfig, DiscordConfig, PluginState, SageOptions } from './common.js'
+export type { BaseConfig, CommandDefaults, DiscordConfig, PluginState, SageOptions, TimeoutConfig } from './common.js'
 
 // Command types
 export type {
@@ -19,8 +19,22 @@ export type {
 	CommandOptionTypes,
 	CommandOptions,
 	CommandResult,
-	CommandsNamespaceController
+	CommandsNamespaceController,
+	SmartCommandConfig
 } from './commands.js'
+
+// Type helpers for config inference
+export type {
+	BaseValueOfOption,
+	ChoiceUnionOfOption,
+	ChoiceValueOf,
+	EnforceConfig,
+	EnforceContextConfig,
+	ExactConfig,
+	ExactContextConfig,
+	TypeNameOfOption,
+	ValueOfOption
+} from './helpers.js'
 
 // Event types
 export type {
@@ -43,6 +57,7 @@ export type {
 	ContextNamespaceController,
 	ContextTypeValue,
 	MessageContextHandler,
+	SmartContextConfig,
 	UserContextHandler
 } from './context.js'
 export { ContextType } from './context.js'

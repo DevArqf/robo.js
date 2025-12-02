@@ -12,39 +12,3 @@ export type * from './routes.js'
 
 // Re-export seed types from manifest.js for CLI compatibility
 export type { ManifestSeed, ManifestSeedEnv, ManifestSeedEnvVariables, PluginManifestInfo } from './manifest.js'
-
-import type { CommandEntry } from './commands.js'
-import type { ContextEntry } from './common.js'
-
-export interface RegisterSlashCommandsEntries {
-	commands?: Record<string, CommandEntry>
-	messageContext?: Record<string, ContextEntry>
-	userContext?: Record<string, ContextEntry>
-}
-
-export interface RegisterSlashCommandsOptions {
-	guildIds?: string[]
-	force?: boolean
-	clientId?: string
-	token?: string
-}
-
-export interface RegisterCommandsError {
-	command: string
-	error: string
-	type: 'validation' | 'api' | 'timeout'
-}
-
-export interface RegisterCommandsRetry {
-	scope: string
-	attempt: number
-	reason: string
-	delay: number
-}
-
-export interface RegisterCommandsResult {
-	success: boolean
-	registered: number
-	errors: RegisterCommandsError[]
-	retries?: RegisterCommandsRetry[]
-}

@@ -26,9 +26,9 @@
 		}
 	},
 	"license": "MIT",
-	"author": "Robo.js",
+	"author": "WavePlay <dev@waveplay.com> (waveplay.com)",
 	"contributors": [
-		"Robo.js Team"
+		"Pkmmte Xeleon <pk@waveplay.com>"
 	],
 	"repository": {
 		"type": "git",
@@ -37,6 +37,7 @@
 	},
 	"files": [
 		".robo/",
+		"seed/",
 		"src/",
 		"LICENSE",
 		"README.md"

@@ -238,7 +238,7 @@ async function getPluginVersion(pluginName: string): Promise<string> {
  * Execute start hooks for project and all registered plugins.
  * Runs sequentially: plugins FIRST (in registration order), then project LAST.
  *
- * This runs AFTER portal is populated but BEFORE Discord login.
+ * This runs AFTER portal is populated but BEFORE plugin connections are established.
  *
  * @param plugins - Plugin data map
  * @param mode - Runtime mode (supports custom modes like 'beta', 'staging', etc.)

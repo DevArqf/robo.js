@@ -44,9 +44,11 @@ export type {
 export type {
 	// Common
 	BaseConfig,
+	CommandDefaults,
 	DiscordConfig,
 	PluginState,
 	SageOptions,
+	TimeoutConfig,
 	// Commands
 	AutocompleteHandler,
 	Command,
@@ -61,6 +63,17 @@ export type {
 	CommandOptions,
 	CommandResult,
 	CommandsNamespaceController,
+	SmartCommandConfig,
+	// Type helpers
+	BaseValueOfOption,
+	ChoiceUnionOfOption,
+	ChoiceValueOf,
+	EnforceConfig,
+	EnforceContextConfig,
+	ExactConfig,
+	ExactContextConfig,
+	TypeNameOfOption,
+	ValueOfOption,
 	// Events
 	DiscordEventName,
 	Event,
@@ -78,6 +91,7 @@ export type {
 	ContextNamespaceController,
 	ContextTypeValue,
 	MessageContextHandler,
+	SmartContextConfig,
 	UserContextHandler,
 	// Middleware
 	Middleware,
@@ -102,9 +116,13 @@ export {
 	buildContextCommands,
 	addOptionToCommandBuilder,
 	findCommandDifferences,
+	FLASHCORE_KEY_COMMAND_REGISTER_ERROR,
 	getContextType,
-	getIntegrationType
+	getIntegrationType,
+	registerCommands,
+	registerCommandsToDiscord
 } from './core/commands.js'
+export type { RegisterCommandsOptions, RetryEntry } from './core/commands.js'
 
 // Export permission utilities
 export {
@@ -128,6 +146,9 @@ export { getClient, hasClient } from './core/client.js'
 
 // Export handler utilities
 export { getSage, extractCommandOptions, getCommandKey } from './core/utils.js'
+
+// Export config helpers
+export { createCommandConfig, createContextConfig } from './core/config-helpers.js'
 
 // Export handler execution (for advanced usage)
 export { executeCommandHandler } from './core/handlers/command.js'

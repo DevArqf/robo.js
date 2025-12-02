@@ -12,22 +12,6 @@ import type { EnvMetadata, EnvPattern, EnvVariableStatus } from '../../types/man
  * Plugins can register additional patterns.
  */
 const knownPatterns: Record<string, EnvPattern> = {
-	DISCORD_TOKEN: {
-		name: 'Discord Bot Token',
-		minLength: 70,
-		maxLength: 80
-	},
-	DISCORD_CLIENT_ID: {
-		name: 'Discord Client ID',
-		minLength: 17,
-		maxLength: 19,
-		regex: /^\d+$/
-	},
-	DISCORD_CLIENT_SECRET: {
-		name: 'Discord Client Secret',
-		minLength: 32,
-		maxLength: 32
-	},
 	DATABASE_URL: {
 		name: 'Database URL',
 		regex: /^(postgres|postgresql|mysql|mongodb|sqlite|mariadb):\/\//

@@ -18,6 +18,7 @@ import type {
 	User
 } from 'discord.js'
 import type { SageOptions, BaseConfig } from './common.js'
+import type { ExactConfig, EnforceConfig, ValueOfOption } from './helpers.js'
 
 /**
  * Command handler function type.
@@ -68,6 +69,12 @@ export interface CommandConfig extends BaseConfig {
 	/** Execution timeout in milliseconds */
 	timeout?: number
 }
+
+/**
+ * Smart command config type that enables TypeScript to infer option types.
+ * Used with `createCommandConfig()` for full type inference.
+ */
+export type SmartCommandConfig<C extends CommandConfig> = ExactConfig<C> & EnforceConfig<C>
 
 /**
  * Interaction context types.
@@ -145,19 +152,13 @@ export type CommandOptionTypes = {
 
 /**
  * Infer options type from command config.
+ * Uses ValueOfOption from helpers for full type inference including choices.
  */
 export type CommandOptions<ConfigType extends CommandConfig> = {
 	[K in NonNullable<ConfigType['options']>[number] as K['name']]: K extends { required: true }
 		? ValueOfOption<K>
 		: ValueOfOption<K> | undefined
 }
-
-/**
- * Get the value type of an option based on its type property.
- */
-type ValueOfOption<O extends CommandOption> = O extends { type: keyof CommandOptionTypes }
-	? CommandOptionTypes[O['type']]
-	: string
 
 /**
  * Command controller for portal.discordjs.command()
