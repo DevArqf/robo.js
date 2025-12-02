@@ -1,19 +1,17 @@
-import type { CliContext } from 'robo.js'
+import { createCliCommandConfig, type CliContext } from 'robo.js/cli.js'
 
-export const config = {
+export const config = createCliCommandConfig({
 	description: 'Greet someone by name',
 	options: [
 		{ alias: '-n', name: '--name', description: 'Name to greet', type: 'string', default: 'World' },
 		{ alias: '-l', name: '--loud', description: 'Use uppercase', type: 'boolean' }
 	]
-}
+} as const)
 
-export default function greet(ctx: CliContext) {
-	const name = ctx.options.name as string
-	const loud = ctx.options.loud as boolean
+export default function greet(ctx: CliContext<typeof config>) {
+	// TypeScript knows: name is string (has default), loud is boolean | undefined
+	const message = `Hello, ${ctx.options.name}!`
+	console.log(ctx.options.loud ? message.toUpperCase() : message)
 
-	const message = `Hello, ${name}!`
-	console.log(loud ? message.toUpperCase() : message)
-
-	return { greeted: name, loud }
+	return { greeted: ctx.options.name, loud: ctx.options.loud ?? false }
 }

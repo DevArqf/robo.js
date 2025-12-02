@@ -47,14 +47,33 @@ export interface CliCommandConfig {
 	priority?: number
 }
 
+import type { CliOptionsFromConfig } from './cli-helpers.js'
+
 /**
  * Context passed to CLI command handlers.
+ * Pass your config type as the generic parameter to get typed options.
+ *
+ * @example
+ * ```ts
+ * import { createCliCommandConfig, type CliContext } from 'robo.js/cli.js'
+ *
+ * export const config = createCliCommandConfig({
+ *   description: 'My command',
+ *   options: [
+ *     { alias: '-n', name: '--name', type: 'string', required: true }
+ *   ]
+ * } as const)
+ *
+ * export default function myCommand(ctx: CliContext<typeof config>) {
+ *   ctx.options.name // TypeScript knows this is `string`
+ * }
+ * ```
  */
-export interface CliContext {
+export interface CliContext<C extends CliCommandConfig | undefined = undefined> {
 	/** Parsed positional arguments */
 	args: string[]
-	/** Parsed options (flag values) */
-	options: Record<string, unknown>
+	/** Parsed options (flag values) - typed when using createCliCommandConfig */
+	options: C extends CliCommandConfig ? CliOptionsFromConfig<C> : Record<string, unknown>
 	/** Logger instance (forked for plugins) */
 	logger: Logger
 	/** Project working directory */
@@ -200,5 +219,18 @@ export interface LoadedCliCommand {
 	/** Command handler function */
 	handler: CliHandler
 }
+
+// =========================================================================
+// Type-Safe Config Helpers
+// =========================================================================
+
+// Re-export type utilities from cli-helpers
+export type {
+	CliOptionsFromConfig,
+	SmartCliCommandConfig,
+	CliOptionTypeMap,
+	ValueOfCliOption,
+	ExtractOptionName
+} from './cli-helpers.js'
 
 export default {}

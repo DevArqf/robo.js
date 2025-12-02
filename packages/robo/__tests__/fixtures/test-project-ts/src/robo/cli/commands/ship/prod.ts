@@ -1,21 +1,19 @@
-import type { CliContext } from 'robo.js'
+import { createCliCommandConfig, type CliContext } from 'robo.js/cli.js'
 
-export const config = {
+export const config = createCliCommandConfig({
 	description: 'Ship to production environment',
 	options: [
 		{ alias: '-f', name: '--force', description: 'Force shipping', type: 'boolean' },
 		{ alias: '-t', name: '--tag', description: 'Release tag', type: 'string', required: true }
 	]
-}
+} as const)
 
-export default function shipProd(ctx: CliContext) {
-	const force = ctx.options.force as boolean
-	const tag = ctx.options.tag as string
-
-	console.log(`Shipping to production with tag: ${tag}`)
-	if (force) {
+export default function shipProd(ctx: CliContext<typeof config>) {
+	// TypeScript knows: tag is string (required), force is boolean | undefined
+	console.log(`Shipping to production with tag: ${ctx.options.tag}`)
+	if (ctx.options.force) {
 		console.log('Force mode enabled')
 	}
 
-	return { environment: 'production', tag, force }
+	return { environment: 'production', tag: ctx.options.tag, force: ctx.options.force ?? false }
 }

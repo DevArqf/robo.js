@@ -1,3 +1,4 @@
+export { createCliCommandConfig } from './core/cli-config-helpers.js'
 export { color, composeColors } from './core/color.js'
 export { registerEnvPattern } from './cli/utils/env-manifest.js'
 export { getConfig } from './core/config.js'

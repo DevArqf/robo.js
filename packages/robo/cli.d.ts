@@ -3,6 +3,9 @@ export { Command } from './dist/cli/utils/cli-handler.js'
 export { parseCliOptions, type ParseCliOptionsConfig } from './dist/cli/utils/cli-shared.js'
 export { runSetupHook } from './dist/cli/utils/setup-hook.js'
 
+// Type-safe config helper
+export { createCliCommandConfig } from './dist/core/cli-config-helpers.js'
+
 // Re-export CLI types
 export type {
 	CliAfterHook,
@@ -17,6 +20,11 @@ export type {
 	CliHandler,
 	CliManifest,
 	CliOptionConfig,
+	CliOptionsFromConfig,
+	CliOptionTypeMap,
+	ExtractOptionName,
 	LoadedCliCommand,
-	LoadedCliExtension
+	LoadedCliExtension,
+	SmartCliCommandConfig,
+	ValueOfCliOption
 } from './dist/types/cli.js'

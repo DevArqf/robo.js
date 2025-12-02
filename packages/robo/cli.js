@@ -3,5 +3,8 @@ export { Command } from './dist/cli/utils/cli-handler.js'
 export { parseCliOptions } from './dist/cli/utils/cli-shared.js'
 export { runSetupHook } from './dist/cli/utils/setup-hook.js'
 
+// Type-safe config helper
+export { createCliCommandConfig } from './dist/core/cli-config-helpers.js'
+
 // Re-export types at runtime (for type-checking with JSDoc)
 export {}
