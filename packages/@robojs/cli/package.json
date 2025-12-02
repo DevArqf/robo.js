@@ -1,0 +1,67 @@
+{
+	"name": "@robojs/cli",
+	"description": "Build standalone CLIs with Robo.js - file-based routing for command-line tools",
+	"version": "0.0.0",
+	"type": "module",
+	"private": false,
+	"keywords": [
+		"cli",
+		"command",
+		"command-line",
+		"command-line-interface",
+		"cli-builder",
+		"cli-framework",
+		"robo",
+		"robo.js",
+		"robojs",
+		"typescript"
+	],
+	"main": ".robo/build/index.js",
+	"exports": {
+		".": {
+			"import": "./.robo/build/index.js",
+			"types": "./.robo/build/index.d.ts"
+		}
+	},
+	"license": "MIT",
+	"author": "WavePlay <dev@waveplay.com> (waveplay.com)",
+	"contributors": [
+		"Pkmmte Xeleon <pk@waveplay.com>"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Wave-Play/robo.js.git",
+		"directory": "packages/@robojs/cli"
+	},
+	"files": [
+		".robo/",
+		"src/",
+		"LICENSE",
+		"README.md"
+	],
+	"publishConfig": {
+		"access": "public",
+		"registry": "https://registry.npmjs.org/"
+	},
+	"scripts": {
+		"build": "robo build plugin",
+		"dev": "robo build plugin --watch",
+		"lint:style": "prettier --write .",
+		"prepublishOnly": "robo build plugin"
+	},
+	"devDependencies": {
+		"@swc/core": "^1.15.3",
+		"@types/node": "^24.10.1",
+		"prettier": "^3.7.3",
+		"robo.js": "workspace:*",
+		"typescript": "^5.9.3"
+	},
+	"peerDependencies": {
+		"robo.js": ">=0.11.0"
+	},
+	"peerDependenciesMeta": {
+		"robo.js": {
+			"optional": false
+		}
+	}
+}

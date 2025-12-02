@@ -7,6 +7,7 @@
 			"packages/@robojs/ai",
 			"packages/@robojs/analytics",
 			"packages/@robojs/auth",
+			"packages/@robojs/cli",
 			"packages/@robojs/cron",
 			"packages/@robojs/discordjs",
 			"packages/@robojs/giveaways",
