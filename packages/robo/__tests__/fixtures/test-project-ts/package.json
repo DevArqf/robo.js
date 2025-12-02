@@ -1,0 +1,20 @@
+{
+	"name": "test-project-ts",
+	"description": "Test fixture for CLI E2E tests",
+	"version": "1.0.0",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"build": "robo build",
+		"start": "robo start"
+	},
+	"dependencies": {
+		"discord.js": "^14.25.1",
+		"robo.js": "workspace:*"
+	},
+	"devDependencies": {
+		"@swc/core": "^1.15.3",
+		"@types/node": "^24.10.1",
+		"typescript": "^5.9.3"
+	}
+}

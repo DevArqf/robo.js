@@ -8,8 +8,8 @@ const config: Config = {
 		'^.+\\.ts$': ['ts-jest', { useESM: true, tsconfig: { module: 'ESNext', target: 'ES2022' } }]
 	},
 	transformIgnorePatterns: ['/node_modules/(?!(messageformat)/)'],
-	testPathIgnorePatterns: ['<rootDir>/__typetests__/'],
-	watchPathIgnorePatterns: ['<rootDir>/__typetests__/']
+	testPathIgnorePatterns: ['<rootDir>/__typetests__/', '<rootDir>/__tests__/fixtures/'],
+	watchPathIgnorePatterns: ['<rootDir>/__typetests__/', '<rootDir>/__tests__/fixtures/']
 }
 
 export default config
