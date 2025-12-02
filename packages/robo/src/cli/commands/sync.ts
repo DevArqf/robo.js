@@ -9,6 +9,7 @@ import { loadConfig } from '../../core/config.js'
 import { Flashcore } from '../../core/flashcore.js'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import type { CliContext } from '../../types/cli.js'
 import type { PackageJson } from '../../index.js'
 
 const command = new Command('sync')
@@ -24,7 +25,8 @@ interface SyncCommandOptions {
 	verbose?: boolean
 }
 
-async function syncAction(_args: string[], options: SyncCommandOptions) {
+async function syncAction(context: CliContext) {
+	const options = context.options as SyncCommandOptions
 	// Configure logger
 	logger({
 		enabled: !options.silent,
@@ -108,11 +110,14 @@ async function syncAction(_args: string[], options: SyncCommandOptions) {
 			const args = addPlugins.map((pkg) => {
 				return isDependencyFromNpm(roboPackageJson.dependencies?.[pkg]) ? pkg : pluginPaths[pkg]
 			})
-			await addAction(args, {
-				silent: options.silent,
-				sync: true,
-				verbose: options.verbose
-			})
+			await addAction({
+				args,
+				options: {
+					silent: options.silent,
+					sync: true,
+					verbose: options.verbose
+				}
+			} as unknown as CliContext)
 		} catch (error) {
 			logger.error('Problem adding plugins:', error)
 		}
@@ -124,10 +129,13 @@ async function syncAction(_args: string[], options: SyncCommandOptions) {
 		logger.debug('Removing plugins:', removePlugins)
 
 		try {
-			await removeAction(removePlugins, {
-				silent: options.silent,
-				verbose: options.verbose
-			})
+			await removeAction({
+				args: removePlugins,
+				options: {
+					silent: options.silent,
+					verbose: options.verbose
+				}
+			} as unknown as CliContext)
 
 			for (const plugin of removePlugins) {
 				delete pluginRecord[plugin]

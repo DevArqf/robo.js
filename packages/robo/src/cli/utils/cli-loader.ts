@@ -11,6 +11,18 @@ import { pathToFileURL } from 'node:url'
 import { logger as createLogger } from '../../core/logger.js'
 import { color } from '../../core/color.js'
 import { loadConfig, getConfig } from '../../core/config.js'
+import {
+	pathExists,
+	getPluginCliDir,
+	getProjectCliDir,
+	scanCommands,
+	scanExtensions,
+	mergeExtensions,
+	applySubcommands,
+	PROJECT_PRIORITY_BOOST,
+	DEFAULT_HELP_OPTION,
+	parseCliOptions
+} from './cli-shared.js'
 import type { Plugin } from '../../types/index.js'
 import type {
 	CliAfterHook,
@@ -26,6 +38,10 @@ import type {
 } from '../../types/cli.js'
 
 const logger = createLogger().fork('cli')
+
+/** Standard exit codes */
+const EXIT_SUCCESS = 0
+const EXIT_ERROR = 1
 
 /**
  * CLI manifest cache.
@@ -57,18 +73,6 @@ export async function loadCliManifest(): Promise<CliManifest | null> {
 }
 
 /**
- * Check if a path exists.
- */
-async function pathExists(p: string): Promise<boolean> {
-	try {
-		await fs.access(p)
-		return true
-	} catch {
-		return false
-	}
-}
-
-/**
  * Extract plugin names from config.plugins array.
  */
 function extractPluginNames(plugins: Plugin[]): string[] {
@@ -80,8 +84,9 @@ function extractPluginNames(plugins: Plugin[]): string[] {
  * Uses config-based plugin discovery (same as build-time) for full compatibility.
  */
 async function discoverCliAtRuntime(): Promise<CliManifest | null> {
-	const commands: CliManifest['commands'] = {}
-	const extensions: CliManifest['extensions'] = {}
+	const commands: Record<string, CliCommandEntry> = {}
+	const allExtensions: Record<string, CliExtensionEntry[]>[] = []
+	const allSubcommandMaps: Map<string, string[]>[] = []
 
 	try {
 		// 1. Get plugins from config (same source as build-time)
@@ -89,8 +94,8 @@ async function discoverCliAtRuntime(): Promise<CliManifest | null> {
 		if (!config) {
 			try {
 				config = await loadConfig()
-			} catch {
-				// Config loading failed, continue without plugins
+			} catch (error) {
+				logger.debug('Config loading failed during CLI discovery:', error)
 			}
 		}
 
@@ -99,18 +104,84 @@ async function discoverCliAtRuntime(): Promise<CliManifest | null> {
 
 		// 2. Scan each plugin's CLI directory
 		for (const pluginName of pluginNames) {
-			await discoverPluginCliRuntime(pluginName, commands, extensions)
+			const cliDir = await getPluginCliDir(pluginName)
+			if (!cliDir) continue
+
+			// Scan commands
+			const commandsDir = path.join(cliDir, 'commands')
+			if (await pathExists(commandsDir)) {
+				const { commands: pluginCommands, subcommandMap } = await scanCommands(commandsDir, pluginName, {
+					cacheBust: true
+				})
+
+				// Merge commands (respecting priority)
+				for (const [cmdPath, entry] of Object.entries(pluginCommands)) {
+					const existing = commands[cmdPath]
+					if (!existing || entry.priority >= existing.priority) {
+						commands[cmdPath] = entry
+					}
+				}
+				allSubcommandMaps.push(subcommandMap)
+			}
+
+			// Scan extensions
+			const extendDir = path.join(cliDir, 'extend')
+			if (await pathExists(extendDir)) {
+				const exts = await scanExtensions(extendDir, pluginName, { cacheBust: true })
+				allExtensions.push(exts)
+			}
 		}
 
-		// 3. Scan project's own CLI directory
-		await discoverProjectCliRuntime(commands, extensions)
+		// 3. Scan project's own CLI directory (with priority boost)
+		const projectCliDir = getProjectCliDir()
+		if (await pathExists(projectCliDir)) {
+			const commandsDir = path.join(projectCliDir, 'commands')
+			if (await pathExists(commandsDir)) {
+				const { commands: projectCommands, subcommandMap } = await scanCommands(commandsDir, null, {
+					priorityBoost: PROJECT_PRIORITY_BOOST,
+					cacheBust: true
+				})
+
+				// Project commands override plugins
+				for (const [cmdPath, entry] of Object.entries(projectCommands)) {
+					const existing = commands[cmdPath]
+					if (existing && existing.plugin) {
+						logger.debug(`Project command "${cmdPath}" shadows plugin command from ${existing.plugin}`)
+					}
+					commands[cmdPath] = entry
+				}
+				allSubcommandMaps.push(subcommandMap)
+			}
+
+			const extendDir = path.join(projectCliDir, 'extend')
+			if (await pathExists(extendDir)) {
+				const exts = await scanExtensions(extendDir, null, {
+					priorityBoost: PROJECT_PRIORITY_BOOST,
+					cacheBust: true
+				})
+				allExtensions.push(exts)
+			}
+		}
+
+		// Apply subcommands to commands
+		for (const subcommandMap of allSubcommandMaps) {
+			applySubcommands(commands, subcommandMap)
+		}
+
+		// Generate parent commands for orphan subcommands
+		generateParentCommands(commands)
+
+		// Merge and sort extensions
+		const extensions = mergeExtensions(...allExtensions)
 
 		// Return null if nothing found
 		if (Object.keys(commands).length === 0 && Object.keys(extensions).length === 0) {
 			return null
 		}
 
-		logger.debug(`Runtime CLI discovery: Found ${Object.keys(commands).length} commands, ${Object.keys(extensions).length} extension targets`)
+		logger.debug(
+			`Runtime CLI discovery: Found ${Object.keys(commands).length} commands, ${Object.keys(extensions).length} extension targets`
+		)
 		return { commands, extensions }
 	} catch (error) {
 		logger.debug('Runtime CLI discovery failed:', error)
@@ -119,171 +190,50 @@ async function discoverCliAtRuntime(): Promise<CliManifest | null> {
 }
 
 /**
- * Discover CLI commands and extensions from a plugin at runtime.
+ * Generate parent commands for orphan subcommands.
+ * E.g., if "tunnel start" exists but "tunnel" doesn't, create a parent command.
  */
-async function discoverPluginCliRuntime(
-	pluginName: string,
-	commands: CliManifest['commands'],
-	extensions: CliManifest['extensions']
-): Promise<void> {
-	// Check both .robo/build and dist locations
-	const cliDirs = [
-		path.join(process.cwd(), 'node_modules', pluginName, '.robo', 'build', 'robo', 'cli'),
-		path.join(process.cwd(), 'node_modules', pluginName, 'dist', 'robo', 'cli')
-	]
+function generateParentCommands(commands: Record<string, CliCommandEntry>): void {
+	const generatedParents = new Set<string>()
 
-	for (const cliDir of cliDirs) {
-		if (!(await pathExists(cliDir))) continue
+	// Process commands from deepest to shallowest to ensure children are generated first
+	const originalPaths = Object.keys(commands)
+	const sortedPaths = [...originalPaths].sort((a, b) => b.split(' ').length - a.split(' ').length)
 
-		// Discover commands recursively
-		const commandsDir = path.join(cliDir, 'commands')
-		if (await pathExists(commandsDir)) {
-			await scanCommandsRecursive(commandsDir, '', pluginName, commands)
-		}
+	for (const cmdPath of sortedPaths) {
+		const parts = cmdPath.split(' ')
+		if (parts.length < 2) continue
 
-		// Discover extensions
-		const extendDir = path.join(cliDir, 'extend')
-		if (await pathExists(extendDir)) {
-			await scanExtensionsRuntime(extendDir, pluginName, extensions)
-		}
+		// Check all parent paths (from deepest to shallowest)
+		for (let i = parts.length - 1; i >= 1; i--) {
+			const parentPath = parts.slice(0, i).join(' ')
 
-		break // Found CLI dir, no need to check other locations
-	}
-}
+			// Skip if parent already exists or we've already generated it
+			if (commands[parentPath] || generatedParents.has(parentPath)) continue
 
-/**
- * Recursively scan commands directory to discover nested commands.
- */
-async function scanCommandsRecursive(
-	dir: string,
-	prefix: string,
-	pluginName: string | null,
-	commands: CliManifest['commands']
-): Promise<void> {
-	let entries: Awaited<ReturnType<typeof fs.readdir>>
-	try {
-		entries = await fs.readdir(dir, { withFileTypes: true })
-	} catch {
-		return
-	}
+			// Find all direct children of this parent (including generated ones)
+			const currentPaths = Object.keys(commands)
+			const children = currentPaths
+				.filter((p) => {
+					const pParts = p.split(' ')
+					return pParts.length === i + 1 && p.startsWith(parentPath + ' ')
+				})
+				.map((p) => p.split(' ').pop()!)
 
-	for (const entry of entries) {
-		const fullPath = path.join(dir, entry.name)
+			// Get plugin from first child (for source attribution)
+			const firstChildPath = currentPaths.find((p) => p.startsWith(parentPath + ' '))
+			const plugin = firstChildPath ? commands[firstChildPath].plugin : null
 
-		if (entry.isDirectory()) {
-			// Recurse into subdirectory with prefix
-			const subPrefix = prefix ? `${prefix} ${entry.name}` : entry.name
-			await scanCommandsRecursive(fullPath, subPrefix, pluginName, commands)
-		} else if (entry.name.endsWith('.js') || entry.name.endsWith('.mjs')) {
-			const baseName = entry.name.replace(/\.(js|mjs)$/, '')
-
-			// Skip top-level index, use index in subdirs as parent command
-			if (baseName === 'index' && !prefix) continue
-
-			const commandPath = baseName === 'index' ? prefix : prefix ? `${prefix} ${baseName}` : baseName
-
-			try {
-				const module = await import(pathToFileURL(fullPath).href)
-				const config = module.config as { description?: string; options?: CliOptionConfig[]; priority?: number; positionalArgs?: boolean } | undefined
-
-				// Check for existing command with higher priority
-				const existing = commands[commandPath]
-				const priority = config?.priority ?? 0
-
-				if (existing && existing.priority > priority) {
-					// Keep existing command with higher priority
-					continue
-				}
-
-				commands[commandPath] = {
-					path: fullPath,
-					plugin: pluginName,
-					description: config?.description ?? '',
-					priority,
-					options: config?.options,
-					positionalArgs: config?.positionalArgs
-				}
-			} catch {
-				// Skip commands that fail to load
+			// Create auto-generated parent command
+			commands[parentPath] = {
+				path: '', // No actual file
+				plugin,
+				description: `${parts[i - 1]} commands`,
+				priority: 0,
+				subcommands: children
 			}
+			generatedParents.add(parentPath)
 		}
-	}
-}
-
-/**
- * Scan extensions directory at runtime.
- */
-async function scanExtensionsRuntime(
-	dir: string,
-	pluginName: string | null,
-	extensions: CliManifest['extensions']
-): Promise<void> {
-	let files: string[]
-	try {
-		files = await fs.readdir(dir)
-	} catch {
-		return
-	}
-
-	for (const file of files) {
-		if (!file.endsWith('.js') && !file.endsWith('.mjs')) continue
-
-		const targetCommand = file.replace(/\.(js|mjs)$/, '')
-		const fullPath = path.join(dir, file)
-
-		try {
-			const stat = await fs.stat(fullPath)
-			if (!stat.isFile()) continue
-
-			const module = await import(pathToFileURL(fullPath).href)
-			const config = module.config as { options?: CliOptionConfig[]; priority?: number } | undefined
-
-			if (!extensions[targetCommand]) {
-				extensions[targetCommand] = []
-			}
-
-			extensions[targetCommand].push({
-				path: fullPath,
-				plugin: pluginName,
-				priority: config?.priority ?? 0,
-				options: config?.options,
-				hasBefore: typeof module.before === 'function',
-				hasAfter: typeof module.after === 'function'
-			})
-		} catch {
-			// Skip extensions that fail to load
-		}
-	}
-
-	// Sort extensions by priority (highest first for before hooks)
-	for (const target of Object.keys(extensions)) {
-		extensions[target].sort((a, b) => b.priority - a.priority)
-	}
-}
-
-/**
- * Discover CLI commands and extensions from the project at runtime.
- */
-async function discoverProjectCliRuntime(
-	commands: CliManifest['commands'],
-	extensions: CliManifest['extensions']
-): Promise<void> {
-	const projectCliDir = path.join(process.cwd(), '.robo', 'build', 'robo', 'cli')
-
-	if (!(await pathExists(projectCliDir))) return
-
-	// Discover commands
-	const commandsDir = path.join(projectCliDir, 'commands')
-	if (await pathExists(commandsDir)) {
-		// Project commands have implicit higher priority (+100)
-		// We handle this by checking after loading
-		await scanCommandsRecursive(commandsDir, '', null, commands)
-	}
-
-	// Discover extensions
-	const extendDir = path.join(projectCliDir, 'extend')
-	if (await pathExists(extendDir)) {
-		await scanExtensionsRuntime(extendDir, null, extensions)
 	}
 }
 
@@ -298,6 +248,20 @@ export function clearCliManifestCache(): void {
  * Load a CLI command handler from a file.
  */
 export async function loadCliCommand(entry: CliCommandEntry): Promise<LoadedCliCommand | null> {
+	// Handle auto-generated parent commands (no path)
+	if (!entry.path) {
+		return {
+			config: {
+				description: entry.description,
+				options: entry.options,
+				positionalArgs: entry.positionalArgs,
+				priority: entry.priority
+			},
+			plugin: entry.plugin,
+			handler: createAutoParentHandler(entry)
+		}
+	}
+
 	try {
 		const module = await import(pathToFileURL(entry.path).href)
 
@@ -319,6 +283,28 @@ export async function loadCliCommand(entry: CliCommandEntry): Promise<LoadedCliC
 	} catch (error) {
 		logger.error(`Failed to load CLI command from ${entry.path}:`, error)
 		return null
+	}
+}
+
+/**
+ * Create a handler for auto-generated parent commands.
+ */
+function createAutoParentHandler(entry: CliCommandEntry): CliHandler {
+	return ({ logger: log }) => {
+		if (entry.subcommands && entry.subcommands.length > 0) {
+			const commandName = Object.entries(cachedManifest?.commands ?? {}).find(
+				([, e]) => e === entry
+			)?.[0] ?? 'command'
+
+			log.log(`Available subcommands for "${commandName}":`)
+			for (const sub of entry.subcommands) {
+				const subEntry = cachedManifest?.commands[`${commandName} ${sub}`]
+				const desc = subEntry?.description ? ` - ${subEntry.description}` : ''
+				log.log(`  robo ${commandName} ${sub}${desc}`)
+			}
+			log.log('')
+			log.log('Use --help with any subcommand for more details.')
+		}
 	}
 }
 
@@ -354,13 +340,45 @@ export function findCommand(manifest: CliManifest, commandPath: string): CliComm
 
 /**
  * Get extensions for a command.
+ * Matches both the exact command path and parent commands.
+ * E.g., for "tunnel start", returns extensions for both "tunnel start" and "tunnel".
+ * Deduplicates extensions by path to avoid running the same extension twice.
  */
-export function getExtensions(manifest: CliManifest, commandName: string): CliExtensionEntry[] {
-	return manifest.extensions[commandName] ?? []
+export function getExtensions(manifest: CliManifest, commandPath: string): CliExtensionEntry[] {
+	const extensions: CliExtensionEntry[] = []
+	const seenPaths = new Set<string>()
+
+	// Helper to add extensions without duplicates
+	const addExtensions = (exts: CliExtensionEntry[]) => {
+		for (const ext of exts) {
+			if (!seenPaths.has(ext.path)) {
+				extensions.push(ext)
+				seenPaths.add(ext.path)
+			}
+		}
+	}
+
+	// Check exact match first
+	if (manifest.extensions[commandPath]) {
+		addExtensions(manifest.extensions[commandPath])
+	}
+
+	// Check parent commands (e.g., "tunnel" for "tunnel start")
+	const parts = commandPath.split(' ')
+	for (let i = parts.length - 1; i > 0; i--) {
+		const parentPath = parts.slice(0, i).join(' ')
+		if (manifest.extensions[parentPath]) {
+			addExtensions(manifest.extensions[parentPath])
+		}
+	}
+
+	// Sort by priority (highest first)
+	return extensions.sort((a, b) => b.priority - a.priority)
 }
 
 /**
  * Merge options from extensions with core command options.
+ * Automatically adds default --help option unless already defined.
  */
 export function mergeOptions(
 	coreOptions: CliOptionConfig[] = [],
@@ -369,6 +387,13 @@ export function mergeOptions(
 	const merged = [...coreOptions]
 	const seenAliases = new Set(coreOptions.map((o) => o.alias))
 	const seenNames = new Set(coreOptions.map((o) => o.name))
+
+	// Add default help option if not already defined
+	if (!seenAliases.has(DEFAULT_HELP_OPTION.alias) && !seenNames.has(DEFAULT_HELP_OPTION.name)) {
+		merged.push(DEFAULT_HELP_OPTION)
+		seenAliases.add(DEFAULT_HELP_OPTION.alias)
+		seenNames.add(DEFAULT_HELP_OPTION.name)
+	}
 
 	for (const ext of extensions) {
 		if (!ext.options) continue
@@ -398,68 +423,6 @@ export function mergeOptions(
 }
 
 /**
- * Parse options from command line arguments.
- * Similar to cli-handler.ts parseOptions but uses CliOptionConfig.
- */
-export function parseCliOptions(
-	args: string[],
-	options: CliOptionConfig[]
-): { parsedOptions: Record<string, unknown>; positionalArgs: string[] } {
-	const parsedOptions: Record<string, unknown> = {}
-	const positionalArgs: string[] = []
-	let i = 0
-
-	// Set defaults
-	for (const opt of options) {
-		if (opt.default !== undefined) {
-			const key = opt.name.replace(/^--/, '')
-			parsedOptions[key] = opt.default
-		}
-	}
-
-	while (i < args.length) {
-		const arg = args[i]
-
-		if (arg.startsWith('--')) {
-			const option = options.find((opt) => opt.name === arg)
-			if (option) {
-				const key = arg.slice(2)
-				if (option.type === 'boolean' || (i + 1 >= args.length || args[i + 1].startsWith('-'))) {
-					parsedOptions[key] = true
-					i++
-				} else {
-					const value = args[i + 1]
-					parsedOptions[key] = option.type === 'number' ? Number(value) : value
-					i += 2
-				}
-			} else {
-				i++
-			}
-		} else if (arg.startsWith('-')) {
-			const option = options.find((opt) => opt.alias === arg)
-			if (option) {
-				const key = option.name.slice(2)
-				if (option.type === 'boolean' || (i + 1 >= args.length || args[i + 1].startsWith('-'))) {
-					parsedOptions[key] = true
-					i++
-				} else {
-					const value = args[i + 1]
-					parsedOptions[key] = option.type === 'number' ? Number(value) : value
-					i += 2
-				}
-			} else {
-				i++
-			}
-		} else {
-			positionalArgs.push(arg)
-			i++
-		}
-	}
-
-	return { parsedOptions, positionalArgs }
-}
-
-/**
  * Execute a plugin CLI command with extensions.
  */
 export async function executePluginCommand(
@@ -471,7 +434,8 @@ export async function executePluginCommand(
 	const command = await loadCliCommand(entry)
 	if (!command) {
 		logger.error('Failed to load command')
-		process.exit(1)
+		await logger.flush()
+		process.exit(EXIT_ERROR)
 	}
 
 	// Load extensions
@@ -487,12 +451,23 @@ export async function executePluginCommand(
 	const mergedOptions = mergeOptions(command.config.options, extensions)
 
 	// Parse arguments
-	const { parsedOptions, positionalArgs } = parseCliOptions(args, mergedOptions)
+	const { parsedOptions, positionalArgs, errors } = parseCliOptions(args, mergedOptions)
 
-	// Check for help flag
+	// Check for help flag first
 	if (parsedOptions.help) {
 		showCommandHelp(entry, extensions, mergedOptions)
-		return
+		process.exit(EXIT_SUCCESS)
+	}
+
+	// Check for validation errors
+	if (errors.length > 0) {
+		for (const error of errors) {
+			logger.error(error)
+		}
+		console.log('')
+		logger.info(`Use ${color.bold('--help')} to see available options.`)
+		await logger.flush()
+		process.exit(EXIT_ERROR)
 	}
 
 	// Create context
@@ -504,25 +479,38 @@ export async function executePluginCommand(
 		argv: args
 	}
 
-	// Run before hooks (highest priority first)
-	for (const ext of loadedExtensions) {
-		if (ext.before) {
-			const result = await ext.before(context)
-			if (result === false) {
-				logger.debug(`Command aborted by before hook from ${ext.plugin ?? 'project'}`)
-				return
+	try {
+		// Run before hooks (highest priority first)
+		for (const ext of loadedExtensions) {
+			if (ext.before) {
+				const result = await ext.before(context)
+				if (result === false) {
+					logger.debug(`Command aborted by before hook from ${ext.plugin ?? 'project'}`)
+					process.exit(EXIT_SUCCESS)
+				}
 			}
 		}
-	}
 
-	// Run the command handler
-	await command.handler(context)
+		// Run the command handler and capture result
+		const handlerResult = await command.handler(context)
+		context.result = handlerResult
 
-	// Run after hooks (lowest priority first, so reverse order)
-	for (const ext of [...loadedExtensions].reverse()) {
-		if (ext.after) {
-			await ext.after(context)
+		// Run after hooks (lowest priority first, so reverse order)
+		for (const ext of [...loadedExtensions].reverse()) {
+			if (ext.after) {
+				await ext.after(context)
+			}
 		}
+	} catch (error) {
+		// Handle command execution errors gracefully
+		if (error instanceof Error) {
+			logger.error(`Command failed: ${error.message}`)
+			logger.debug('Stack trace:', error.stack)
+		} else {
+			logger.error('Command failed with an unknown error')
+		}
+		await logger.flush()
+		process.exit(EXIT_ERROR)
 	}
 }
 
@@ -535,11 +523,23 @@ function showCommandHelp(
 	mergedOptions: CliOptionConfig[]
 ): void {
 	const commandName = Object.entries(cachedManifest?.commands ?? {}).find(
-		([, e]) => e.path === entry.path
+		([, e]) => e.path === entry.path || e === entry
 	)?.[0]
+
+	// Usage line
+	const hasOptions = mergedOptions.length > 0
+	const hasSubcommands = entry.subcommands && entry.subcommands.length > 0
+	let usage = `robo ${commandName}`
+	if (hasSubcommands) {
+		usage += ' <subcommand>'
+	}
+	if (hasOptions) {
+		usage += ' [options]'
+	}
 
 	console.log(color.blue(`\n Command: robo ${commandName}`))
 	console.log(` Description: ${entry.description}`)
+	console.log(color.dim(` Usage: ${usage}`))
 
 	if (entry.plugin) {
 		console.log(` Source: ${entry.plugin}`)
@@ -553,20 +553,26 @@ function showCommandHelp(
 		const coreAliases = new Set(coreOptions.map((o) => o.alias))
 
 		for (const opt of mergedOptions) {
-			const isExtension = !coreAliases.has(opt.alias)
+			// Skip source tag for default help option and core options
+			const isDefaultHelp = opt.alias === DEFAULT_HELP_OPTION.alias && opt.name === DEFAULT_HELP_OPTION.name
+			const isExtension = !coreAliases.has(opt.alias) && !isDefaultHelp
 			const source = isExtension
 				? extensions.find((e) => e.options?.some((o) => o.alias === opt.alias))?.plugin ?? 'project'
 				: null
 
 			const sourceTag = source ? color.dim(` (from: ${source})`) : ''
-			console.log(`   ${color.green(opt.alias)}, ${color.green(opt.name)}: ${opt.description}${sourceTag}`)
+			const requiredTag = opt.required ? color.red(' [required]') : ''
+			const defaultTag = opt.default !== undefined ? color.dim(` (default: ${opt.default})`) : ''
+			console.log(`   ${color.green(opt.alias)}, ${color.green(opt.name)}: ${opt.description}${requiredTag}${defaultTag}${sourceTag}`)
 		}
 	}
 
-	if (entry.subcommands && entry.subcommands.length > 0) {
-		console.log(color.red(`\n Subcommands:`))
-		for (const sub of entry.subcommands) {
-			console.log(`   ${sub}`)
+	if (hasSubcommands) {
+		console.log(color.cyan(`\n Subcommands:`))
+		for (const sub of entry.subcommands!) {
+			const subEntry = cachedManifest?.commands[`${commandName} ${sub}`]
+			const desc = subEntry?.description ? color.dim(` - ${subEntry.description}`) : ''
+			console.log(`   ${sub}${desc}`)
 		}
 	}
 
@@ -576,7 +582,7 @@ function showCommandHelp(
 /**
  * Show error for unknown command with suggestions.
  */
-export function showUnknownCommandError(commandPath: string, manifest: CliManifest | null): void {
+export async function showUnknownCommandError(commandPath: string, manifest: CliManifest | null): Promise<void> {
 	console.log('')
 	logger.error(color.red(`The command "${commandPath}" does not exist.`))
 
@@ -608,26 +614,8 @@ export function showUnknownCommandError(commandPath: string, manifest: CliManife
 	console.log('')
 	logger.info(`Try ${color.bold(color.blue('robo --help'))} to see all available commands.`)
 	console.log('')
-}
-
-/**
- * Check if a command path matches or is a prefix of available commands.
- */
-export function matchCommand(
-	manifest: CliManifest,
-	inputParts: string[]
-): { exact: CliCommandEntry | null; partial: string[] } {
-	const inputPath = inputParts.join(' ')
-
-	// Check for exact match
-	if (manifest.commands[inputPath]) {
-		return { exact: manifest.commands[inputPath], partial: [] }
-	}
-
-	// Check for partial match (command with subcommands)
-	const possibleSubcommands = Object.keys(manifest.commands).filter((cmd) => cmd.startsWith(inputPath + ' '))
-
-	return { exact: null, partial: possibleSubcommands }
+	await logger.flush()
+	process.exit(EXIT_ERROR)
 }
 
 /**
@@ -639,28 +627,26 @@ export function matchCommand(
  * @param options - Parsed options
  * @param handler - The original handler function to wrap
  */
-export async function runWithExtensions(
+export async function runWithExtensions<T = unknown>(
 	commandName: string,
 	args: string[],
 	options: Record<string, unknown>,
-	handler: () => Promise<void> | void
-): Promise<void> {
+	handler: () => Promise<T> | T
+): Promise<T | undefined> {
 	// Load manifest
 	const manifest = await loadCliManifest()
 
 	if (!manifest) {
 		// No manifest, just run the handler
-		await handler()
-		return
+		return await handler()
 	}
 
-	// Get extensions for this command
-	const extensions = manifest.extensions[commandName] || []
+	// Get extensions for this command (now supports nested command paths)
+	const extensions = getExtensions(manifest, commandName)
 
 	if (extensions.length === 0) {
 		// No extensions, just run the handler
-		await handler()
-		return
+		return await handler()
 	}
 
 	// Load extensions
@@ -672,11 +658,11 @@ export async function runWithExtensions(
 		}
 	}
 
-	// Create context
+	// Create context with appropriate logger
 	const context: CliContext = {
 		args,
 		options,
-		logger: createLogger().fork('cli'),
+		logger,
 		cwd: process.cwd(),
 		argv: process.argv.slice(2)
 	}
@@ -687,13 +673,14 @@ export async function runWithExtensions(
 			const result = await ext.before(context)
 			if (result === false) {
 				logger.debug(`Command "${commandName}" aborted by before hook from ${ext.plugin ?? 'project'}`)
-				return
+				return undefined
 			}
 		}
 	}
 
-	// Run the original handler
-	await handler()
+	// Run the original handler and capture result
+	const handlerResult = await handler()
+	context.result = handlerResult
 
 	// Run after hooks (lowest priority first, reverse order)
 	for (const ext of [...loadedExtensions].reverse()) {
@@ -701,6 +688,8 @@ export async function runWithExtensions(
 			await ext.after(context)
 		}
 	}
+
+	return handlerResult
 }
 
 /**
@@ -720,6 +709,6 @@ export async function getMergedOptionsForCommand(
 		return coreOptions
 	}
 
-	const extensions = manifest.extensions[commandName] || []
+	const extensions = getExtensions(manifest, commandName)
 	return mergeOptions(coreOptions, extensions)
 }

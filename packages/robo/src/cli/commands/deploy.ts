@@ -13,6 +13,7 @@ import { loginAction } from './login.js'
 import { Mode } from '../../core/mode.js'
 import { Env } from '../../core/env.js'
 import path from 'node:path'
+import type { CliContext } from '../../types/cli.js'
 import type { DeploymentStep, Pod } from '../../roboplay/types.js'
 
 const Highlight = composeColors(color.bold, color.cyan)
@@ -32,7 +33,8 @@ interface DeployCommandOptions {
 	verbose?: boolean
 }
 
-async function deployAction(_args: string[], options: DeployCommandOptions) {
+async function deployAction(context: CliContext) {
+	const options = context.options as DeployCommandOptions
 	// Create a logger
 	logger({
 		enabled: !options.silent,

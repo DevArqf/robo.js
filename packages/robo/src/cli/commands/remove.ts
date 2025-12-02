@@ -10,6 +10,7 @@ import { exec } from '../utils/utils.js'
 import { getPackageManager } from '../utils/runtime-utils.js'
 import { Spinner } from '../utils/spinner.js'
 import { existsSync } from 'node:fs'
+import type { CliContext } from '../../types/cli.js'
 
 const require = createRequire(import.meta.url)
 
@@ -28,7 +29,9 @@ interface RemoveCommandOptions {
 	verbose?: boolean
 }
 
-export async function removeAction(packages: string[], options: RemoveCommandOptions) {
+export async function removeAction(context: CliContext) {
+	const options = context.options as RemoveCommandOptions
+	const packages = context.args
 	// Create a logger
 	logger({
 		enabled: !options.silent,

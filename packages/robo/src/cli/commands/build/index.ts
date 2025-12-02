@@ -23,6 +23,7 @@ import { ManifestGenerator } from '../../utils/manifest-generator.js'
 import { discoverAllHooks } from '../../utils/hook-discovery.js'
 import { generateManifestTypes } from '../../utils/manifest-types.js'
 import { generatePortalTypes, collectPluginRoutes, generateTypesIndex } from '../../codegen/portal-types.js'
+import type { CliContext } from '../../../types/cli.js'
 import type { LoggerOptions } from '../../../core/logger.js'
 import type { RouteEntries } from '../../../types/routes.js'
 
@@ -49,7 +50,10 @@ export interface BuildCommandOptions {
 	watch?: boolean
 }
 
-export async function buildAction(files: string[], options: BuildCommandOptions) {
+export async function buildAction(context: CliContext) {
+	const options = context.options as BuildCommandOptions
+	const files = context.args
+
 	const loggerOptions: LoggerOptions = {
 		enabled: !options.silent,
 		level: options.verbose ? 'debug' : options.dev ? 'warn' : 'info'

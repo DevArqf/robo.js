@@ -61,12 +61,15 @@ export interface CliContext {
 	cwd: string
 	/** Raw argv after command name */
 	argv: string[]
+	/** Result data from command handler (available to after hooks) */
+	result?: unknown
 }
 
 /**
  * CLI command handler function signature.
+ * Handlers can optionally return a value that will be available in after hooks via context.result.
  */
-export type CliHandler = (context: CliContext) => void | Promise<void>
+export type CliHandler = (context: CliContext) => unknown | Promise<unknown>
 
 /**
  * Complete CLI command module exports.

@@ -9,6 +9,7 @@ import { Command } from '../utils/cli-handler.js'
 import { color } from '../../core/color.js'
 import { logger } from '../../core/logger.js'
 import { loadCliManifest } from '../utils/cli-loader.js'
+import type { CliContext } from '../../types/cli.js'
 
 const command = new Command('cli')
 	.description('Inspect CLI commands and extensions from plugins.')
@@ -18,7 +19,7 @@ const command = new Command('cli')
 
 export default command
 
-async function cliAction(args: string[]) {
+async function cliAction({ args }: CliContext) {
 	// Always show inspect mode - just pass the command if specified
 	await showInspect(args[0])
 }

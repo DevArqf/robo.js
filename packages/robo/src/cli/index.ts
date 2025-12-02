@@ -28,6 +28,7 @@ export default command
 
 command.description('Power up Discord with effortless activities, bots, web servers, and more! ⚡')
 command.version(packageJson.version)
+command.option('-h', '--help', 'Shows this help menu')
 command.addCommand(build)
 command.addCommand(start)
 command.addCommand(dev)
@@ -52,23 +53,47 @@ command.onUnknownCommand(async (commandParts, remainingArgs) => {
 		return false
 	}
 
-	// Build command path from parts (e.g., ['tunnel', 'start'] -> 'tunnel start')
-	const commandPath = commandParts.join(' ')
+	// Combine commandParts and remainingArgs to try longer paths first
+	// e.g., ['tunnel'] + ['start', '--port', '3000'] should try 'tunnel start' first
+	const allParts = [...commandParts]
+	const allRemaining = [...remainingArgs]
 
-	// Find the command in the manifest
-	const entry = findCommand(manifest, commandPath)
+	// Extract potential subcommand names from remaining args (until we hit an option)
+	while (allRemaining.length > 0 && !allRemaining[0].startsWith('-')) {
+		allParts.push(allRemaining.shift()!)
+	}
+
+	// Try to find the longest matching command path
+	let entry = null
+	let commandPath = ''
+	let argsForCommand: string[] = []
+
+	// Try from longest to shortest path
+	for (let i = allParts.length; i > 0; i--) {
+		const tryPath = allParts.slice(0, i).join(' ')
+		const tryEntry = findCommand(manifest, tryPath)
+
+		if (tryEntry) {
+			entry = tryEntry
+			commandPath = tryPath
+			// Remaining args = unused parts + options
+			argsForCommand = [...allParts.slice(i), ...allRemaining]
+			break
+		}
+	}
 
 	if (!entry) {
-		// Show helpful error with available plugin commands
-		showUnknownCommandError(commandPath, manifest)
+		// Show helpful error with the full attempted path
+		const attemptedPath = allParts.join(' ')
+		await showUnknownCommandError(attemptedPath, manifest)
 		return true // We handled it (by showing a better error)
 	}
 
-	// Get extensions for this command
-	const extensions = getExtensions(manifest, commandParts[0])
+	// Get extensions for this command (supports nested command paths)
+	const extensions = getExtensions(manifest, commandPath)
 
 	// Execute the plugin command
-	await executePluginCommand(entry, extensions, remainingArgs)
+	await executePluginCommand(entry, extensions, argsForCommand)
 	return true
 })
 

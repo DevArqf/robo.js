@@ -3,6 +3,7 @@ import { color, composeColors } from '../../../core/color.js'
 import { logger } from '../../../core/logger.js'
 import { RoboPlaySession } from '../../../roboplay/session.js'
 import { RoboPlay } from '../../../roboplay/client.js'
+import type { CliContext } from '../../../types/cli.js'
 
 const command = new Command('stop')
 	.description('Stop your Robo Pod.')
@@ -17,7 +18,8 @@ interface StopCommandOptions {
 	verbose?: boolean
 }
 
-async function stopAction(_args: string[], options: StopCommandOptions) {
+async function stopAction(context: CliContext) {
+	const options = context.options as StopCommandOptions
 	logger({
 		enabled: !options.silent,
 		level: options.verbose ? 'debug' : 'info'

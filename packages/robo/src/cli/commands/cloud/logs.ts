@@ -3,6 +3,7 @@ import { color, composeColors } from '../../../core/color.js'
 import { logger } from '../../../core/logger.js'
 import { RoboPlaySession } from '../../../roboplay/session.js'
 import { RoboPlay } from '../../../roboplay/client.js'
+import type { CliContext } from '../../../types/cli.js'
 
 const command = new Command('logs')
 	.description("View your Robo's remote logs.")
@@ -19,7 +20,8 @@ interface LogsCommandOptions {
 	verbose?: boolean
 }
 
-async function logsAction(_args: string[], options: LogsCommandOptions) {
+async function logsAction(context: CliContext) {
+	const options = context.options as LogsCommandOptions
 	logger({
 		enabled: !options.silent,
 		level: options.verbose ? 'debug' : 'info'

@@ -15,6 +15,7 @@ import { scanAllRoutes } from '../../utils/route-scanner.js'
 import { processAllRoutes } from '../../utils/route-processor.js'
 import { ManifestGenerator, discoverProjectHooks, createHookEntries } from '../../utils/manifest-generator.js'
 import { loadPluginData } from '../../utils/build-hooks.js'
+import type { CliContext } from '../../../types/cli.js'
 import type { PluginData } from '../../../types/common.js'
 import type { RouteEntries, ProcessedEntry } from '../../../types/routes.js'
 
@@ -37,7 +38,8 @@ interface PluginCommandOptions {
 	watch?: boolean
 }
 
-async function pluginAction(_args: string[], options: PluginCommandOptions) {
+async function pluginAction(context: CliContext) {
+	const options = context.options as PluginCommandOptions
 	logger({
 		enabled: !options.silent,
 		level: options.verbose ? 'debug' : options.dev ? 'warn' : 'info'
@@ -193,7 +195,7 @@ async function pluginAction(_args: string[], options: PluginCommandOptions) {
 				}
 
 				const time = Date.now()
-				await buildAsync('robo build plugin --dev', config, options?.verbose, [])
+				await buildAsync('robo build plugin --dev', config, options.verbose, [])
 				logger.ready(`Successfully rebuilt in ${Date.now() - time}ms`)
 			} finally {
 				isUpdating = false

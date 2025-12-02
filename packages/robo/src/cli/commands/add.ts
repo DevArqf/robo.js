@@ -18,6 +18,7 @@ import { runSetupHook } from '../utils/setup-hook.js'
 import type { NormalizedSeedHookResult } from '../utils/seed-hook.js'
 import { loadPluginManifestInfo, hasPluginManifest } from '../utils/plugin-manifest.js'
 import readline from 'node:readline'
+import type { CliContext } from '../../types/cli.js'
 
 const require = createRequire(import.meta.url)
 
@@ -45,7 +46,9 @@ interface AddCommandOptions {
 	yes?: boolean
 }
 
-export async function addAction(packages: string[], options: AddCommandOptions) {
+export async function addAction(context: CliContext) {
+	const options = context.options as AddCommandOptions
+	const packages = context.args
 	// Create a logger
 	logger({
 		enabled: !options.silent,

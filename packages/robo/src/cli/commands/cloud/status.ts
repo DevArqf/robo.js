@@ -6,6 +6,7 @@ import { copyToClipboard, getPodStatusColor } from '../../utils/utils.js'
 import { RoboPlaySession } from '../../../roboplay/session.js'
 import { RoboPlay } from '../../../roboplay/client.js'
 import type { ListResult, Pod } from '../../../roboplay/types.js'
+import type { CliContext } from '../../../types/cli.js'
 
 const command = new Command('status')
 	.description('Check RoboPlay status.')
@@ -24,7 +25,8 @@ interface StatusCommandOptions {
 	verbose?: boolean
 }
 
-async function statusAction(_args: string[], options: StatusCommandOptions) {
+async function statusAction(context: CliContext) {
+	const options = context.options as StatusCommandOptions
 	logger({
 		enabled: !options.silent,
 		level: options.verbose ? 'debug' : 'info'

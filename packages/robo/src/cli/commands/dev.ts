@@ -17,6 +17,7 @@ import { Mode, resolveCliMode, setMode } from '../../core/mode.js'
 import { Env } from '../../core/env.js'
 import { Boot } from '../../internal/boot.js'
 import { Nanocore } from '../../internal/nanocore.js'
+import type { CliContext } from '../../types/cli.js'
 import type { Config, SpiritMessage } from '../../types/index.js'
 
 const command = new Command('dev')
@@ -42,7 +43,8 @@ interface DevCommandOptions {
 
 let spirits: Spirits | undefined
 
-async function devAction(_args: string[], options: DevCommandOptions) {
+async function devAction(context: CliContext) {
+	const options = context.options as DevCommandOptions
 	// Create a logger
 	logger({
 		enabled: !options.silent,
@@ -149,10 +151,13 @@ async function devAction(_args: string[], options: DevCommandOptions) {
 	let buildSuccess = false
 	try {
 		const start = Date.now()
-		await buildAction([], {
-			dev: true,
-			verbose: options.verbose
-		})
+		await buildAction({
+			args: [],
+			options: {
+				dev: true,
+				verbose: options.verbose
+			}
+		} as unknown as CliContext)
 		logger.debug(`Build completed in ${Date.now() - start}ms`)
 		buildSuccess = true
 	} catch (error) {

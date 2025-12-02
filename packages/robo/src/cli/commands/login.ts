@@ -8,6 +8,7 @@ import { KeyWatcher } from '../utils/key-watcher.js'
 import { RoboPlaySession } from '../../roboplay/session.js'
 import { Mode } from '../../core/mode.js'
 import { Env } from '../../core/env.js'
+import type { CliContext } from '../../types/cli.js'
 
 const command = new Command('login')
 	.description('Sign in to your RoboPlay account')
@@ -25,7 +26,9 @@ interface LoginCommandOptions {
 	verbose?: boolean
 }
 
-export async function loginAction(_args: string[], options: LoginCommandOptions) {
+export async function loginAction(context: CliContext) {
+	const options = context.options as LoginCommandOptions
+
 	// Create a logger
 	logger({
 		enabled: !options.silent,

@@ -2,6 +2,7 @@ import { Command } from '../utils/cli-handler.js'
 import { logger } from '../../core/logger.js'
 import { color } from '../../core/color.js'
 import { RoboPlaySession } from '../../roboplay/session.js'
+import type { CliContext } from '../../types/cli.js'
 
 const command = new Command('logout')
 	.description('Sign out of your RoboPlay account')
@@ -18,7 +19,8 @@ interface LogoutCommandOptions {
 	verbose?: boolean
 }
 
-async function logoutAction(_args: string[], options: LogoutCommandOptions) {
+async function logoutAction(context: CliContext) {
+	const options = context.options as LogoutCommandOptions
 	// Create a logger
 	logger({
 		enabled: !options.silent,

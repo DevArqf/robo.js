@@ -2,6 +2,7 @@ import { logger } from '../../core/logger.js'
 import { Command } from '../utils/cli-handler.js'
 import { exec } from '../utils/utils.js'
 import { getPackageExecutor } from '../utils/runtime-utils.js'
+import type { CliContext } from '../../types/cli.js'
 
 const command = new Command('upgrade')
 	.description('Upgrades your Robo to the latest version')
@@ -18,7 +19,9 @@ interface UpgradeCommandOptions {
 	verbose?: boolean
 }
 
-export async function upgradeAction(_files: string[], options: UpgradeCommandOptions) {
+export async function upgradeAction(context: CliContext) {
+	const options = context.options as UpgradeCommandOptions
+
 	// Create a logger
 	logger({
 		enabled: !options.silent,

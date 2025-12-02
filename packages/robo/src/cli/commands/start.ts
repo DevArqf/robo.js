@@ -9,6 +9,7 @@ import { Env } from '../../core/env.js'
 import { Mode, resolveCliMode, setMode } from '../../core/mode.js'
 import { Indent } from '../../core/constants.js'
 import { Boot } from '../../internal/boot.js'
+import type { CliContext } from '../../types/cli.js'
 
 const command = new Command('start')
 	.description('Starts your bot in production mode.')
@@ -29,7 +30,9 @@ interface StartCommandOptions {
 	verbose?: boolean
 }
 
-async function startAction(_args: string[], options: StartCommandOptions) {
+async function startAction(context: CliContext) {
+	const options = context.options as StartCommandOptions
+
 	// Create a logger
 	logger({
 		enabled: !options.silent,

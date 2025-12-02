@@ -14,6 +14,7 @@ import { portal, populatePortal } from './portal.js'
 import { isMainThread, parentPort } from 'node:worker_threads'
 import type { PluginData } from '../types/index.js'
 import type { BuildCommandOptions } from '../cli/commands/build/index.js'
+import type { CliContext } from '../types/cli.js'
 
 /**
  * Robo is the main entry point for your bot. It provides a simple API for starting, stopping, and restarting your Robo.
@@ -51,10 +52,13 @@ type BuildOptions = BuildCommandOptions
  */
 export async function build(options?: BuildOptions) {
 	const { buildAction } = await import('../cli/commands/build/index.js')
-	await buildAction([], {
-		exit: false,
-		...(options ?? {})
-	})
+	await buildAction({
+		args: [],
+		options: {
+			exit: false,
+			...(options ?? {})
+		}
+	} as unknown as CliContext)
 }
 
 /**

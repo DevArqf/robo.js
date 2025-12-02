@@ -1,10 +1,12 @@
 import { color } from '../../core/color.js'
-import { logger } from '../../core/logger.js'
+import { logger as createLogger } from '../../core/logger.js'
+import { parseCliOptions } from './cli-shared.js'
+import type { CliContext, CliOptionConfig } from '../../types/cli.js'
 
-export interface Option {
-	alias: string
-	name: string
-	description: string
+const logger = createLogger()
+
+export interface Option extends CliOptionConfig {
+	// CliOptionConfig already has: alias, name, description, type?, default?, required?
 }
 
 /**
@@ -19,7 +21,7 @@ export type UnknownCommandHandler = (
 export class Command {
 	private _name: string
 	private _description: string
-	private _handler: (args: string[], options: Record<string, unknown>) => Promise<void> | void
+	private _handler: (context: CliContext) => Promise<void> | void
 	private _options: Option[] = []
 	private _commands: Command[] = []
 	private _version?: string
@@ -128,23 +130,27 @@ export class Command {
 	/**
 	 * Add an option for the command.
 	 *
-	 * @param {string} alias - Option alias (short form).
-	 * @param {string} name - Option name (long form).
-	 * @param {string} description - Option description.
+	 * @param {string | Option} aliasOrOption - Option alias (short form) or full Option object.
+	 * @param {string} [name] - Option name (long form).
+	 * @param {string} [description] - Option description.
 	 * @returns {Command} - Returns the current Command object for chaining.
 	 */
-	public option(alias: string, name: string, description: string): this {
-		this._options.push({ alias, name, description })
+	public option(aliasOrOption: string | Option, name?: string, description?: string): this {
+		if (typeof aliasOrOption === 'object') {
+			this._options.push(aliasOrOption)
+		} else {
+			this._options.push({ alias: aliasOrOption, name: name!, description: description! })
+		}
 		return this
 	}
 
 	/**
 	 * Assign a handler function for the command.
 	 *
-	 * @param {(args: string[], options: Record<string, unknown>) => void} fn - Function to be executed when the command is called.
+	 * @param {(context: CliContext) => void} fn - Function to be executed when the command is called.
 	 * @returns {Command} - Returns the current Command object for chaining.
 	 */
-	public handler(fn: (args: string[], options: Record<string, unknown>) => void): this {
+	public handler(fn: (context: CliContext) => Promise<void> | void): this {
 		this._handler = fn
 		return this
 	}
@@ -207,60 +213,19 @@ export class Command {
 	}
 
 	/**
-	 * Parses the options from the provided arguments array.
+	 * Parses the options from the provided arguments array using the shared parser.
 	 *
 	 * @param {string[]} args - The arguments array.
-	 * @returns {Record<string, unknown>} - Returns an object containing parsed options.
+	 * @returns {{ parsedOptions: Record<string, unknown>; positionalArgs: string[]; errors: string[] }}
 	 */
-	private parseOptions(args: string[]): Record<string, unknown> {
-		const options: Record<string, unknown> = {}
-		let i = 0
-
-		while (i < args.length) {
-			const arg = args[i]
-
-			if (arg.startsWith('--')) {
-				const option = this._options.find((opt) => opt.name === arg)
-				if (option) {
-					if (this._allowSpacesInOptions && i + 1 < args.length && !args[i + 1].startsWith('-')) {
-						let value = args[i + 1]
-						i += 2 // Move past the option and its value
-						while (i < args.length && !args[i].startsWith('-')) {
-							value += ` ${args[i]}`
-							i++
-						}
-						options[arg.slice(2)] = value
-					} else {
-						options[arg.slice(2)] = true
-						i++
-					}
-				} else {
-					i++
-				}
-			} else if (arg.startsWith('-')) {
-				const option = this._options.find((opt) => opt.alias === arg)
-				if (option) {
-					if (this._allowSpacesInOptions && i + 1 < args.length && !args[i + 1].startsWith('-')) {
-						let value = args[i + 1]
-						i += 2 // Move past the option and its value
-						while (i < args.length && !args[i].startsWith('-')) {
-							value += ` ${args[i]}`
-							i++
-						}
-						options[option.name.slice(2)] = value
-					} else {
-						options[option.name.slice(2)] = true
-						i++
-					}
-				} else {
-					i++
-				}
-			} else {
-				i++
-			}
-		}
-
-		return options
+	private parseOptions(args: string[]): {
+		parsedOptions: Record<string, unknown>
+		positionalArgs: string[]
+		errors: string[]
+	} {
+		return parseCliOptions(args, this._options, {
+			allowSpacesInOptions: this._allowSpacesInOptions
+		})
 	}
 
 	private async processSubCommand(command: Command, args: string[]) {
@@ -318,7 +283,10 @@ export class Command {
 		}
 
 		const optionsArgs = args.slice(optionsArgsStart)
-		const parsedOptions = command.parseOptions(optionsArgs)
+		const { parsedOptions, positionalArgs: additionalArgs, errors } = command.parseOptions(optionsArgs)
+
+		// Merge positional args from before options with any found during parsing
+		const allPositionalArgs = [...positionalArgs, ...additionalArgs]
 
 		if (parsedOptions.help) {
 			command.showHelp()
@@ -331,7 +299,26 @@ export class Command {
 			process.exit(0)
 		}
 
-		await command._handler(positionalArgs, parsedOptions)
+		// Handle validation errors
+		if (errors.length > 0) {
+			for (const error of errors) {
+				logger.error(error)
+			}
+			logger.log('')
+			logger.info(`Use ${color.bold('--help')} to see available options.`)
+			return
+		}
+
+		// Create CliContext for the handler
+		const context: CliContext = {
+			args: allPositionalArgs,
+			options: parsedOptions,
+			logger: logger,
+			cwd: process.cwd(),
+			argv: args
+		}
+
+		await command._handler(context)
 	}
 
 	private splitArgs(args: string[]): { positionalArgs: string[]; optionsArgs: string[] } {

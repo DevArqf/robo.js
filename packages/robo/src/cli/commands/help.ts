@@ -4,6 +4,7 @@ import { logger } from '../../core/logger.js'
 import { loadCliManifest } from '../utils/cli-loader.js'
 import rootCommand from '../index.js'
 import { packageJson } from '../utils/utils.js'
+import type { CliContext } from '../../types/cli.js'
 
 const command = new Command('help').description('Shows this help menu').handler(helpCommandHandler)
 export default command
@@ -35,7 +36,7 @@ interface FormattedCommand {
  * Function that is being called when we use the help command in the CLI.
  *
  */
-export async function helpCommandHandler() {
+export async function helpCommandHandler(_context: CliContext) {
 	logger.log(
 		color.bold(`\n ${color.blue('Robo.js')} - Where bot creation meets endless possibilities!`),
 		color.dim('(v' + packageJson.version + ')\n\n')
