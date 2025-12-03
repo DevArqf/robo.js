@@ -9,4 +9,4 @@ import { logger } from 'robo.js'
  * Plugin-wide logger instance.
  * All files in this plugin should import and use this logger.
  */
-export const discordLogger = logger.fork('discord')
+export const discordLogger = logger.fork('discordjs')
