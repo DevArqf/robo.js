@@ -83,12 +83,14 @@ export async function discoverPluginCli(
 
 /**
  * Discover CLI commands and extensions from the current project.
+ *
+ * @param mode - Build mode for mode-specific path resolution (defaults to 'production')
  */
-export async function discoverProjectCli(): Promise<{
+export async function discoverProjectCli(mode?: string): Promise<{
 	commands: Record<string, CliCommandEntry>
 	extensions: Record<string, CliExtensionEntry[]>
 }> {
-	const cliDir = getProjectCliDir()
+	const cliDir = getProjectCliDir(mode)
 
 	if (!(await pathExists(cliDir))) {
 		return { commands: {}, extensions: {} }
@@ -129,15 +131,18 @@ export async function discoverProjectCli(): Promise<{
 /**
  * Discover all CLI commands and extensions from plugins and project.
  * Project commands/extensions have implicit higher priority over plugins.
+ *
+ * @param plugins - Plugin data map
+ * @param mode - Build mode for mode-specific path resolution (defaults to 'production')
  */
-export async function discoverAllCli(plugins: Map<string, PluginData>): Promise<CliManifest> {
+export async function discoverAllCli(plugins: Map<string, PluginData>, mode?: string): Promise<CliManifest> {
 	const loggerInstance = logger()
 
 	// Discover from plugins first
 	const { commands: pluginCommands, extensions: pluginExtensions } = await discoverPluginCli(plugins)
 
 	// Discover from project (can override plugins)
-	const { commands: projectCommands, extensions: projectExtensions } = await discoverProjectCli()
+	const { commands: projectCommands, extensions: projectExtensions } = await discoverProjectCli(mode)
 
 	// Merge commands (project overrides plugins due to priority boost)
 	const commands: Record<string, CliCommandEntry> = { ...pluginCommands }
@@ -161,8 +166,11 @@ export async function discoverAllCli(plugins: Map<string, PluginData>): Promise<
 /**
  * Runtime discovery for development mode.
  * Scans TypeScript source files directly without requiring a build.
+ *
+ * @param plugins - Plugin data map
+ * @param mode - Build mode for mode-specific path resolution (defaults to 'production')
  */
-export async function discoverCliDevMode(plugins: Map<string, PluginData>): Promise<CliManifest> {
+export async function discoverCliDevMode(plugins: Map<string, PluginData>, mode?: string): Promise<CliManifest> {
 	const loggerInstance = logger()
 
 	// In dev mode, check if source directory exists
@@ -175,5 +183,5 @@ export async function discoverCliDevMode(plugins: Map<string, PluginData>): Prom
 	}
 
 	// Use build directory discovery as fallback
-	return discoverAllCli(plugins)
+	return discoverAllCli(plugins, mode)
 }

@@ -355,8 +355,8 @@ export class ManifestGenerator {
 		}
 
 		try {
-			// Discover CLI commands and extensions
-			const cliManifest = await discoverAllCli(this.plugins)
+			// Discover CLI commands and extensions (pass mode for correct path resolution)
+			const cliManifest = await discoverAllCli(this.plugins, this.mode)
 
 			// Only write if there are commands or extensions
 			const hasContent =

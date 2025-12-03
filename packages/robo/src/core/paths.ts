@@ -92,7 +92,8 @@ class RoboPathsImpl implements RoboPathsAPI {
 		if (config.baseDir !== undefined) {
 			this._baseDir = config.baseDir
 		}
-		if (config.customBuildDir !== undefined) {
+		// Always update customBuildDir if the key is present (allows clearing with undefined)
+		if ('customBuildDir' in config) {
 			this._customBuildDir = config.customBuildDir
 		}
 	}

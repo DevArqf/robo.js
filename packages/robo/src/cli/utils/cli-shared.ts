@@ -244,6 +244,7 @@ async function scanCommandsRecursive(
 /**
  * Scan extensions directory to discover command extensions.
  * Returns extensions indexed by target command path.
+ * Supports nested folders: extend/cloud/status.ts → "cloud status"
  */
 export async function scanExtensions(
 	dir: string,
@@ -251,57 +252,68 @@ export async function scanExtensions(
 	options: ScanOptions = {}
 ): Promise<Record<string, CliExtensionEntry[]>> {
 	const extensions: Record<string, CliExtensionEntry[]> = {}
+	await scanExtensionsRecursive(dir, '', pluginName, extensions, options)
+	return extensions
+}
+
+async function scanExtensionsRecursive(
+	dir: string,
+	prefix: string,
+	pluginName: string | null,
+	extensions: Record<string, CliExtensionEntry[]>,
+	options: ScanOptions
+): Promise<void> {
 	const { requireConfig = false, priorityBoost = 0, cacheBust = false } = options
 
-	let files: string[]
+	let entries: Awaited<ReturnType<typeof fs.readdir>>
 	try {
-		files = await fs.readdir(dir)
+		entries = await fs.readdir(dir, { withFileTypes: true })
 	} catch (error) {
 		logger.debug(`Failed to read extensions directory ${dir}:`, error)
-		return extensions
+		return
 	}
 
-	for (const file of files) {
-		if (!file.endsWith('.js') && !file.endsWith('.mjs')) continue
+	for (const entry of entries) {
+		const fullPath = path.join(dir, entry.name)
 
-		const fullPath = path.join(dir, file)
+		if (entry.isDirectory()) {
+			// Recurse into subdirectory with prefix
+			const subPrefix = prefix ? `${prefix} ${entry.name}` : entry.name
+			await scanExtensionsRecursive(fullPath, subPrefix, pluginName, extensions, options)
+		} else if (entry.name.endsWith('.js') || entry.name.endsWith('.mjs')) {
+			const baseName = entry.name.replace(/\.(js|mjs)$/, '')
 
-		try {
-			const stat = await fs.stat(fullPath)
-			if (!stat.isFile()) continue
+			// Build target command from path: extend/cloud/status.ts → "cloud status"
+			const targetCommand = prefix ? `${prefix} ${baseName}` : baseName
 
-			const module = await importModule(fullPath, cacheBust)
-			const config = module.config as { options?: unknown; priority?: number } | undefined
+			try {
+				const module = await importModule(fullPath, cacheBust)
+				const config = module.config as { options?: unknown; priority?: number } | undefined
 
-			if (requireConfig && !config) {
-				logger.warn(`CLI extension at ${fullPath} is missing 'config' export`)
-				continue
+				if (requireConfig && !config) {
+					logger.warn(`CLI extension at ${fullPath} is missing 'config' export`)
+					continue
+				}
+
+				if (!extensions[targetCommand]) {
+					extensions[targetCommand] = []
+				}
+
+				const basePriority = config?.priority ?? 0
+
+				extensions[targetCommand].push({
+					path: fullPath,
+					plugin: pluginName,
+					priority: basePriority + priorityBoost,
+					options: validateOptions(config?.options),
+					hasBefore: typeof module.before === 'function',
+					hasAfter: typeof module.after === 'function'
+				})
+			} catch (error) {
+				logger.debug(`Failed to load CLI extension from ${fullPath}:`, error)
 			}
-
-			// Target command is the filename without extension
-			// Supports nested: "tunnel-start.js" -> "tunnel start"
-			const targetCommand = file.replace(/\.(js|mjs)$/, '').replace(/-/g, ' ')
-
-			if (!extensions[targetCommand]) {
-				extensions[targetCommand] = []
-			}
-
-			const basePriority = config?.priority ?? 0
-
-			extensions[targetCommand].push({
-				path: fullPath,
-				plugin: pluginName,
-				priority: basePriority + priorityBoost,
-				options: validateOptions(config?.options),
-				hasBefore: typeof module.before === 'function',
-				hasAfter: typeof module.after === 'function'
-			})
-		} catch (error) {
-			logger.debug(`Failed to load CLI extension from ${fullPath}:`, error)
 		}
 	}
-
-	return extensions
 }
 
 /**

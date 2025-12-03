@@ -382,14 +382,14 @@ export async function after(ctx) { console.log('done') }
 			expect(extensions[extName][0].options).toHaveLength(1)
 		})
 
-		it('should map hyphenated filenames to command paths', async () => {
-			const testDir = path.join(tempDir, `hyphen-extensions-${Date.now()}`)
-			await fs.mkdir(testDir, { recursive: true })
-
+		it('should discover nested extension folders', async () => {
+			const testDir = path.join(tempDir, `nested-extensions-${Date.now()}`)
 			const ts = Date.now()
-			const filename = `tunnel-start-${ts}.mjs`
+			const subDir = `tunnel_${ts}`
+			await fs.mkdir(path.join(testDir, subDir), { recursive: true })
+
 			await fs.writeFile(
-				path.join(testDir, filename),
+				path.join(testDir, subDir, 'start.mjs'),
 				`
 export const config = {}
 export function before() {}
@@ -398,8 +398,32 @@ export function before() {}
 
 			const extensions = await scanExtensions(testDir, null, { cacheBust: true })
 
-			// "tunnel-start-{ts}.mjs" should map to "tunnel start {ts}"
-			expect(extensions[`tunnel start ${ts}`]).toBeDefined()
+			// "tunnel_{ts}/start.mjs" should map to "tunnel_{ts} start"
+			expect(extensions[`${subDir} start`]).toBeDefined()
+			expect(extensions[`${subDir} start`][0].hasBefore).toBe(true)
+		})
+
+		it('should discover deeply nested extension folders', async () => {
+			const testDir = path.join(tempDir, `deep-nested-extensions-${Date.now()}`)
+			const ts = Date.now()
+			const cloudDir = `cloud_${ts}`
+			const statusDir = `status_${ts}`
+			await fs.mkdir(path.join(testDir, cloudDir, statusDir), { recursive: true })
+
+			await fs.writeFile(
+				path.join(testDir, cloudDir, statusDir, 'check.mjs'),
+				`
+export const config = { priority: 5 }
+export function after() {}
+`
+			)
+
+			const extensions = await scanExtensions(testDir, null, { cacheBust: true })
+
+			// "cloud_{ts}/status_{ts}/check.mjs" should map to "cloud_{ts} status_{ts} check"
+			expect(extensions[`${cloudDir} ${statusDir} check`]).toBeDefined()
+			expect(extensions[`${cloudDir} ${statusDir} check`][0].hasAfter).toBe(true)
+			expect(extensions[`${cloudDir} ${statusDir} check`][0].priority).toBe(5)
 		})
 
 		it('should apply priority boost to extensions', async () => {
