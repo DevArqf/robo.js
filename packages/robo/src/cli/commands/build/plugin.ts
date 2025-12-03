@@ -8,7 +8,6 @@ import { Env } from '../../../core/env.js'
 import { Mode, resolveCliMode, setMode } from '../../../core/mode.js'
 import { loadConfig, loadConfigPath } from '../../../core/config.js'
 import Watcher from '../../utils/watcher.js'
-import { buildPublicDirectory } from '../../utils/public.js'
 import { Nanocore } from '../../../internal/nanocore.js'
 import { discoverRoutes } from '../../utils/route-discovery.js'
 import { scanAllRoutes } from '../../utils/route-scanner.js'
@@ -140,9 +139,6 @@ async function pluginAction(context: CliContext) {
 	logger.debug(`Generated manifest in ${Date.now() - manifestTime}ms`)
 
 	if (!options.dev) {
-		// Build /public for production if available
-		await buildPublicDirectory()
-
 		// Get the size of the entire current working directory
 		const sizeStartTime = Date.now()
 		const totalSize = await getProjectSize(process.cwd())

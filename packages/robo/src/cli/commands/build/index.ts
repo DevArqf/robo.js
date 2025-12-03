@@ -7,7 +7,6 @@ import path from 'node:path'
 import { Env } from '../../../core/env.js'
 import { Mode, resolveCliMode, setMode } from '../../../core/mode.js'
 import { Compiler } from '../../utils/compiler.js'
-import { buildPublicDirectory } from '../../utils/public.js'
 import {
 	executeBuildStartHooks,
 	executeBuildTransformHooks,
@@ -224,9 +223,6 @@ export async function buildAction(context: CliContext) {
 	logger.debug(`Generated granular manifest in ${Date.now() - granularStartTime}ms`)
 
 	if (!options.dev) {
-		// Build /public for production if available
-		await buildPublicDirectory()
-
 		// Get the size of the entire current working directory
 		const sizeStartTime = Date.now()
 		const totalSize = await getProjectSize(process.cwd())
