@@ -1,0 +1,22 @@
+{
+	"name": "build-test-project",
+	"description": "Test fixture for build system E2E tests",
+	"version": "1.0.0",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"build": "robo build",
+		"build:dev": "robo build --dev",
+		"build:beta": "robo build --mode beta",
+		"build:staging": "robo build --mode staging",
+		"start": "robo start"
+	},
+	"dependencies": {
+		"robo.js": "workspace:*"
+	},
+	"devDependencies": {
+		"@swc/core": "^1.15.3",
+		"@types/node": "^24.10.1",
+		"typescript": "^5.9.3"
+	}
+}
