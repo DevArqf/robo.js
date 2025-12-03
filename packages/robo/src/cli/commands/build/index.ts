@@ -105,12 +105,13 @@ export async function buildAction(context: CliContext) {
 	const defaultBuildMode = options.dev ? 'development' : 'production'
 	const buildMode = envMode ?? defaultBuildMode
 
+	// Configure RoboPaths with custom build directory BEFORE running hooks
+	// This ensures hooks receive correct context.paths.output
+	RoboPaths.configure({ customBuildDir: config.experimental?.buildDirectory })
+
 	// Execute build/start hooks
 	// Create build store and execute start hooks
 	const buildStore = await executeBuildStartHooks(plugins, config, buildMode)
-
-	// Configure RoboPaths with custom build directory if specified
-	RoboPaths.configure({ customBuildDir: config.experimental?.buildDirectory })
 
 	// Use the Robo Compiler to generate .robo/build/{mode}
 	const compileTime = await Compiler.buildCode({

@@ -35,10 +35,8 @@ export async function buildCode(options?: BuildCodeOptions) {
 	const { clean = true, copyOther = true, srcDir = SrcDir } = options ?? {}
 	const startTime = Date.now()
 
-	// Configure RoboPaths with custom build directory if provided
-	RoboPaths.configure({ customBuildDir: options?.customBuildDir })
-
 	// Get output directory: direct distDir override takes precedence, then mode-specific path
+	// Note: RoboPaths should be configured by the caller (build command) before calling this
 	const distDir = options?.distDir ?? RoboPaths.build(options?.mode)
 
 	// Force load compilers for Bun in plugin builds
