@@ -5,7 +5,7 @@ import { state } from './state.js'
 import { DEFAULT_CONFIG, TIMEOUT } from './constants.js'
 import { timeout } from '../cli/utils/utils.js'
 import { RoboPaths } from './paths.js'
-import type { InitContext, StartContext, PluginState, StopContext } from '../types/lifecycle.js'
+import type { InitContext, PrepareContext, StartContext, PluginState, StopContext } from '../types/lifecycle.js'
 import type { PluginData } from '../types/common.js'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -32,7 +32,7 @@ async function fileExists(filePath: string): Promise<boolean> {
  */
 export async function resolvePluginHookPath(
 	pluginName: string,
-	hookName: 'init' | 'start' | 'stop' | 'setup'
+	hookName: 'init' | 'prepare' | 'start' | 'stop' | 'setup'
 ): Promise<string | null> {
 	const possiblePaths = [
 		// Plugin package: node_modules/@robojs/discord/.robo/build/robo/init.js
@@ -58,7 +58,7 @@ export async function resolvePluginHookPath(
  * @param mode - Runtime mode (supports custom modes like 'beta', 'staging', etc.)
  */
 export async function resolveProjectHookPath(
-	hookName: 'init' | 'start' | 'stop',
+	hookName: 'init' | 'prepare' | 'start' | 'stop',
 	mode: string
 ): Promise<string | null> {
 	const hookPath = RoboPaths.hook(mode, hookName)
@@ -333,6 +333,117 @@ export async function executeStartHooks(
 		} catch (error) {
 			// Project start hook failure is always fatal
 			loggerInstance.error('Project start hook failed:', error)
+			throw error
+		}
+	}
+}
+
+/**
+ * Execute prepare hooks for project and all registered plugins.
+ * Runs sequentially: plugins FIRST (in registration order), then project LAST.
+ *
+ * This runs AFTER portal is populated but BEFORE start hooks.
+ * Use for initializing resources like Discord client, HTTP servers.
+ *
+ * @param plugins - Plugin data map
+ * @param mode - Runtime mode (supports custom modes like 'beta', 'staging', etc.)
+ */
+export async function executePrepareHooks(
+	plugins: Map<string, PluginData>,
+	mode: string
+): Promise<void> {
+	const config = getConfig()
+	const loggerInstance = logger()
+	const timeoutDuration = config?.timeouts?.lifecycle ?? DEFAULT_CONFIG.timeouts.lifecycle
+
+	// 1. Execute plugin prepare hooks FIRST (in registration order)
+	for (const [pluginName, pluginData] of plugins) {
+		const hookPath = await resolvePluginHookPath(pluginName, 'prepare')
+
+		if (!hookPath) {
+			continue // Plugin doesn't have a prepare hook
+		}
+
+		// Get plugin version from package.json (cached)
+		const pluginVersion = await getPluginVersion(pluginName)
+
+		// Create plugin-scoped context
+		const context: PrepareContext = {
+			mode,
+			projectConfig: config,
+			pluginConfig: pluginData.options,
+			state: createPluginState(pluginName),
+			logger: loggerInstance.fork(inferNamespace(pluginName)),
+			env: Env,
+			meta: {
+				name: pluginName,
+				version: pluginVersion
+			}
+		}
+
+		try {
+			loggerInstance.debug(`Executing prepare hook for ${pluginName}...`)
+			const hookModule = await import(pathToFileURL(hookPath).href)
+
+			if (typeof hookModule.default === 'function') {
+				const hookPromise = hookModule.default(context)
+
+				if (hookPromise instanceof Promise) {
+					const timeoutPromise = timeout(() => TIMEOUT, timeoutDuration)
+					const result = await Promise.race([hookPromise, timeoutPromise])
+
+					if (result === TIMEOUT) {
+						loggerInstance.warn(`Prepare hook for ${pluginName} timed out`)
+					}
+				}
+			}
+		} catch (error) {
+			// Check failSafe meta option
+			const failSafe = pluginData.metaOptions?.failSafe ?? false
+
+			if (failSafe) {
+				loggerInstance.warn(`Prepare hook for ${pluginName} failed (failSafe enabled):`, error)
+				// Continue with other plugins
+			} else {
+				loggerInstance.error(`Prepare hook for ${pluginName} failed:`, error)
+				throw error
+			}
+		}
+	}
+
+	// 2. Execute project's prepare hook LAST (if exists)
+	const projectHookPath = await resolveProjectHookPath('prepare', mode)
+	if (projectHookPath) {
+		try {
+			loggerInstance.debug('Executing project prepare hook...')
+			const hookModule = await import(pathToFileURL(projectHookPath).href)
+
+			if (typeof hookModule.default === 'function') {
+				const hookPromise = hookModule.default({
+					mode,
+					projectConfig: config,
+					pluginConfig: {},
+					state: createPluginState('project'),
+					logger: loggerInstance,
+					env: Env,
+					meta: {
+						name: 'project',
+						version: '0.0.0'
+					}
+				} as PrepareContext)
+
+				if (hookPromise instanceof Promise) {
+					const timeoutPromise = timeout(() => TIMEOUT, timeoutDuration)
+					const result = await Promise.race([hookPromise, timeoutPromise])
+
+					if (result === TIMEOUT) {
+						loggerInstance.warn('Project prepare hook timed out')
+					}
+				}
+			}
+		} catch (error) {
+			// Project prepare hook failure is always fatal
+			loggerInstance.error('Project prepare hook failed:', error)
 			throw error
 		}
 	}

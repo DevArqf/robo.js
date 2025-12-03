@@ -6,7 +6,7 @@ import { Env } from './env.js'
 import { executeEventHandler } from './handlers.js'
 import { Nanocore } from '../internal/nanocore.js'
 import { Flashcore } from './flashcore.js'
-import { executeInitHooks, executeStartHooks, executeStopHooks } from './hooks.js'
+import { executeInitHooks, executePrepareHooks, executeStartHooks, executeStopHooks } from './hooks.js'
 import { Manifest } from './manifest-api.js'
 import { Mode } from './mode.js'
 import { loadState } from './state.js'
@@ -125,7 +125,11 @@ async function start(options?: StartOptions) {
 		// In development mode, handlers are loaded lazily on first access
 		await populatePortal(mode)
 
-		// Execute start hooks (project first, then plugins sequentially)
+		// Execute prepare hooks (plugins first, then project)
+		// Use for initializing resources like Discord client, HTTP servers
+		await executePrepareHooks(plugins, mode)
+
+		// Execute start hooks (plugins first, then project)
 		await executeStartHooks(plugins, mode)
 
 		// Let external watchers know we're ready to go
@@ -181,7 +185,10 @@ async function stop(exitCode = 0, reason?: 'signal' | 'error' | 'restart') {
  */
 async function restart() {
 	try {
-		// Notify lifecycle handler
+		// Execute stop hooks with restart reason
+		await executeStopHooks(plugins, Mode.get(), 'restart')
+
+		// Keep legacy _restart event for backwards compatibility
 		await executeEventHandler(plugins, '_restart')
 		logger.debug(`Restarted Robo at ` + new Date().toLocaleString())
 	} finally {

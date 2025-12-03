@@ -140,6 +140,56 @@ export interface StartContext<TConfig = unknown> {
 }
 
 /**
+ * Context provided to prepare hooks.
+ * Runs AFTER portal is populated, BEFORE start hooks.
+ * Runs SEQUENTIALLY: plugins in registration order → project.
+ * Use for initializing resources like Discord client, HTTP servers.
+ */
+export interface PrepareContext<TConfig = unknown> {
+	/**
+	 * Current runtime mode (supports custom modes like 'beta', 'staging', etc.).
+	 */
+	mode: string
+
+	/**
+	 * Full project configuration.
+	 */
+	projectConfig: Config
+
+	/**
+	 * Plugin's configuration from user's /config/plugins/.
+	 * Typed based on plugin's config schema.
+	 */
+	pluginConfig: TConfig
+
+	/**
+	 * Plugin-scoped state storage.
+	 * Isolated from other plugins.
+	 */
+	state: PluginState
+
+	/**
+	 * Logger instance prefixed with plugin name.
+	 */
+	logger: Logger
+
+	/**
+	 * Environment variable access.
+	 */
+	env: typeof Env
+
+	/**
+	 * Plugin metadata.
+	 */
+	meta: {
+		/** Package name */
+		name: string
+		/** Package version */
+		version: string
+	}
+}
+
+/**
  * Context provided to stop hooks.
  * Runs SEQUENTIALLY: project first → plugins in REVERSE order.
  */
