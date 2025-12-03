@@ -1,0 +1,794 @@
+/**
+ * Cloudflare Tunnel Provider
+ *
+ * This was forked from node-cloudflared (MIT License)
+ * https://github.com/JacobLinCool/node-cloudflared
+ */
+import { logger } from '../../logger.js'
+import { color, composeColors, Mode } from 'robo.js'
+import { Nanocore } from 'robo.js/unstable.js'
+import { execSync, spawn } from 'node:child_process'
+import fs from 'node:fs'
+import https from 'node:https'
+import path from 'node:path'
+import type { ChildProcess } from 'node:child_process'
+import type { TunnelProvider, TunnelInstance, TunnelProviderConfig } from '../types.js'
+
+// Platform detection
+const IS_WINDOWS = /^win/.test(process.platform)
+
+// Cloudflare API types
+type RecordType =
+	| 'A'
+	| 'AAAA'
+	| 'CAA'
+	| 'CERT'
+	| 'CNAME'
+	| 'DNSKEY'
+	| 'DS'
+	| 'HTTPS'
+	| 'LOC'
+	| 'MX'
+	| 'NAPTR'
+	| 'NS'
+	| 'OPENPGPKEY'
+	| 'PTR'
+	| 'SMIMEA'
+	| 'SRV'
+	| 'SSHFP'
+	| 'SVCB'
+	| 'TLSA'
+	| 'TXT'
+	| 'URI'
+
+type CloudflareRequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH'
+type CloudflareRequestBody =
+	| CloudflareTunnelRequest
+	| CloudflareTunnelConfirationRequest
+	| CloudflareDNSRecordListRequest
+	| CloudflareDNSRecordCreateRequest
+	| null
+
+interface ResponseInfo {
+	code: number
+	message: string
+}
+
+interface CloudflareTunnelConfiguration {
+	ingress?: Array<{
+		hostname?: string
+		service: string
+		originRequest?: CloudflareOriginRequest
+		path?: string
+	}>
+	originRequest?: CloudflareOriginRequest
+	'warp-routing'?: {
+		enabled?: boolean
+	}
+}
+
+interface CloudflareTunnelRequest {
+	config_src: 'cloudflare'
+	name: string
+}
+
+interface CloudflareTunnelConfirationRequest {
+	config: CloudflareTunnelConfiguration
+}
+
+interface CloudflareDNSRecordListRequest {
+	comment?: {
+		absent?: string
+		contains?: string
+		endswith?: string
+		exact?: string
+		present?: string
+		startswith?: string
+	}
+	content?: {
+		contains?: string
+		endswith?: string
+		exact?: string
+		startswith?: string
+	}
+	direction?: 'asc' | 'desc'
+	match?: 'any' | 'all'
+	name?: {
+		contains?: string
+		endswith?: string
+		exact?: string
+		startswith?: string
+	}
+	order?: 'type' | 'name' | 'content' | 'ttl' | 'proxied'
+	page?: number
+	per_page?: number
+	proxied?: boolean
+	search?: string
+	tag?: {
+		absent?: string
+		contains?: string
+		endswith?: string
+		exact?: string
+		present?: string
+		startswith?: string
+	}
+	tag_match?: 'any' | 'all'
+	type?: RecordType
+}
+
+interface CloudflareDNSRecordCreateRequest {
+	name: string
+	content: string
+	type: string
+	proxied: boolean
+	comment: string
+}
+
+interface CloudflareOriginRequest {
+	access?: {
+		audTag: string[]
+		teamName: string
+		required?: boolean
+	}
+	caPool?: string
+	connectTimeout?: number
+	disableChunkedEncoding?: boolean
+	http2Origin?: boolean
+	httpHostHeader?: string
+	keepAliveConnections?: number
+	keepAliveTimeout?: number
+	noHappyEyeballs?: boolean
+	noTLSVerify?: boolean
+	originServerName?: string
+	proxyType?: string
+	tcpKeepAlive?: number
+	tlsTimeout?: number
+}
+
+interface CloudflareDNSRecordResponse {
+	id: string
+	created_on: string
+	meta: unknown
+	modified_on: string
+	proxiable: boolean
+	comment_modified_on?: string
+	tags_modified_on?: string
+	comment?: string
+	content?: string
+	data?: {
+		flags?: number
+		tag?: string
+		value?: string
+		algorithm?: number
+		certificate?: string
+		key_tag?: number
+		type?: number
+		protocol?: number
+		public_key?: string
+		digest?: string
+		digest_type?: number
+		priority?: number
+		target?: string
+		altitude?: number
+		lat_degrees?: number
+		lat_direction?: 'N' | 'S'
+		lat_minutes?: number
+		lat_seconds?: number
+		long_degrees?: number
+		long_direction?: 'E' | 'W'
+		long_minutes?: number
+		long_seconds?: number
+		precision_horz?: number
+		precision_vert?: number
+		size?: number
+		order?: number
+		preference?: number
+		regex?: string
+		replacement?: string
+		service?: string
+		matching_type?: number
+		selector?: number
+		usage?: number
+		port?: number
+		weight?: number
+		fingerprint?: string
+	}
+	name?: string
+	priority?: number
+	proxied?: string
+	settings?: {
+		ipv4_only?: boolean
+		ipv6_only?: boolean
+		flatten_cname?: boolean
+	}
+	tags?: Array<string>
+	ttl?: {
+		UnionMember0: number
+		UnionMember1: 1
+	}
+	type?: RecordType
+}
+
+interface CloudflareTunnelConfigurationResponse {
+	account_id?: string
+	config: CloudflareTunnelConfiguration
+	created_at?: string
+	source?: 'local' | 'cloudflare'
+	tunnel_id?: string
+	version?: number
+}
+
+interface CloudflareTunnelResponse {
+	id?: string
+	account_tag?: string
+	connections?: Array<{
+		id?: string
+		client_id?: string
+		client_version?: string
+		colo_name?: string
+		is_pending_reconnect?: boolean
+		opened_at?: string
+		origin_ip?: string
+		uuid?: string
+	}>
+	conns_active_at?: string
+	conns_inactive_at?: string
+	created_at?: string
+	deleted_at?: string
+	metadata?: unknown
+	name?: string
+	remote_config?: boolean
+	status?: 'inactive' | 'degraded' | 'healthy' | 'down'
+	tun_type?: 'cfd_tunnel' | 'warp_connector' | 'ip_sec' | 'gre' | 'cni'
+}
+
+interface CloudflareResponse<T = unknown> {
+	success: boolean
+	errors: Array<ResponseInfo>
+	messages: Array<ResponseInfo>
+	result: T
+	source?: string
+	created_at?: string
+	result_info?: {
+		count: number
+		page: number
+		per_page: number
+		total_count: number
+	}
+}
+
+// Constants
+const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4'
+const CLOUDFLARED_VERSION = process.env.CLOUDFLARED_VERSION || 'latest'
+const DEFAULT_BIN_PATH = path.join(process.cwd(), '.robo', 'bin', IS_WINDOWS ? 'cloudflared.exe' : 'cloudflared')
+const RELEASE_BASE = 'https://github.com/cloudflare/cloudflared/releases/'
+const Ignore = ['https://api.trycloudflare.com']
+
+class UnsupportedError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = 'UnsupportedError'
+	}
+}
+
+const LINUX_URL: Partial<Record<typeof process.arch, string>> = {
+	arm64: 'cloudflared-linux-arm64',
+	arm: 'cloudflared-linux-arm',
+	x64: 'cloudflared-linux-amd64',
+	ia32: 'cloudflared-linux-386'
+}
+
+const MACOS_URL: Partial<Record<typeof process.arch, string>> = {
+	arm64: 'cloudflared-darwin-arm64.tgz',
+	x64: 'cloudflared-darwin-amd64.tgz'
+}
+
+const WINDOWS_URL: Partial<Record<typeof process.arch, string>> = {
+	x64: 'cloudflared-windows-amd64.exe',
+	ia32: 'cloudflared-windows-386.exe'
+}
+
+/**
+ * Cloudflare Tunnel Provider implementation.
+ */
+export class CloudflareProvider implements TunnelProvider {
+	name = 'cloudflare'
+
+	isInstalled(): boolean {
+		return fs.existsSync(DEFAULT_BIN_PATH)
+	}
+
+	async install(): Promise<void> {
+		logger.event('Installing Cloudflared...')
+
+		if (process.platform === 'linux') {
+			await this.installLinux()
+		} else if (process.platform === 'darwin') {
+			await this.installMacos()
+		} else if (process.platform === 'win32') {
+			await this.installWindows()
+		} else {
+			throw new UnsupportedError('Unsupported platform: ' + process.platform)
+		}
+
+		logger.info('Cloudflared installed successfully!')
+	}
+
+	async initialize(config: TunnelProviderConfig): Promise<boolean> {
+		// Get config from params or environment
+		const domain = config.domain ?? process.env.CLOUDFLARE_DOMAIN
+		const apiKey = config.apiKey ?? process.env.CLOUDFLARE_API_KEY
+		const zoneId = config.zoneId ?? process.env.CLOUDFLARE_ZONE_ID
+		const accountId = config.accountId ?? process.env.CLOUDFLARE_ACCOUNT_ID
+
+		if (!domain || !apiKey || !zoneId || !accountId) {
+			return false
+		}
+
+		logger.debug('Looking for existing Cloudflare tunnels from .env file')
+		if (process.env.CLOUDFLARE_TUNNEL_ID && process.env.CLOUDFLARE_TUNNEL_TOKEN) {
+			logger.info('Using existing tunnel from .env file: ' + process.env.CLOUDFLARE_TUNNEL_ID)
+			return true
+		}
+		logger.debug('No existing tunnel found in .env file')
+
+		try {
+			logger.debug('Looking for existing tunnels from Cloudflare account')
+
+			const oldRoboTunnels = await this.cloudflareRequest<Array<CloudflareTunnelResponse>>(
+				`/accounts/${accountId}/cfd_tunnel?name=robo`,
+				'GET',
+				null,
+				apiKey
+			)
+
+			let oldRoboTunnelExists
+			if (oldRoboTunnels.success && oldRoboTunnels.result.length > 0) {
+				oldRoboTunnelExists = oldRoboTunnels.result.filter((tunnel) => tunnel.deleted_at === null)[0]
+			}
+
+			if (oldRoboTunnelExists) {
+				const oldRoboTunnel = oldRoboTunnelExists
+
+				if (oldRoboTunnel.id) {
+					const oldRoboTunnelToken = await this.cloudflareRequest<string>(
+						`/accounts/${accountId}/cfd_tunnel/${oldRoboTunnel.id}/token`,
+						'GET',
+						null,
+						apiKey
+					)
+
+					logger.info('Using existing tunnel from Cloudflare account: ' + oldRoboTunnel.id)
+					await this.updateEnvFile('CLOUDFLARE_TUNNEL_ID', oldRoboTunnel.id)
+					await this.updateEnvFile('CLOUDFLARE_TUNNEL_TOKEN', oldRoboTunnelToken.result)
+				}
+			} else {
+				logger.debug('Creating new tunnel for Cloudflare account')
+				const newCloudflareTunnel: CloudflareTunnelRequest = {
+					config_src: 'cloudflare',
+					name: 'robo'
+				}
+				const newTunnel = await this.cloudflareRequest<CloudflareTunnelResponse>(
+					`/accounts/${accountId}/cfd_tunnel`,
+					'POST',
+					newCloudflareTunnel,
+					apiKey
+				)
+				const { id } = newTunnel.result
+				logger.debug(`Created new tunnel: robo (${id})`)
+
+				if (id) {
+					const newRoboTunnelToken = await this.cloudflareRequest<string>(
+						`/accounts/${accountId}/cfd_tunnel/${id}/token`,
+						'GET',
+						null,
+						apiKey
+					)
+
+					logger.info('Using newly created tunnel from Cloudflare account: ' + id)
+					await this.updateEnvFile('CLOUDFLARE_TUNNEL_ID', id)
+					await this.updateEnvFile('CLOUDFLARE_TUNNEL_TOKEN', newRoboTunnelToken.result)
+				}
+			}
+
+			await this.reloadEnv()
+
+			const handeledTunnelConfig = await this.handleTunnelConfig(
+				process.env.CLOUDFLARE_TUNNEL_ID!,
+				accountId,
+				domain,
+				apiKey
+			)
+			logger.debug(
+				`Updated tunnel config for ${process.env.CLOUDFLARE_TUNNEL_ID} with account ${accountId}`
+			)
+
+			if (!handeledTunnelConfig) {
+				return false
+			}
+
+			const handeledDNSRecord = await this.handleDNSRecord(
+				process.env.CLOUDFLARE_TUNNEL_ID!,
+				domain,
+				zoneId,
+				apiKey
+			)
+			logger.debug(`Updated DNS records for ${domain} with account ${accountId}`)
+
+			if (!handeledDNSRecord) {
+				return false
+			}
+
+			return true
+		} catch (error) {
+			logger.error('Failed to initialize Cloudflare tunnel: ', error)
+			return false
+		}
+	}
+
+	async start(url: string, config?: TunnelProviderConfig): Promise<TunnelInstance> {
+		await this.reloadEnv()
+
+		const tunnelId = config?.tunnelId ?? process.env.CLOUDFLARE_TUNNEL_ID
+		const tunnelDomain = config?.domain ?? process.env.CLOUDFLARE_DOMAIN
+		const tunnelToken = config?.tunnelToken ?? process.env.CLOUDFLARE_TUNNEL_TOKEN
+		const ESCAPED_BIN_PATH = IS_WINDOWS ? `"${DEFAULT_BIN_PATH}"` : DEFAULT_BIN_PATH
+
+		let commandArgs = ['tunnel', '--no-autoupdate', '--url', url]
+
+		if (tunnelId && tunnelToken && tunnelDomain) {
+			commandArgs = [...commandArgs, 'run', '--token', tunnelToken, tunnelId]
+		}
+
+		logger.event(`Starting tunnel...`)
+		logger.debug(ESCAPED_BIN_PATH + commandArgs)
+
+		const childProcess = spawn(DEFAULT_BIN_PATH, commandArgs, {
+			shell: IS_WINDOWS,
+			stdio: 'pipe'
+		})
+
+		let lastMessage = ''
+		let resolvedUrl: string | undefined
+
+		const onData = (data: Buffer) => {
+			lastMessage = data.toString()?.trim()
+
+			logger.debug(color.dim(lastMessage))
+
+			const tunnelUrl =
+				tunnelId && tunnelToken && tunnelDomain ? `https://robo.${tunnelDomain}` : this.extractTunnelUrl(lastMessage)
+
+			if (tunnelUrl && !Ignore.includes(tunnelUrl) && !lastMessage.includes('Request failed')) {
+				resolvedUrl = tunnelUrl
+				logger.ready(`Tunnel URL:`, composeColors(color.bold, color.blue)(tunnelUrl))
+				Nanocore.update('watch', { tunnelUrl })
+			}
+		}
+		childProcess.stdout.on('data', onData)
+		childProcess.stderr.on('data', onData)
+
+		childProcess.on('exit', (code) => {
+			if (code !== 0) {
+				logger.error(lastMessage ?? 'Failed to start tunnel')
+			}
+		})
+
+		return {
+			process: childProcess,
+			url: resolvedUrl,
+			provider: this.name
+		}
+	}
+
+	async stop(instance: TunnelInstance, signal: NodeJS.Signals = 'SIGINT'): Promise<void> {
+		instance.process?.kill(signal)
+		await this.waitForExit(instance.process)
+		logger.debug('Tunnel stopped')
+	}
+
+	// Private helper methods
+	private extractTunnelUrl(output: string): string | null {
+		const regex = /https:\/\/[a-zA-Z0-9.-]*\.trycloudflare.com/
+		const match = output.match(regex)
+		return match ? match[0] : null
+	}
+
+	private waitForExit(child: ChildProcess): Promise<void> {
+		return new Promise<void>((resolve) => {
+			if (!child) {
+				resolve()
+			} else if (child.exitCode !== null) {
+				resolve()
+			} else {
+				child.once('exit', () => resolve())
+			}
+		})
+	}
+
+	private resolveBase(version: string): string {
+		if (version === 'latest') {
+			return `${RELEASE_BASE}latest/download/`
+		}
+		return `${RELEASE_BASE}download/${version}/`
+	}
+
+	private async installLinux(version = CLOUDFLARED_VERSION): Promise<string> {
+		const file = LINUX_URL[process.arch]
+
+		if (file === undefined) {
+			throw new UnsupportedError('Unsupported architecture: ' + process.arch)
+		}
+
+		await this.download(this.resolveBase(version) + file, DEFAULT_BIN_PATH)
+		fs.chmodSync(DEFAULT_BIN_PATH, '755')
+		return DEFAULT_BIN_PATH
+	}
+
+	private async installMacos(version = CLOUDFLARED_VERSION): Promise<string> {
+		const file = MACOS_URL[process.arch]
+
+		if (file === undefined) {
+			throw new UnsupportedError('Unsupported architecture: ' + process.arch)
+		}
+
+		await this.download(this.resolveBase(version) + file, `${DEFAULT_BIN_PATH}.tgz`)
+		logger.debug(`Extracting to ${DEFAULT_BIN_PATH}`)
+		execSync(`tar -xzf ${path.basename(`${DEFAULT_BIN_PATH}.tgz`)}`, { cwd: path.dirname(DEFAULT_BIN_PATH) })
+		fs.unlinkSync(`${DEFAULT_BIN_PATH}.tgz`)
+		fs.renameSync(`${path.dirname(DEFAULT_BIN_PATH)}/cloudflared`, DEFAULT_BIN_PATH)
+		return DEFAULT_BIN_PATH
+	}
+
+	private async installWindows(version = CLOUDFLARED_VERSION): Promise<string> {
+		const file = WINDOWS_URL[process.arch]
+
+		if (file === undefined) {
+			throw new UnsupportedError('Unsupported architecture: ' + process.arch)
+		}
+
+		await this.download(this.resolveBase(version) + file, DEFAULT_BIN_PATH)
+		return DEFAULT_BIN_PATH
+	}
+
+	private download(url: string, to: string, redirect = 0): Promise<string> {
+		if (redirect === 0) {
+			logger.debug(`Downloading ${url} to ${to}`)
+		} else {
+			logger.debug(`Redirecting to ${url}`)
+		}
+
+		if (!fs.existsSync(path.dirname(to))) {
+			fs.mkdirSync(path.dirname(to), { recursive: true })
+		}
+
+		return new Promise<string>((resolve, reject) => {
+			const request = https.get(url, (res) => {
+				const redirect_code: unknown[] = [301, 302, 303, 307, 308]
+				if (redirect_code.includes(res.statusCode) && res.headers.location !== undefined) {
+					request.destroy()
+					const redirection = res.headers.location
+					resolve(this.download(redirection, to, redirect + 1))
+					return
+				}
+
+				if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+					const file = fs.createWriteStream(to)
+
+					file.on('finish', () => {
+						file.close(() => resolve(to))
+					})
+
+					file.on('error', (err) => {
+						fs.unlink(to, () => reject(err))
+					})
+
+					res.pipe(file)
+				} else {
+					request.destroy()
+					reject(new Error(`HTTP response with status code: ${res.statusCode}`))
+				}
+			})
+
+			request.on('error', (err) => {
+				reject(err)
+			})
+
+			request.end()
+		})
+	}
+
+	private async cloudflareRequest<T = unknown>(
+		endpoint: string,
+		method: CloudflareRequestMethod = 'GET',
+		body: CloudflareRequestBody = null,
+		apiKey: string
+	): Promise<CloudflareResponse<T>> {
+		logger.debug(`Cloudflare API request: ${endpoint}`)
+
+		const response = await fetch(`${CLOUDFLARE_API}${endpoint}`, {
+			method,
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				'Content-Type': 'application/json'
+			},
+			body: body ? JSON.stringify(body) : null
+		})
+
+		const data: CloudflareResponse = await response.json()
+
+		if (!response.ok || !data.success) {
+			logger.error(`Cloudflare API request failed: ${data.errors[0]?.message || 'Unknown error'}`)
+		} else {
+			logger.debug(`Cloudflare API request succeeded: ${endpoint}`)
+		}
+
+		return data as CloudflareResponse<T>
+	}
+
+	private async handleTunnelConfig(
+		id: string,
+		accountId: string,
+		domain: string,
+		apiKey: string
+	): Promise<boolean> {
+		const tunnelConfig: CloudflareTunnelConfirationRequest = {
+			config: {
+				ingress: [
+					{
+						hostname: `robo.${domain}`,
+						service: `http://localhost:${process.env.PORT || 3000}`
+					},
+					{
+						service: 'http_status:404'
+					}
+				]
+			}
+		}
+
+		const tunnelConfigResponse = await this.cloudflareRequest<CloudflareTunnelConfigurationResponse>(
+			`/accounts/${accountId}/cfd_tunnel/${id}/configurations/`,
+			'PUT',
+			tunnelConfig,
+			apiKey
+		)
+
+		if (tunnelConfigResponse.success) {
+			logger.debug(`Tunnel config updated: ${JSON.stringify(tunnelConfigResponse.result)}`)
+			return true
+		} else {
+			logger.error(`Failed to update tunnel config: ${JSON.stringify(tunnelConfigResponse.errors)}`)
+			return false
+		}
+	}
+
+	private async handleDNSRecord(
+		tunnelID: string,
+		domain: string,
+		zoneId: string,
+		apiKey: string
+	): Promise<boolean> {
+		const existingDNSRecordFilter: CloudflareDNSRecordListRequest = {
+			match: 'any',
+			comment: {
+				contains: 'robo'
+			},
+			content: {
+				contains: 'cfargotunnel.com'
+			},
+			name: {
+				contains: 'robo'
+			},
+			type: 'CNAME'
+		}
+
+		const existingDNSRecordFilterParams = new URLSearchParams(existingDNSRecordFilter as Record<string, string>)
+
+		const dnsRecord: CloudflareDNSRecordCreateRequest = {
+			comment: 'Robo.js Cloudflare Tunnel Proxy',
+			name: 'robo',
+			proxied: true,
+			content: `${tunnelID}.cfargotunnel.com`,
+			type: 'CNAME'
+		}
+
+		let recordExists
+		const existingRecords = await this.cloudflareRequest<Array<CloudflareDNSRecordResponse>>(
+			`/zones/${zoneId}/dns_records?${existingDNSRecordFilterParams}`,
+			'GET',
+			null,
+			apiKey
+		)
+		if (existingRecords.success && existingRecords.result.length > 0) {
+			recordExists = existingRecords.result.find((record) => record.name === `robo.${domain}`)
+		}
+
+		if (recordExists) {
+			const existingRecord = recordExists
+			const updateResponse = await this.cloudflareRequest<CloudflareDNSRecordResponse>(
+				`/zones/${zoneId}/dns_records/${existingRecord.id}`,
+				'PATCH',
+				dnsRecord,
+				apiKey
+			)
+
+			if (updateResponse.success) {
+				logger.debug(`DNS record updated: ${JSON.stringify(updateResponse.result)}`)
+				return true
+			} else {
+				logger.error(`Failed to update DNS record: ${JSON.stringify(updateResponse.errors)}`)
+				return false
+			}
+		} else {
+			const createResponse = await this.cloudflareRequest<CloudflareDNSRecordResponse>(
+				`/zones/${zoneId}/dns_records`,
+				'POST',
+				dnsRecord,
+				apiKey
+			)
+
+			if (createResponse.success) {
+				logger.debug(`DNS record created: ${JSON.stringify(createResponse.result)}`)
+				return true
+			} else {
+				logger.error(`Failed to create DNS record: ${JSON.stringify(createResponse.errors)}`)
+				return false
+			}
+		}
+	}
+
+	private async updateEnvFile(key: string, value: string): Promise<void> {
+		try {
+			const envFilePath = await this.getEnvFilePath()
+
+			if (envFilePath) {
+				const regex = new RegExp(`^${key}=.*$`, 'm')
+				let envContent = await fs.promises.readFile(envFilePath, 'utf8')
+
+				if (regex.test(envContent)) {
+					envContent = envContent.replace(regex, `${key}="${value}"`)
+				} else {
+					envContent += `\n${key}="${value}"`
+				}
+
+				await fs.promises.writeFile(envFilePath, envContent, 'utf8')
+				logger.debug(`Updated ${envFilePath} file with ${key}=${value}`)
+			} else {
+				process.env[key] = value
+			}
+		} catch (error) {
+			logger.error(`Failed to update env file: ${error}`)
+			process.env[key] = value
+		}
+	}
+
+	private async getEnvFilePath(): Promise<string | undefined> {
+		const mode = Mode.get()
+		let filePath = path.join(process.cwd(), '.env')
+
+		if (mode && fs.existsSync(filePath + '.' + mode)) {
+			logger.debug('Found .env file for mode:', mode, ':', filePath + '.' + mode)
+			filePath = path.join(process.cwd(), '.env' + '.' + mode)
+		}
+
+		if (!fs.existsSync(filePath)) {
+			logger.debug(`No .env file found at "${filePath}"`)
+			return
+		}
+
+		return filePath
+	}
+
+	private async reloadEnv(): Promise<void> {
+		logger.debug('Reloading environment variable ...')
+
+		try {
+			const { Env } = await import('robo.js')
+			const mode = Mode.get()
+			await Env.load({ mode: mode })
+		} catch {
+			// Env.load may not be available in all contexts
+			logger.debug('Could not reload env via Env.load')
+		}
+	}
+}

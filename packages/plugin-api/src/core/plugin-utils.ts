@@ -1,4 +1,4 @@
-import { pluginOptions } from '../events/_start.js'
+import { pluginOptions } from '../robo/start.js'
 import type { BaseEngine } from '../engines/base.js'
 
 export let _readyPromiseResolve: () => void

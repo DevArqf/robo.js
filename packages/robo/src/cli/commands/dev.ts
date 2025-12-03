@@ -1,9 +1,8 @@
 import { Command } from '../utils/cli-handler.js'
-import { ChildProcess, spawn } from 'child_process'
+import { spawn } from 'child_process'
 import { logger, LogLevel } from '../../core/logger.js'
-import { DEFAULT_CONFIG, FLASHCORE_KEYS, HighlightGreen, Indent, cloudflareLogger } from '../../core/constants.js'
+import { DEFAULT_CONFIG, FLASHCORE_KEYS, HighlightGreen, Indent } from '../../core/constants.js'
 import { getConfigPaths, loadConfig, loadConfigPath } from '../../core/config.js'
-import { installCloudflared, isCloudflaredInstalled, initializeCloudflareTunnel, startCloudflared, stopCloudflared } from '../utils/cloudflared.js'
 import { IS_WINDOWS, filterExistingPaths, getWatchedPlugins, packageJson, timeout } from '../utils/utils.js'
 import path from 'node:path'
 import Watcher, { Change } from '../utils/watcher.js'
@@ -27,7 +26,6 @@ const command = new Command('dev')
 	.option('-l', '--log-level', 'specify the log level to use (debug, info, warn, error)')
 	.option('-m', '--mode', 'specify the mode(s) to run in (dev, beta, prod, etc...)')
 	.option('-s', '--silent', 'do not print anything')
-	.option('-t', '--tunnel', 'expose your local server to the internet')
 	.option('-v', '--verbose', 'print more information for debugging')
 	.handler(devAction)
 export default command
@@ -37,7 +35,6 @@ interface DevCommandOptions {
 	['log-level']?: LogLevel
 	mode?: string
 	silent?: boolean
-	tunnel?: boolean
 	verbose?: boolean
 }
 
@@ -108,39 +105,19 @@ async function devAction(context: CliContext) {
 		logger.warn(`Experimental flags enabled: ${features}.`)
 	}
 
-	// Install cloudflared & ensure PORT is set because we need it for the tunnel
-	if (options.tunnel && !isCloudflaredInstalled()) {
-		cloudflareLogger.event(`Installing Cloudflared...`)
-		await installCloudflared()
-		cloudflareLogger.info(`Cloudflared installed successfully!`)
-	}
-
-	// Initialize Cloudflare tunnel
-	if (options.tunnel && isCloudflaredInstalled()) {
-		cloudflareLogger.event(`Initializing Cloudflare tunnel...`)
-		const initialized = await initializeCloudflareTunnel()
-		cloudflareLogger.debug(initialized ? `Static Cloudflare Tunnel initialized successfully!` : `Failed to initialize Static Cloudflare Tunnel.`)
-	}
-
-	if (options.tunnel && !process.env.PORT) {
-		cloudflareLogger.error(`Cannot start tunnel without a PORT environment variable.`)
-		process.exit(1)
-	}
-
 	// Ensure worker spirits are ready
 	spirits = new Spirits()
 
-	// Stop spirits & tunnel on process exit
+	// Stop spirits on process exit
 	let isStopping = false
-	let tunnelProcess: ChildProcess | undefined
 
-	const callback = async (signal: NodeJS.Signals) => {
+	const callback = async (_signal: NodeJS.Signals) => {
 		if (isStopping) {
 			return
 		}
 
 		isStopping = true
-		await Promise.allSettled([spirits.stopAll(), stopCloudflared(tunnelProcess, signal)])
+		await spirits.stopAll()
 		process.exit(0)
 	}
 	process.on('SIGINT', () => callback('SIGINT'))
@@ -256,11 +233,6 @@ async function devAction(context: CliContext) {
 			isUpdating = false
 		}
 	})
-
-	// Run the tunnel if requested
-	if (options.tunnel) {
-		tunnelProcess = await startCloudflared('http://localhost:' + process.env.PORT)
-	}
 
 	// Check for updates
 	try {
