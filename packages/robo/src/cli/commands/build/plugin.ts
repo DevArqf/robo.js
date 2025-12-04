@@ -146,6 +146,7 @@ async function pluginAction(context: CliContext) {
 
 		// Print plugin build summary from granular manifest
 		await printPluginBuildSummary(routeEntries, totalSize, startTime, pluginName)
+		logger.ready('Build complete!')
 	}
 
 	// Generate a watch file to indicate that the build was successful
@@ -199,6 +200,7 @@ async function pluginAction(context: CliContext) {
 		})
 	} else if (!options.dev) {
 		// Gracefully exit
+		await logger.flush()
 		process.exit(0)
 	}
 }

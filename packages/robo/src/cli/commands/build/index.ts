@@ -241,6 +241,7 @@ export async function buildAction(context: CliContext) {
 
 		// Log build summary
 		printBuildSummary(routeEntries, totalSize, startTime, false)
+		logger.ready('Build complete!')
 	}
 
 	// Gracefully exit
@@ -249,6 +250,7 @@ export async function buildAction(context: CliContext) {
 		if (PERF_ENABLED) {
 			await finalize()
 		}
+		await logger.flush()
 		process.exit(0)
 	}
 }
