@@ -1,6 +1,6 @@
 /**
- * Debug utilities for Discord bots
- * These provide dev commands and error handling for development mode
+ * Debug utilities for development mode
+ * Provides error forwarding and debug button handling
  */
 import {
 	ActionRowBuilder,
@@ -11,109 +11,50 @@ import {
 	EmbedBuilder,
 	codeBlock
 } from 'discord.js'
-import { color, Flashcore, logger } from 'robo.js'
-import { env } from 'robo.js/dist/core/env.js'
-import { getClient, hasClient } from './client.js'
-import type { ButtonInteraction, CommandInteraction, Message, TextChannel } from 'discord.js'
-import type { CommandConfig } from '../types/commands.js'
+import { getPluginOptions } from 'robo.js'
+import { devLogger } from './helpers.js'
+import type { ButtonInteraction, Client, CommandInteraction, Message, TextChannel } from 'discord.js'
+import type { DevPluginConfig } from '../types.js'
 
 // Debug mode is enabled when not in production
-export const DEBUG_MODE = env.get('nodeEnv') !== 'production'
+export const DEBUG_MODE = process.env.NODE_ENV !== 'production'
 
-// Debug error response button ID
-const FLASHCORE_KEY = '__robo_debug_error'
+// Debug error response button ID prefix
 const DEBUG_ID_PREFIX = '__robo_debug_'
 
-export const devLogCommandConfig: CommandConfig = {
-	description: 'View recent Robo logs',
-	sage: {
-		defer: true,
-		ephemeral: true
+/**
+ * Gets the Discord client from the discordjs plugin
+ */
+function getClient(): Client | null {
+	try {
+		// Try to import from @robojs/discordjs
+		const discordjs = require('@robojs/discordjs')
+		if (discordjs?.getClient && discordjs?.hasClient?.()) {
+			return discordjs.getClient()
+		}
+	} catch {
+		// Plugin not available
 	}
-}
-
-export async function devLogCommand(interaction: CommandInteraction) {
-	const logs = await Flashcore.get<string[]>('__robo_logs')
-
-	if (!logs || logs.length === 0) {
-		return 'No logs available.'
-	}
-
-	const embed = new EmbedBuilder()
-		.setTitle('Recent Logs')
-		.setDescription(codeBlock(logs.join('\n').slice(-4000)))
-		.setColor(Colors.Blurple)
-		.setTimestamp()
-
-	return { embeds: [embed] }
-}
-
-export const devRestartCommandConfig: CommandConfig = {
-	description: 'Restart the Robo',
-	sage: {
-		defer: true,
-		ephemeral: true
-	}
-}
-
-export async function devRestartCommand(interaction: CommandInteraction) {
-	await interaction.editReply('Restarting...')
-
-	// Use process messaging if available (for dev mode)
-	if (process.send) {
-		process.send({ type: 'restart' })
-	} else {
-		// Otherwise just exit and let the process manager restart us
-		process.exit(0)
-	}
-}
-
-export const devStatusCommandConfig: CommandConfig = {
-	description: 'View the status of this Robo',
-	sage: {
-		defer: true,
-		ephemeral: true
-	}
-}
-
-export async function devStatusCommand(interaction: CommandInteraction) {
-	const uptime = process.uptime()
-	const hours = Math.floor(uptime / 3600)
-	const minutes = Math.floor((uptime % 3600) / 60)
-	const seconds = Math.floor(uptime % 60)
-
-	const memoryUsage = process.memoryUsage()
-	const heapUsed = (memoryUsage.heapUsed / 1024 / 1024).toFixed(2)
-	const heapTotal = (memoryUsage.heapTotal / 1024 / 1024).toFixed(2)
-
-	const embed = new EmbedBuilder()
-		.setTitle('Robo Status')
-		.setColor(Colors.Green)
-		.addFields(
-			{ name: 'Uptime', value: `${hours}h ${minutes}m ${seconds}s`, inline: true },
-			{ name: 'Memory', value: `${heapUsed}MB / ${heapTotal}MB`, inline: true },
-			{ name: 'Node.js', value: process.version, inline: true }
-		)
-		.setTimestamp()
-
-	return { embeds: [embed] }
+	return null
 }
 
 /**
- * Sends a debug error to a configured channel or DMs the bot owner
+ * Sends a debug error to a configured channel
  */
 export async function sendDebugError(error: unknown): Promise<boolean> {
 	if (!DEBUG_MODE) {
 		return false
 	}
 
-	const debugChannelId = env.get('discord.debugChannelId')
-	if (!debugChannelId || !hasClient()) {
+	const options = getPluginOptions('@robojs/dev') as DevPluginConfig | null
+	const debugChannelId = options?.debugChannelId ?? process.env.DISCORD_DEBUG_CHANNEL_ID
+
+	if (!debugChannelId) {
 		return false
 	}
 
 	const client = getClient()
-	if (!client.isReady()) {
+	if (!client?.isReady()) {
 		return false
 	}
 
@@ -125,7 +66,7 @@ export async function sendDebugError(error: unknown): Promise<boolean> {
 
 		const errorMessage = error instanceof Error ? error.stack || error.message : String(error)
 		const embed = new EmbedBuilder()
-			.setTitle('❌ Unhandled Error')
+			.setTitle('Unhandled Error')
 			.setDescription(codeBlock(errorMessage.slice(0, 4000)))
 			.setColor(Colors.Red)
 			.setTimestamp()
@@ -141,10 +82,14 @@ export async function sendDebugError(error: unknown): Promise<boolean> {
 				.setStyle(ButtonStyle.Danger)
 		)
 
-		await (channel as TextChannel).send({ embeds: [embed], components: [row] })
+		// Check if we should ping a role
+		const pingRoleId = options?.errorPingRoleId
+		const content = pingRoleId ? `<@&${pingRoleId}>` : undefined
+
+		await (channel as TextChannel).send({ content, embeds: [embed], components: [row] })
 		return true
 	} catch (e) {
-		logger.debug('Failed to send debug error:', e)
+		devLogger.debug('Failed to send debug error:', e)
 		return false
 	}
 }
@@ -187,7 +132,7 @@ export async function printErrorResponse(
 ): Promise<void> {
 	const errorMessage = error instanceof Error ? error.message : String(error)
 	const embed = new EmbedBuilder()
-		.setTitle('❌ Error')
+		.setTitle('Error')
 		.setDescription(codeBlock(errorMessage.slice(0, 4000)))
 		.setColor(Colors.Red)
 
@@ -208,6 +153,6 @@ export async function printErrorResponse(
 			await commandInteraction.reply({ embeds: [embed], ephemeral: true })
 		}
 	} catch (e) {
-		logger.debug('Failed to reply with error:', e)
+		devLogger.debug('Failed to reply with error:', e)
 	}
 }

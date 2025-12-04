@@ -1,7 +1,7 @@
 {
 	"name": "@robojs/dev",
-	"description": "Tools for Robo development.",
 	"version": "0.2.0",
+	"description": "Development tools that safely disappear in production.",
 	"type": "module",
 	"private": false,
 	"main": ".robo/build/index.js",
@@ -38,9 +38,13 @@
 		"typescript": "^5.0.0"
 	},
 	"peerDependencies": {
+		"discord.js": ">=14.0.0",
 		"robo.js": "^0.10.28"
 	},
 	"peerDependenciesMeta": {
+		"discord.js": {
+			"optional": true
+		},
 		"robo.js": {
 			"optional": false
 		}
