@@ -2,13 +2,13 @@ import { Config } from '../types/index.js'
 import { Mode } from './mode.js'
 import { Compiler } from '../cli/utils/compiler.js'
 import { Globals } from './globals.js'
-import { getTypeScriptCompilerOptions, ts } from '../cli/compiler/typescript.js'
 import { logger } from './logger.js'
 import fs, { existsSync } from 'node:fs'
 import fsPromises from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { CompilerOptions } from 'typescript'
+import type { default as Typescript } from 'typescript'
 
 // Global config reference
 let _config: Config = null
@@ -344,7 +344,19 @@ async function resolveConfigDependencies(configPath: string): Promise<{
 	const projectRoot = process.cwd()
 	const dependencies = new Set<string>()
 
-	if (!isTypeScript || typeof ts === 'undefined') {
+	if (!isTypeScript) {
+		dependencies.add(configPath)
+		return {
+			compilerOptions: null,
+			files: dependencies
+		}
+	}
+
+	// Lazy load TypeScript only when we actually need it for config compilation
+	const { ensureTypescript, getTypeScriptCompilerOptions } = await import('../cli/compiler/typescript.js')
+	const ts = await ensureTypescript() as typeof Typescript | undefined
+
+	if (typeof ts === 'undefined') {
 		dependencies.add(configPath)
 		return {
 			compilerOptions: null,

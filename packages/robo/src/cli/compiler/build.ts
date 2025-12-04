@@ -87,7 +87,7 @@ export async function buildCode(options?: BuildCodeOptions) {
 	if (options?.plugin) {
 		const declarationTime = Date.now()
 		logger.debug(`Generating declaration files for plugins...`)
-		Compiler.buildDeclarationFiles(tsOptions)
+		await Compiler.buildDeclarationFiles(tsOptions)
 		logger.debug(`Generated declaration files in ${Date.now() - declarationTime}ms`)
 	}
 

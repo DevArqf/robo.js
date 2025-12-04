@@ -7,14 +7,21 @@ import type { CompilerOptions, Diagnostic } from 'typescript'
 import type { default as Typescript } from 'typescript'
 import type { transform as SwcTransform } from '@swc/core'
 
-// Load Typescript compiler in a try/catch block
+// Load Typescript compiler lazily to avoid ~200ms startup penalty
 // This is to maintain compatibility with JS-only projects
 export let ts: typeof Typescript
 export let transform: typeof SwcTransform
 
-await preloadTransformers()
+// Lazy initialization flag - TypeScript is only loaded when actually needed
+let _initialized = false
 
-export function buildDeclarationFiles(tsOptions?: CompilerOptions) {
+export async function buildDeclarationFiles(tsOptions?: CompilerOptions) {
+	// Ensure TypeScript is loaded before building declaration files
+	await ensureTypescript()
+	if (!ts) {
+		throw new Error('TypeScript is required for building declaration files')
+	}
+
 	// Define the compiler options specifically for declaration files
 	const options: CompilerOptions = {
 		target: ts.ScriptTarget.Latest,
@@ -58,6 +65,12 @@ export function buildDeclarationFiles(tsOptions?: CompilerOptions) {
 }
 
 export async function getTypeScriptCompilerOptions(): Promise<CompilerOptions> {
+	// Ensure TypeScript is loaded before getting compiler options
+	await ensureTypescript()
+	if (!ts) {
+		throw new Error('TypeScript is not available')
+	}
+
 	// Parse tsconfig.json and convert compiler options
 	const configFileName = path.join(process.cwd(), 'tsconfig.json')
 	const configFileContents = await readFile(configFileName, 'utf8')
@@ -92,29 +105,68 @@ function formatDiagnostic(diagnostic: Diagnostic): string {
 
 /**
  * Checks if the current project is a TypeScript project.
- * This is determined by the presence of a tsconfig.json file and the availability of the TypeScript dependencies.
+ * This is determined by the presence of a tsconfig.json file.
+ *
+ * Note: This function does NOT load TypeScript - it only checks if tsconfig.json exists.
+ * Use checkTypescriptProject() if you need to verify TypeScript dependencies are available.
  *
  * @returns Outcome and what is missing
  */
 export function isTypescriptProject() {
 	const missing: string[] = []
-	if (!existsSync(path.join(process.cwd(), 'tsconfig.json'))) {
+	const hasTsConfig = existsSync(path.join(process.cwd(), 'tsconfig.json'))
+
+	if (!hasTsConfig) {
 		missing.push('tsconfig.json')
 	}
-	if (typeof ts === 'undefined') {
-		missing.push('typescript')
-	}
-	if (typeof transform === 'undefined') {
-		missing.push('@swc/core')
+
+	// Only report missing TypeScript/SWC if we've already tried to load them
+	if (_initialized) {
+		if (typeof ts === 'undefined') {
+			missing.push('typescript')
+		}
+		if (typeof transform === 'undefined') {
+			missing.push('@swc/core')
+		}
 	}
 
 	return {
-		isTypeScript: missing.length === 0,
+		isTypeScript: hasTsConfig && (!_initialized || (typeof ts !== 'undefined' && typeof transform !== 'undefined')),
 		missing
 	}
 }
 
+/**
+ * Checks if the current project is a TypeScript project and ensures dependencies are loaded.
+ * Use this when you need to verify TypeScript is actually available.
+ *
+ * @returns Outcome and what is missing
+ */
+export async function checkTypescriptProject() {
+	await ensureTypescript()
+	return isTypescriptProject()
+}
+
+/**
+ * Ensures TypeScript and SWC are loaded before use.
+ * This is the preferred way to access the `ts` variable - call this first.
+ *
+ * @returns The TypeScript module, or undefined if not available
+ */
+export async function ensureTypescript(): Promise<typeof Typescript | undefined> {
+	if (!_initialized) {
+		await preloadTransformers()
+	}
+	return ts
+}
+
 export async function preloadTransformers() {
+	// Idempotent - only load once
+	if (_initialized) {
+		return
+	}
+	_initialized = true
+
 	try {
 		// Disable Typescript compiler(s) if using Bun, unless for plugin builds
 		// This is because plugins may be used in any runtime environment (not just Bun)
@@ -125,6 +177,6 @@ export async function preloadTransformers() {
 			transform = swc.transform
 		}
 	} catch {
-		// Ignore
+		// Ignore - JS-only project or missing dependencies
 	}
 }
