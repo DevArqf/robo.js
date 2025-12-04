@@ -1,10 +1,11 @@
 import { color } from '../../core/color.js'
 import { Command, Option } from '../utils/cli-handler.js'
 import { logger } from '../../core/logger.js'
-import { loadCliManifest } from '../utils/cli-loader.js'
 import rootCommand from '../index.js'
 import { packageJson } from '../utils/utils.js'
 import type { CliContext } from '../../types/cli.js'
+
+// cli-loader is lazy-loaded in showPluginCommands to avoid heavy startup cost
 
 const command = new Command('help').description('Shows this help menu').handler(helpCommandHandler)
 export default command
@@ -241,6 +242,8 @@ function formatCommand(commandGroup: CommandGroup[]): FormattedCommand[] {
  * Shows plugin-provided commands if any are available.
  */
 async function showPluginCommands() {
+	// Lazy-load cli-loader to avoid heavy startup cost (~190ms)
+	const { loadCliManifest } = await import('../utils/cli-loader.js')
 	const manifest = await loadCliManifest()
 
 	if (!manifest || Object.keys(manifest.commands).length === 0) {

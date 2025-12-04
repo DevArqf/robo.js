@@ -1,4 +1,5 @@
 import { Command } from '../../utils/cli-handler.js'
+import { startPhase, endPhase, PERF_ENABLED, finalize } from '../../utils/perf-metrics.js'
 import { logger as defaultLogger, Logger } from '../../../core/logger.js'
 import { loadConfig } from '../../../core/config.js'
 import { getProjectSize, printBuildSummary } from '../../utils/build-summary.js'
@@ -90,6 +91,7 @@ export async function buildAction(context: CliContext) {
 	}
 
 	// Load the configuration file
+	startPhase('Config Loading')
 	const config = await loadConfig('robo', true)
 
 	if (!config) {
@@ -98,6 +100,7 @@ export async function buildAction(context: CliContext) {
 
 	// Load plugin data for build hooks
 	const plugins = loadPluginData(config)
+	endPhase('Config Loading')
 
 	// Determine build mode
 	// Use custom mode from --mode flag if specified, otherwise fall back to dev/production
@@ -113,15 +116,18 @@ export async function buildAction(context: CliContext) {
 	const buildStore = await executeBuildStartHooks(plugins, config, buildMode)
 
 	// Use the Robo Compiler to generate .robo/build/{mode}
+	startPhase('Compilation')
 	const compileTime = await Compiler.buildCode({
 		customBuildDir: config.experimental?.buildDirectory,
 		mode: buildMode,
 		excludePaths: config.excludePaths?.map((p) => p.replaceAll('/', path.sep)),
 		files: files
 	})
+	endPhase('Compilation')
 	logger.debug(`Compiled in ${compileTime}ms`)
 
 	// Discover and process routes for granular manifest (using mode-specific build directory)
+	startPhase('Route Discovery')
 	let routeEntries: RouteEntries = {}
 	const routes = await discoverRoutes(plugins, buildMode)
 
@@ -141,6 +147,7 @@ export async function buildAction(context: CliContext) {
 		const scannedResults = await scanAllRoutes(routes, buildDir)
 		routeEntries = await processAllRoutes(scannedResults)
 	}
+	endPhase('Route Discovery')
 
 	// Merge plugin manifests into route entries
 	// This reads each plugin's granular manifest and merges their commands, events, etc.
@@ -154,6 +161,7 @@ export async function buildAction(context: CliContext) {
 	const { metadataRegistry } = await executeBuildCompleteHooks(plugins, config, buildMode, buildStore, routeEntries)
 
 	// Generate granular manifest
+	startPhase('Manifest Generation')
 	const granularStartTime = Date.now()
 
 	// Discover all hooks from plugins and project (for manifest generation)
@@ -169,8 +177,10 @@ export async function buildAction(context: CliContext) {
 	})
 
 	await manifestGenerator.generateAll(metadataRegistry)
+	endPhase('Manifest Generation')
 
 	// Generate manifest types
+	startPhase('Type Generation')
 	await generateManifestTypes({
 		routes,
 		routeEntries,
@@ -218,6 +228,7 @@ export async function buildAction(context: CliContext) {
 	const pluginRoutes = await collectPluginRoutes(pluginRoutesInfo, routeDefinitions)
 	await generatePortalTypes(pluginRoutes, portalTypesPath, isTypeScript)
 	await generateTypesIndex(typesDir)
+	endPhase('Type Generation')
 
 	logger.debug(`Generated portal types at ${portalTypesPath}`)
 	logger.debug(`Generated granular manifest in ${Date.now() - granularStartTime}ms`)
@@ -234,6 +245,10 @@ export async function buildAction(context: CliContext) {
 
 	// Gracefully exit
 	if (options.exit ?? !options.dev) {
+		// Print perf metrics before exiting
+		if (PERF_ENABLED) {
+			await finalize()
+		}
 		process.exit(0)
 	}
 }

@@ -1,4 +1,5 @@
 import { Command } from '../utils/cli-handler.js'
+import { startPhase, endPhase, PERF_ENABLED, finalize } from '../utils/perf-metrics.js'
 import { spawn } from 'child_process'
 import { logger, LogLevel } from '../../core/logger.js'
 import { DEFAULT_CONFIG, FLASHCORE_KEYS, HighlightGreen, Indent } from '../../core/constants.js'
@@ -8,7 +9,6 @@ import path from 'node:path'
 import Watcher, { Change } from '../utils/watcher.js'
 import { color, composeColors } from '../../core/color.js'
 import { Spirits } from '../utils/spirits.js'
-import { buildAction } from './build/index.js'
 import { Highlight } from '../../core/constants.js'
 import { Flashcore } from '../../core/flashcore.js'
 import { getPackageExecutor, getPackageManager } from '../utils/runtime-utils.js'
@@ -124,9 +124,12 @@ async function devAction(context: CliContext) {
 	process.on('SIGTERM', () => callback('SIGTERM'))
 
 	// Run first build
+	startPhase('Initial Build')
 	let buildSuccess = false
 	try {
 		const start = Date.now()
+		// Lazy import buildAction to avoid loading build module at CLI startup
+		const { buildAction } = await import('./build/index.js')
 		await buildAction({
 			args: [],
 			options: {
@@ -139,6 +142,7 @@ async function devAction(context: CliContext) {
 	} catch (error) {
 		logger.error(error)
 	}
+	endPhase('Initial Build')
 	let roboSpirit: string
 
 	// These callbacks are necessary to ensure "/dev restart" works
@@ -152,12 +156,15 @@ async function devAction(context: CliContext) {
 	}
 
 	// Get state saved to disk as the default
+	startPhase('Flashcore Init')
 	const stateStart = Date.now()
 	await Flashcore.$init({ keyvOptions: config.flashcore?.keyv, namespaceSeparator: config.flashcore?.namespaceSeparator })
 	const persistedState = (await Flashcore.get<Record<string, unknown>>(FLASHCORE_KEYS.state)) ?? {}
 	logger.debug(`State loaded in ${Date.now() - stateStart}ms`)
+	endPhase('Flashcore Init')
 
 	// Start the Robo!
+	startPhase('Spirit Startup')
 	if (buildSuccess) {
 		roboSpirit = await spirits.newTask<string>({
 			event: 'start',
@@ -188,6 +195,7 @@ async function devAction(context: CliContext) {
 		await Nanocore.update('watch', { id, status: 'attention' })
 		logger.wait(`Build failed! Waiting for changes before retrying...`)
 	}
+	endPhase('Spirit Startup')
 
 	// Watch for changes in the "src" directory alongside special files
 	const watchedPaths = ['src']
@@ -205,6 +213,12 @@ async function devAction(context: CliContext) {
 	logger.debug(`Ignoring paths:`, ignoredPaths)
 	const watcher = new Watcher(watchedPaths, { exclude: ignoredPaths })
 	let isUpdating = false
+	let rebuildCount = 0
+
+	// Print startup perf report before entering watch mode
+	if (PERF_ENABLED) {
+		await finalize()
+	}
 
 	watcher.start(async (changes) => {
 		logger.debug('Watcher events:', changes)
@@ -212,6 +226,11 @@ async function devAction(context: CliContext) {
 			return logger.debug(`Already updating, skipping...`)
 		}
 		isUpdating = true
+		rebuildCount++
+
+		// Track rebuild cycle for performance metrics
+		const rebuildPhaseName = `Rebuild #${rebuildCount}`
+		startPhase(rebuildPhaseName)
 
 		try {
 			const configChange = changes.find((change) => change.filePath === configRelative)
@@ -230,6 +249,13 @@ async function devAction(context: CliContext) {
 			roboSpirit = await rebuildRobo(roboSpirit, config, options.verbose, changes)
 			spirits.on(roboSpirit, restartCallback)
 		} finally {
+			endPhase(rebuildPhaseName)
+
+			// Print rebuild metrics
+			if (PERF_ENABLED) {
+				await finalize()
+			}
+
 			isUpdating = false
 		}
 	})

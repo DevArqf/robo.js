@@ -1,4 +1,5 @@
 import { Command } from '../utils/cli-handler.js'
+import { startPhase, endPhase } from '../utils/perf-metrics.js'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { logger, LogLevel } from '../../core/logger.js'
@@ -86,6 +87,7 @@ async function startAction(context: CliContext) {
 	}
 
 	// Experimental warning
+	startPhase('Config Loading')
 	const config = await loadConfig()
 	const experimentalKeys = Object.entries(config.experimental ?? {})
 		.filter(([, value]) => value)
@@ -98,6 +100,7 @@ async function startAction(context: CliContext) {
 
 	// Configure RoboPaths with custom build directory if specified
 	RoboPaths.configure({ customBuildDir: config.experimental?.buildDirectory })
+	endPhase('Config Loading')
 
 	// Get mode-specific build directory
 	const buildDirectory = RoboPaths.build(envMode)
@@ -114,8 +117,10 @@ async function startAction(context: CliContext) {
 	}
 
 	// Start Roboooooooo!! :D (dynamic to avoid premature process hooks)
+	startPhase('Robo Start')
 	const { Robo } = await import('../../core/robo.js')
 	Robo.start({
 		logLevel: options['log-level']
 	})
+	endPhase('Robo Start')
 }

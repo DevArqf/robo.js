@@ -1,27 +1,45 @@
 #!/usr/bin/env node
+/**
+ * Robo.js CLI Entry Point
+ *
+ * When run via bootstrap.ts, performance timing is captured before imports.
+ * The bootstrap stores timing in globalThis which perf-metrics reads.
+ *
+ * Commands are lazy-loaded using the command registry to minimize startup time.
+ * Only the command that is actually executed will have its module loaded.
+ */
+
 process.removeAllListeners('warning') // <-- Supresses Fetch API experimental warning
+
+// Performance metrics - reads pre-captured timing from globalThis (set by bootstrap.ts)
+import { PERF_ENABLED, recordProcessStart, recordImportsComplete, setCommandName, finalize } from './utils/perf-metrics.js'
+recordProcessStart()
+
+// Minimal imports - only routing infrastructure (no command implementations)
 import { Command } from './utils/cli-handler.js'
 import { packageJson } from './utils/utils.js'
-import {
-	executePluginCommand,
-	findCommand,
-	getExtensions,
-	loadCliManifest,
-	showUnknownCommandError
-} from './utils/cli-loader.js'
-import add from './commands/add.js'
-import build from './commands/build/index.js'
-import cloud from './commands/cloud/index.js'
-import dev from './commands/dev.js'
-import deploy from './commands/deploy.js'
-import login from './commands/login.js'
-import logout from './commands/logout.js'
-import remove from './commands/remove.js'
-import start from './commands/start.js'
-import sync from './commands/sync.js'
-import upgrade from './commands/upgrade.js'
+import { COMMANDS, createLazyCommand } from './utils/command-registry.js'
+
+// cli-loader is lazy-loaded inside onUnknownCommand to avoid heavy startup cost
+
+// Help stays eager (tiny module, needs root command reference for introspection)
 import help, { helpCommandHandler } from './commands/help.js'
-import cli from './commands/cli.js'
+
+// Record import phase completion - now much faster without loading all commands!
+recordImportsComplete()
+
+// Detect command name from argv for perf reporting
+if (PERF_ENABLED) {
+	const cmdArg = process.argv[2]
+	if (cmdArg && !cmdArg.startsWith('-')) {
+		setCommandName(cmdArg)
+	}
+
+	// Finalize perf metrics on exit
+	process.on('beforeExit', async () => {
+		await finalize()
+	})
+}
 
 const command = new Command('robo')
 export default command
@@ -29,23 +47,22 @@ export default command
 command.description('Build powerful apps with plugins, web servers, and more! ⚡')
 command.version(packageJson.version)
 command.option('-h', '--help', 'Shows this help menu')
-command.addCommand(build)
-command.addCommand(start)
-command.addCommand(dev)
-command.addCommand(add)
-command.addCommand(remove)
-command.addCommand(sync)
-command.addCommand(upgrade)
-command.addCommand(deploy)
-command.addCommand(cloud)
-command.addCommand(login)
-command.addCommand(logout)
+
+// Register all commands lazily from metadata (no module imports)
+for (const meta of COMMANDS) {
+	command.addCommand(createLazyCommand(meta))
+}
+
+// Help is eager (already imported, needs root command reference)
 command.addCommand(help)
-command.addCommand(cli)
 command.handler(helpCommandHandler)
 
 // Handle unknown commands by checking for plugin-provided CLI commands
 command.onUnknownCommand(async (commandParts, remainingArgs) => {
+	// Lazy-load cli-loader to avoid heavy startup cost (~190ms)
+	const { loadCliManifest, findCommand, getExtensions, executePluginCommand, showUnknownCommandError } =
+		await import('./utils/cli-loader.js')
+
 	// Try to load the CLI manifest (with runtime discovery fallback)
 	const manifest = await loadCliManifest()
 
