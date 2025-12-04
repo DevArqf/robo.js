@@ -5,7 +5,7 @@ import { state } from './state.js'
 import { DEFAULT_CONFIG, TIMEOUT } from './constants.js'
 import { timeout } from '../cli/utils/utils.js'
 import { RoboPaths } from './paths.js'
-import type { InitContext, PrepareContext, StartContext, PluginState, StopContext } from '../types/lifecycle.js'
+import type { ErrorContext, InitContext, PrepareContext, StartContext, PluginState, StopContext } from '../types/lifecycle.js'
 import type { PluginData } from '../types/common.js'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -32,7 +32,7 @@ async function fileExists(filePath: string): Promise<boolean> {
  */
 export async function resolvePluginHookPath(
 	pluginName: string,
-	hookName: 'init' | 'prepare' | 'start' | 'stop' | 'setup'
+	hookName: 'init' | 'prepare' | 'start' | 'stop' | 'setup' | 'error'
 ): Promise<string | null> {
 	const possiblePaths = [
 		// Plugin package: node_modules/@robojs/discord/.robo/build/robo/init.js
@@ -58,7 +58,7 @@ export async function resolvePluginHookPath(
  * @param mode - Runtime mode (supports custom modes like 'beta', 'staging', etc.)
  */
 export async function resolveProjectHookPath(
-	hookName: 'init' | 'prepare' | 'start' | 'stop',
+	hookName: 'init' | 'prepare' | 'start' | 'stop' | 'error',
 	mode: string
 ): Promise<string | null> {
 	const hookPath = RoboPaths.hook(mode, hookName)
@@ -559,6 +559,99 @@ export async function executeStopHooks(
 				loggerInstance.error(`Stop hook for ${pluginName} failed:`, error)
 			}
 			// Continue with other plugins regardless - graceful shutdown should complete
+		}
+	}
+}
+
+/**
+ * Error hook timeout in milliseconds.
+ * Short timeout since we need to complete before process exits.
+ */
+const ERROR_HOOK_TIMEOUT = 5000
+
+/**
+ * Execute error hooks for all plugins and project.
+ * Runs in PARALLEL with a short timeout - must complete before process exits.
+ * Errors in hooks are logged but don't propagate (error hooks should never crash the process).
+ *
+ * @param plugins - Plugin data map
+ * @param mode - Runtime mode
+ * @param error - The error that occurred
+ * @param type - Type of error: 'unhandledRejection' or 'uncaughtException'
+ */
+export async function executeErrorHooks(
+	plugins: Map<string, PluginData>,
+	mode: string,
+	error: unknown,
+	type: 'unhandledRejection' | 'uncaughtException'
+): Promise<void> {
+	const loggerInstance = logger()
+
+	// Build base context (without logger - added per-hook)
+	const baseContext = {
+		error,
+		type,
+		mode,
+		env: Env
+	}
+
+	const hookPromises: Promise<void>[] = []
+
+	// Execute plugin error hooks in parallel
+	for (const [pluginName] of plugins) {
+		const hookPath = await resolvePluginHookPath(pluginName, 'error')
+
+		if (!hookPath) {
+			continue // Plugin doesn't have an error hook
+		}
+
+		hookPromises.push(
+			(async () => {
+				try {
+					const hookModule = await import(pathToFileURL(hookPath).href)
+					if (typeof hookModule.default === 'function') {
+						const context: ErrorContext = {
+							...baseContext,
+							logger: loggerInstance.fork(inferNamespace(pluginName))
+						}
+						await hookModule.default(context)
+					}
+				} catch (e) {
+					// Log but don't propagate - error hooks should never crash the process
+					loggerInstance.warn(`Error hook for ${pluginName} failed:`, e)
+				}
+			})()
+		)
+	}
+
+	// Execute project error hook
+	const projectHookPath = await resolveProjectHookPath('error', mode)
+	if (projectHookPath) {
+		hookPromises.push(
+			(async () => {
+				try {
+					const hookModule = await import(pathToFileURL(projectHookPath).href)
+					if (typeof hookModule.default === 'function') {
+						const context: ErrorContext = {
+							...baseContext,
+							logger: loggerInstance
+						}
+						await hookModule.default(context)
+					}
+				} catch (e) {
+					loggerInstance.warn('Project error hook failed:', e)
+				}
+			})()
+		)
+	}
+
+	// Wait for all hooks to complete with timeout (blocking)
+	if (hookPromises.length > 0) {
+		const timeoutPromise = timeout(() => TIMEOUT, ERROR_HOOK_TIMEOUT)
+		const result = await Promise.race([Promise.allSettled(hookPromises), timeoutPromise])
+
+		if (result === TIMEOUT) {
+			loggerInstance.warn('Error hooks timed out')
 		}
 	}
 }

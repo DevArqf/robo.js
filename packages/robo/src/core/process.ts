@@ -27,21 +27,32 @@ export function registerProcessEvents() {
 	process.on('unhandledRejection', async (reason) => {
 		const { env } = await import('./env.js')
 		const { logger } = await import('./logger.js')
-		const { Robo } = await import('./robo.js')
+		const { handleUnhandledError, Robo } = await import('./robo.js')
 		logger.error(reason)
+
+		// Execute error hooks (blocking with timeout)
+		await handleUnhandledError(reason, 'unhandledRejection')
 
 		// Log error and ignore it in production
 		if (env.get('nodeEnv') === 'production') {
 			return
 		}
 
-		// Development mode works a bit differently because we don't want developers to ignore errors
-		// Errors will stop the process unless there's a special channel to send them to
-		const { sendDebugError } = await import('./debug.js')
-		const handledError = await sendDebugError(reason)
-		if (!handledError) {
-			Robo.stop(1)
-		}
+		// Development mode: stop the process on unhandled rejections
+		// Platform-specific error handling (like Discord debug channels) should be handled by plugins
+		Robo.stop(1)
+	})
+
+	process.on('uncaughtException', async (error) => {
+		const { logger } = await import('./logger.js')
+		const { handleUnhandledError, Robo } = await import('./robo.js')
+		logger.error(error)
+
+		// Execute error hooks (blocking with timeout)
+		await handleUnhandledError(error, 'uncaughtException')
+
+		// Always exit on uncaught exceptions after hooks run
+		Robo.stop(1)
 	})
 
 	// Tell the parent process we're ready to receive messages

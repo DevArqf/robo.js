@@ -380,4 +380,26 @@ export interface BuildCompleteContext extends BuildContext {
 	updateMetadata(namespace: string, updates: Record<string, unknown>): void
 }
 
+/**
+ * Context provided to error hooks.
+ * Fires when unhandled errors occur (rejection or exception).
+ * Runs in PARALLEL with a short timeout - errors must complete quickly.
+ */
+export interface ErrorContext {
+	/** The error that occurred */
+	error: unknown
+
+	/** Type of error: 'unhandledRejection' or 'uncaughtException' */
+	type: 'unhandledRejection' | 'uncaughtException'
+
+	/** Current runtime mode */
+	mode: string
+
+	/** Logger instance (forked for plugins) */
+	logger: Logger
+
+	/** Environment variable access */
+	env: typeof Env
+}
+
 export default {}

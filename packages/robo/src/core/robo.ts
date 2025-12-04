@@ -6,7 +6,7 @@ import { Env } from './env.js'
 import { executeEventHandler } from './handlers.js'
 import { Nanocore } from '../internal/nanocore.js'
 import { Flashcore } from './flashcore.js'
-import { executeInitHooks, executePrepareHooks, executeStartHooks, executeStopHooks } from './hooks.js'
+import { executeErrorHooks, executeInitHooks, executePrepareHooks, executeStartHooks, executeStopHooks } from './hooks.js'
 import { Manifest } from './manifest-api.js'
 import { Mode } from './mode.js'
 import { loadState } from './state.js'
@@ -221,4 +221,24 @@ function loadPluginData() {
 	}
 
 	return collection
+}
+
+/**
+ * Handle unhandled errors by executing error hooks.
+ * Called by process event handlers for unhandledRejection and uncaughtException.
+ * Blocks until hooks complete or timeout.
+ *
+ * @param error - The error that occurred
+ * @param type - Type of error
+ */
+export async function handleUnhandledError(
+	error: unknown,
+	type: 'unhandledRejection' | 'uncaughtException'
+): Promise<void> {
+	// Only execute if plugins have been loaded (Robo has started)
+	if (!plugins) {
+		return
+	}
+
+	await executeErrorHooks(plugins, Mode.get(), error, type)
 }
