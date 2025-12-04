@@ -7,7 +7,7 @@
 import { logger } from '../../logger.js'
 import { color, composeColors, Mode } from 'robo.js'
 import { Nanocore } from 'robo.js/unstable.js'
-import { execSync, spawn } from 'node:child_process'
+import { execSync, spawn, type SpawnOptions } from 'node:child_process'
 import fs from 'node:fs'
 import https from 'node:https'
 import path from 'node:path'
@@ -429,10 +429,10 @@ export class CloudflareProvider implements TunnelProvider {
 	async start(url: string, config?: TunnelProviderConfig): Promise<TunnelInstance> {
 		await this.reloadEnv()
 
+		const { detached = false, timeout = 30000 } = config ?? {}
 		const tunnelId = config?.tunnelId ?? process.env.CLOUDFLARE_TUNNEL_ID
 		const tunnelDomain = config?.domain ?? process.env.CLOUDFLARE_DOMAIN
 		const tunnelToken = config?.tunnelToken ?? process.env.CLOUDFLARE_TUNNEL_TOKEN
-		const ESCAPED_BIN_PATH = IS_WINDOWS ? `"${DEFAULT_BIN_PATH}"` : DEFAULT_BIN_PATH
 
 		let commandArgs = ['tunnel', '--no-autoupdate', '--url', url]
 
@@ -441,38 +441,61 @@ export class CloudflareProvider implements TunnelProvider {
 		}
 
 		logger.event(`Starting tunnel...`)
-		logger.debug(ESCAPED_BIN_PATH + commandArgs)
+		logger.debug(DEFAULT_BIN_PATH, commandArgs.join(' '))
 
-		const childProcess = spawn(DEFAULT_BIN_PATH, commandArgs, {
-			shell: IS_WINDOWS,
-			stdio: 'pipe'
-		})
+		// Determine static URL for configured tunnels
+		const staticUrl = tunnelId && tunnelToken && tunnelDomain ? `https://robo.${tunnelDomain}` : undefined
 
-		let lastMessage = ''
-		let resolvedUrl: string | undefined
+		// For detached mode, use file-based output to avoid SIGPIPE when parent exits
+		// Pipes would be closed on parent exit, killing the child with SIGPIPE
+		if (detached) {
+			const logFile = path.join(process.cwd(), '.robo', 'tunnel.log')
 
-		const onData = (data: Buffer) => {
-			lastMessage = data.toString()?.trim()
+			// Ensure directory exists
+			if (!fs.existsSync(path.dirname(logFile))) {
+				fs.mkdirSync(path.dirname(logFile), { recursive: true })
+			}
 
-			logger.debug(color.dim(lastMessage))
+			// Clear/create log file
+			fs.writeFileSync(logFile, '')
 
-			const tunnelUrl =
-				tunnelId && tunnelToken && tunnelDomain ? `https://robo.${tunnelDomain}` : this.extractTunnelUrl(lastMessage)
+			// Open file handles for stdout/stderr
+			const out = fs.openSync(logFile, 'a')
+			const err = fs.openSync(logFile, 'a')
 
-			if (tunnelUrl && !Ignore.includes(tunnelUrl) && !lastMessage.includes('Request failed')) {
-				resolvedUrl = tunnelUrl
-				logger.ready(`Tunnel URL:`, composeColors(color.bold, color.blue)(tunnelUrl))
-				Nanocore.update('watch', { tunnelUrl })
+			const childProcess = spawn(DEFAULT_BIN_PATH, commandArgs, {
+				detached: true,
+				stdio: ['ignore', out, err]
+			})
+
+			// Wait for URL by polling the log file
+			const resolvedUrl = await this.waitForUrlFromFile(logFile, staticUrl, timeout)
+
+			// Close file handles in parent (child has its own)
+			fs.closeSync(out)
+			fs.closeSync(err)
+
+			logger.ready(`Tunnel URL:`, composeColors(color.bold, color.blue)(resolvedUrl))
+			Nanocore.update('watch', { tunnelUrl: resolvedUrl })
+
+			return {
+				process: childProcess,
+				url: resolvedUrl,
+				provider: this.name
 			}
 		}
-		childProcess.stdout.on('data', onData)
-		childProcess.stderr.on('data', onData)
 
-		childProcess.on('exit', (code) => {
-			if (code !== 0) {
-				logger.error(lastMessage ?? 'Failed to start tunnel')
-			}
+		// Non-detached mode - use pipes for immediate output
+		const childProcess = spawn(DEFAULT_BIN_PATH, commandArgs, {
+			shell: IS_WINDOWS,
+			stdio: ['ignore', 'pipe', 'pipe']
 		})
+
+		// Wait for URL to be resolved (with timeout)
+		const resolvedUrl = await this.waitForUrl(childProcess, staticUrl, timeout)
+
+		logger.ready(`Tunnel URL:`, composeColors(color.bold, color.blue)(resolvedUrl))
+		Nanocore.update('watch', { tunnelUrl: resolvedUrl })
 
 		return {
 			process: childProcess,
@@ -494,6 +517,57 @@ export class CloudflareProvider implements TunnelProvider {
 		return match ? match[0] : null
 	}
 
+	/**
+	 * Wait for tunnel URL to be available from process output.
+	 * For static tunnels (with configured domain), returns immediately.
+	 * For quick tunnels, parses stdout/stderr for the generated URL.
+	 */
+	private waitForUrl(child: ChildProcess, staticUrl?: string, timeout = 30000): Promise<string> {
+		return new Promise((resolve, reject) => {
+			// Static tunnel - URL is known immediately
+			if (staticUrl) {
+				resolve(staticUrl)
+				return
+			}
+
+			let lastMessage = ''
+
+			const timer = setTimeout(() => {
+				cleanup()
+				reject(new Error(`Timeout waiting for tunnel URL after ${timeout}ms`))
+			}, timeout)
+
+			const cleanup = () => {
+				clearTimeout(timer)
+				child.stdout?.off('data', onData)
+				child.stderr?.off('data', onData)
+				child.off('exit', onExit)
+			}
+
+			const onData = (data: Buffer) => {
+				lastMessage = data.toString().trim()
+				logger.debug(color.dim(lastMessage))
+
+				const tunnelUrl = this.extractTunnelUrl(lastMessage)
+				if (tunnelUrl && !Ignore.includes(tunnelUrl) && !lastMessage.includes('Request failed')) {
+					cleanup()
+					resolve(tunnelUrl)
+				}
+			}
+
+			const onExit = (code: number | null) => {
+				cleanup()
+				if (code !== 0) {
+					reject(new Error(lastMessage || `Tunnel process exited with code ${code}`))
+				}
+			}
+
+			child.stdout?.on('data', onData)
+			child.stderr?.on('data', onData)
+			child.on('exit', onExit)
+		})
+	}
+
 	private waitForExit(child: ChildProcess): Promise<void> {
 		return new Promise<void>((resolve) => {
 			if (!child) {
@@ -503,6 +577,56 @@ export class CloudflareProvider implements TunnelProvider {
 			} else {
 				child.once('exit', () => resolve())
 			}
+		})
+	}
+
+	/**
+	 * Wait for tunnel URL by polling a log file.
+	 * Used for detached mode where we can't use pipes.
+	 */
+	private waitForUrlFromFile(logFile: string, staticUrl?: string, timeout = 30000): Promise<string> {
+		return new Promise((resolve, reject) => {
+			// Static tunnel - URL is known immediately
+			if (staticUrl) {
+				resolve(staticUrl)
+				return
+			}
+
+			const startTime = Date.now()
+			let lastPosition = 0
+
+			const poll = () => {
+				// Check timeout
+				if (Date.now() - startTime > timeout) {
+					reject(new Error(`Timeout waiting for tunnel URL after ${timeout}ms`))
+					return
+				}
+
+				try {
+					const content = fs.readFileSync(logFile, 'utf-8')
+
+					// Only process new content
+					if (content.length > lastPosition) {
+						const newContent = content.slice(lastPosition)
+						lastPosition = content.length
+
+						logger.debug(color.dim(newContent.trim()))
+
+						const tunnelUrl = this.extractTunnelUrl(newContent)
+						if (tunnelUrl && !Ignore.includes(tunnelUrl) && !newContent.includes('Request failed')) {
+							resolve(tunnelUrl)
+							return
+						}
+					}
+				} catch {
+					// File might not exist yet or be locked
+				}
+
+				// Poll again after a short delay
+				setTimeout(poll, 100)
+			}
+
+			poll()
 		})
 	}
 
