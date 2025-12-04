@@ -21,6 +21,17 @@
 export { Session, SessionManager, InMemoryStorage } from './session/index.js'
 export { sessionManager } from './core/manager.js'
 export { mockLogger } from './core/logger.js'
+export { GatewayServer, getGatewayServer, closeGatewayServer } from './core/gateway.js'
+
+// Discord Gateway exports
+export {
+	GatewayOpcodes,
+	GatewayCloseCodes,
+	DEFAULT_HEARTBEAT_INTERVAL,
+	GATEWAY_VERSION
+} from './discord/opcodes.js'
+export { buildHelloPayload, buildHeartbeatAckPayload, isValidIdentifyPayload } from './discord/payloads.js'
+export type { GatewayPayload, HelloPayloadData, IdentifyPayloadData } from './discord/payloads.js'
 
 // Utility exports
 export {

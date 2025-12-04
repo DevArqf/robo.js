@@ -44,11 +44,13 @@
 	"dependencies": {
 		"@robojs/server": "workspace:*",
 		"discord-api-types": "^0.37.115",
-		"robo.js": "workspace:*"
+		"robo.js": "workspace:*",
+		"ws": "^8.18.0"
 	},
 	"devDependencies": {
 		"@swc/core": "^1.15.3",
 		"@types/node": "^24.10.1",
+		"@types/ws": "^8.18.1",
 		"@types/react": "^18.3.18",
 		"@types/react-dom": "^18.3.5",
 		"@vitejs/plugin-react-swc": "^3.7.2",

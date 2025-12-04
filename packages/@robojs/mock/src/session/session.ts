@@ -6,7 +6,7 @@ import type {
 	RecordedAction
 } from '../types/index.js'
 import { generateSessionId, createMockToken } from '../utils/id.js'
-import { createSessionState } from './state.js'
+import { createSessionState, createDefaultGuildWithChannel } from './state.js'
 import { mockLogger } from '../core/logger.js'
 
 // Default TTL: 1 hour
@@ -40,6 +40,16 @@ export class Session implements ISession {
 			botUser: options?.config?.botUser,
 			applicationId: options?.config?.applicationId
 		})
+
+		// Create guilds from config
+		if (options?.config?.guilds) {
+			for (const guildConfig of options.config.guilds) {
+				createDefaultGuildWithChannel(this.state, {
+					guildName: guildConfig.name,
+					channelName: 'general'
+				})
+			}
+		}
 
 		mockLogger.debug(`Session created: ${this.id}${this.name ? ` (${this.name})` : ''}`)
 	}

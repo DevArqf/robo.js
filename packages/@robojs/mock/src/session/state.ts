@@ -80,6 +80,70 @@ export function createMockChannel(config?: {
 	}
 }
 
+// ============================================================================
+// Guild/Channel Management Helpers (Phase 1E)
+// ============================================================================
+
+/**
+ * Add a guild to the session state
+ */
+export function addGuildToSession(state: SessionState, guild: MockGuild): void {
+	state.guilds.set(guild.id, guild)
+
+	// Add bot user as member if not already
+	if (!guild.members.includes(state.botUser.id)) {
+		guild.members.push(state.botUser.id)
+	}
+}
+
+/**
+ * Add a channel to a guild in the session state
+ */
+export function addChannelToGuild(state: SessionState, guildId: Snowflake, channel: MockChannel): void {
+	// Set guild ID on channel
+	channel.guildId = guildId
+
+	// Add channel to state
+	state.channels.set(channel.id, channel)
+
+	// Add channel ID to guild's channel list
+	const guild = state.guilds.get(guildId)
+	if (guild && !guild.channels.includes(channel.id)) {
+		guild.channels.push(channel.id)
+	}
+}
+
+/**
+ * Create a default guild with a general channel and add it to the session state
+ * Returns the created guild for reference
+ */
+export function createDefaultGuildWithChannel(state: SessionState, config?: { guildName?: string; channelName?: string }): MockGuild {
+	// Create the guild
+	const guild = createMockGuild({
+		name: config?.guildName ?? 'Test Guild',
+		ownerId: state.botUser.id
+	})
+
+	// Create a general text channel
+	const channel = createMockChannel({
+		guildId: guild.id,
+		name: config?.channelName ?? 'general',
+		type: 0 // GUILD_TEXT
+	})
+
+	// Add channel to guild's channel list
+	guild.channels.push(channel.id)
+
+	// Add bot user as member
+	guild.members.push(state.botUser.id)
+
+	// Add to session state
+	state.guilds.set(guild.id, guild)
+	state.channels.set(channel.id, channel)
+
+	return guild
+}
+
 /**
  * Serialize session state for API responses
  */
