@@ -33,7 +33,8 @@
 		"dev": "NODE_OPTIONS=--enable-source-maps robo build plugin --watch",
 		"lint": "pnpm lint:eslint && pnpm lint:style",
 		"lint:eslint": "eslint . --ext js,jsx,ts,tsx",
-		"lint:style": "prettier --write ."
+		"lint:style": "prettier --write .",
+		"test": "NODE_OPTIONS=\"--experimental-vm-modules --disable-warning=ExperimentalWarning\" jest"
 	},
 	"devDependencies": {
 		"@swc/core": "^1.11.29",

@@ -5,6 +5,7 @@
  */
 import { createCliCommandConfig } from 'robo.js'
 import { TunnelRegistry } from '../../../../core/tunnel/registry.js'
+import { formatAge } from '../../../../core/tunnel/utils.js'
 import type { CliContext } from 'robo.js'
 
 export const config = createCliCommandConfig({
@@ -19,27 +20,6 @@ export const config = createCliCommandConfig({
 		}
 	]
 } as const)
-
-/**
- * Format milliseconds into a human-readable duration
- */
-function formatAge(ms: number): string {
-	const seconds = Math.floor(ms / 1000)
-	const minutes = Math.floor(seconds / 60)
-	const hours = Math.floor(minutes / 60)
-	const days = Math.floor(hours / 24)
-
-	if (days > 0) {
-		return `${days}d ${hours % 24}h`
-	}
-	if (hours > 0) {
-		return `${hours}h ${minutes % 60}m`
-	}
-	if (minutes > 0) {
-		return `${minutes}m ${seconds % 60}s`
-	}
-	return `${seconds}s`
-}
 
 export default async function ({ options, logger }: CliContext<typeof config>) {
 	const { verbose } = options

@@ -6,6 +6,7 @@
  */
 import { Nanocore } from 'robo.js/unstable.js'
 import { logger } from '../logger.js'
+import { isProcessAlive, generateId } from './utils.js'
 
 const STORAGE_KEY = 'server/tunnels'
 
@@ -18,30 +19,11 @@ export interface TunnelRecord {
 	port: number
 	url: string
 	startedAt: number
-	provider: 'cloudflare'
+	provider: 'cloudflare' | 'mock'
 }
 
 interface TunnelStorage {
 	tunnels: TunnelRecord[]
-}
-
-/**
- * Check if a process is still alive by sending signal 0
- */
-function isProcessAlive(pid: number): boolean {
-	try {
-		process.kill(pid, 0)
-		return true
-	} catch {
-		return false
-	}
-}
-
-/**
- * Generate a short random ID for tunnel identification
- */
-function generateId(): string {
-	return Math.random().toString(36).substring(2, 8)
 }
 
 /**
@@ -200,6 +182,8 @@ export const TunnelRegistry = {
 	get,
 	remove,
 	kill,
-	killAll,
-	isProcessAlive
+	killAll
 }
+
+// Re-export isProcessAlive for backward compatibility
+export { isProcessAlive } from './utils.js'

@@ -1,0 +1,51 @@
+{
+	"name": "test-project",
+	"description": "",
+	"version": "1.0.0",
+	"type": "module",
+	"private": true,
+	"keywords": [
+		"api",
+		"http",
+		"http",
+		"robo",
+		"robo.js",
+		"server",
+		"server",
+		"typescript",
+		"vite",
+		"vite",
+		"web",
+		"web"
+	],
+	"scripts": {
+		"build": "robo build",
+		"deploy": "robo deploy",
+		"dev": "robox dev --tunnel",
+		"doctor": "sage doctor",
+		"invite": "robo invite",
+		"lint:style": "prettier --write .",
+		"start": "robo start",
+		"tunnel": ".robo/bin/cloudflared tunnel --url http://localhost:3000",
+		"upgrade": "sage upgrade"
+	},
+	"dependencies": {
+		"@discord/embedded-app-sdk": "^2.4.0",
+		"@robojs/server": "link:/Users/pkmmte/Documents/GitHub/robo.js/packages/plugin-api",
+		"react": "^19.2.1",
+		"react-dom": "^19.1.1",
+		"robo.js": "link:/Users/pkmmte/Documents/GitHub/robo.js/packages/robo"
+	},
+	"devDependencies": {
+		"@swc/core": "^1.15.3",
+		"@types/node": "^24.10.1",
+		"@types/react": "^19.2.7",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react-swc": "^4.2.2",
+		"discord.js": "^14.25.1",
+		"eslint-plugin-react-hooks": "^7.0.1",
+		"prettier": "^3.7.4",
+		"typescript": "^5.9.3",
+		"vite": "5"
+	}
+}
