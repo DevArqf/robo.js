@@ -181,16 +181,27 @@ export function createLazyCommand(meta: CommandMetadata): Command {
 	}
 
 	// For commands with subcommands, we need to load the full module
-	// and use it directly since it registers its own subcommands
+	// and re-parse arguments through it so subcommands are properly routed
 	if (meta.hasSubcommands) {
 		cmd.handler(async (context: CliContext) => {
 			const module = await import(meta.modulePath)
 			const loadedCommand = module.default as Command
 
-			// The loaded command has subcommands registered via .addCommand()
-			// We need to invoke parsing on the loaded command
-			// But since we're already in a handler, we should just call the handler
-			if (loadedCommand._handler) {
+			// Re-parse through the loaded command to properly route subcommands
+			// The context.args may contain subcommand names that need routing
+			// Combine args and reconstruct argv for re-parsing
+			const argsToReparse = [...context.args, ...context.argv.filter((a) => a.startsWith('-'))]
+
+			// Check if first arg is a subcommand of the loaded command
+			const firstArg = context.args[0]
+			const subCommand = loadedCommand.getChildCommands().find((cmd) => cmd.getName() === firstArg)
+
+			if (subCommand) {
+				// Route to the subcommand with remaining args
+				const remainingArgs = argsToReparse.slice(1)
+				await loadedCommand.parse(['', '', firstArg, ...remainingArgs])
+			} else if (loadedCommand._handler) {
+				// No subcommand match, call the parent handler
 				return loadedCommand._handler(context)
 			}
 		})

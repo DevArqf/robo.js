@@ -102,33 +102,69 @@ async function discoverCliAtRuntime(): Promise<CliManifest | null> {
 		const pluginNames = extractPluginNames(config?.plugins ?? [])
 		logger.debug(`Runtime CLI discovery: Found ${pluginNames.length} plugins in config`)
 
-		// 2. Scan each plugin's CLI directory
-		for (const pluginName of pluginNames) {
-			const cliDir = await getPluginCliDir(pluginName)
-			if (!cliDir) continue
+		// 2. Scan each plugin's CLI directory (in parallel)
+		const pluginResults = await Promise.all(
+			pluginNames.map(async (pluginName) => {
+				const cliDir = await getPluginCliDir(pluginName)
+				if (!cliDir) return null
 
-			// Scan commands
-			const commandsDir = path.join(cliDir, 'commands')
-			if (await pathExists(commandsDir)) {
-				const { commands: pluginCommands, subcommandMap } = await scanCommands(commandsDir, pluginName, {
-					cacheBust: true
-				})
-
-				// Merge commands (respecting priority)
-				for (const [cmdPath, entry] of Object.entries(pluginCommands)) {
-					const existing = commands[cmdPath]
-					if (!existing || entry.priority >= existing.priority) {
-						commands[cmdPath] = entry
-					}
+				const result: {
+					commands: Record<string, CliCommandEntry>
+					subcommandMap: Map<string, string[]>
+					extensions: Record<string, CliExtensionEntry[]>
+				} = {
+					commands: {},
+					subcommandMap: new Map(),
+					extensions: {}
 				}
-				allSubcommandMaps.push(subcommandMap)
-			}
 
-			// Scan extensions
-			const extendDir = path.join(cliDir, 'extend')
-			if (await pathExists(extendDir)) {
-				const exts = await scanExtensions(extendDir, pluginName, { cacheBust: true })
-				allExtensions.push(exts)
+				// Scan commands and extensions in parallel
+				const commandsDir = path.join(cliDir, 'commands')
+				const extendDir = path.join(cliDir, 'extend')
+
+				const [hasCommands, hasExtensions] = await Promise.all([
+					pathExists(commandsDir),
+					pathExists(extendDir)
+				])
+
+				const tasks: Promise<void>[] = []
+
+				if (hasCommands) {
+					tasks.push(
+						scanCommands(commandsDir, pluginName, { cacheBust: true }).then(({ commands: pluginCommands, subcommandMap }) => {
+							result.commands = pluginCommands
+							result.subcommandMap = subcommandMap
+						})
+					)
+				}
+
+				if (hasExtensions) {
+					tasks.push(
+						scanExtensions(extendDir, pluginName, { cacheBust: true }).then((exts) => {
+							result.extensions = exts
+						})
+					)
+				}
+
+				await Promise.all(tasks)
+				return result
+			})
+		)
+
+		// Merge results from all plugins
+		for (const result of pluginResults) {
+			if (!result) continue
+
+			// Merge commands (respecting priority)
+			for (const [cmdPath, entry] of Object.entries(result.commands)) {
+				const existing = commands[cmdPath]
+				if (!existing || entry.priority >= existing.priority) {
+					commands[cmdPath] = entry
+				}
+			}
+			allSubcommandMaps.push(result.subcommandMap)
+			if (Object.keys(result.extensions).length > 0) {
+				allExtensions.push(result.extensions)
 			}
 		}
 
