@@ -18,7 +18,8 @@
  */
 
 // Core exports
-export { Session, SessionManager, InMemoryStorage } from './session/index.js'
+export { Session, SessionManager, InMemoryStorage, MockServerState, ActionRecorder } from './session/index.js'
+export type { StateOptions } from './session/index.js'
 export { sessionManager } from './core/manager.js'
 export { mockLogger } from './core/logger.js'
 export { GatewayServer, getGatewayServer, closeGatewayServer } from './core/gateway.js'
@@ -52,10 +53,12 @@ export {
 	createMockUser,
 	createMockGuild,
 	createMockChannel,
+	createMockMessage,
 	serializeSessionState,
 	serializeMockGuild,
 	serializeMockChannel,
-	serializeMockUser
+	serializeMockUser,
+	serializeMockMessage
 } from './session/state.js'
 
 // Auth exports
@@ -76,11 +79,16 @@ export type {
 	MockChannelConfig,
 	MockUser,
 	MockUserConfig,
+	MockMessage,
+	MockMessageConfig,
 	AuthProvider,
 	AuthResult,
+	ActionType,
 	RecordedAction,
+	RecordActionOptions,
 	SerializedSessionState,
 	SerializedMockGuild,
 	SerializedMockChannel,
-	SerializedMockUser
+	SerializedMockUser,
+	SerializedMockMessage
 } from './types/index.js'

@@ -1,13 +1,10 @@
-import type {
-	Session as ISession,
-	SessionState,
-	ConnectionState,
-	CreateSessionOptions,
-	RecordedAction
-} from '../types/index.js'
+import type { Session as ISession, ConnectionState, CreateSessionOptions, RecordedAction, ActionType, RecordActionOptions, MockMessage, MockUser } from '../types/index.js'
 import { generateSessionId, createMockToken } from '../utils/id.js'
-import { createSessionState, createDefaultGuildWithChannel } from './state.js'
+import { MockServerState, createDefaultGuildWithChannel, createMockUser, createMockMessage } from './state.js'
+import { ActionRecorder } from './recorder.js'
 import { mockLogger } from '../core/logger.js'
+import { getGatewayServer } from '../core/gateway.js'
+import { buildMessageCreatePayload, type GatewayPayload } from '../discord/payloads.js'
 
 // Default TTL: 1 hour
 const DEFAULT_TTL = 60 * 60 * 1000
@@ -21,10 +18,10 @@ export class Session implements ISession {
 	readonly name?: string
 	readonly createdAt: number
 	readonly expiresAt: number
-	readonly state: SessionState
+	readonly state: MockServerState
 	readonly connections: Map<string, ConnectionState>
 
-	private recordedActions: RecordedAction[] = []
+	private readonly recorder: ActionRecorder
 	private ending = false
 
 	constructor(options?: CreateSessionOptions) {
@@ -35,8 +32,11 @@ export class Session implements ISession {
 		this.expiresAt = this.createdAt + (options?.ttl ?? DEFAULT_TTL)
 		this.connections = new Map()
 
+		// Initialize action recorder with optional max actions
+		this.recorder = new ActionRecorder(options?.config?.maxActions ?? 10000)
+
 		// Initialize state with optional configuration
-		this.state = createSessionState({
+		this.state = new MockServerState({
 			botUser: options?.config?.botUser,
 			applicationId: options?.config?.applicationId
 		})
@@ -70,7 +70,7 @@ export class Session implements ISession {
 
 	/**
 	 * Dispatch an event to all connections in this session
-	 * This will be expanded in future phases for Gateway events
+	 * Sends the event via WebSocket to connected bots
 	 */
 	async dispatch(event: string, data: unknown): Promise<void> {
 		if (this.ending) {
@@ -78,60 +78,176 @@ export class Session implements ISession {
 			return
 		}
 
-		// Increment sequence number
-		this.state.sequence++
-
 		// Record the dispatched event
-		this.recordedActions.push({
-			timestamp: Date.now(),
-			type: `DISPATCH:${event}`,
-			data
-		})
+		this.recorder.record('dispatch', { event, payload: data })
 
-		mockLogger.debug(`Session ${this.id} dispatched: ${event} (seq: ${this.state.sequence})`)
+		// Get the guild ID for intent filtering (if present in data)
+		const guildId = (data as Record<string, unknown>)?.guild_id as string | undefined
 
-		// In future phases, this will send to WebSocket connections
+		// Dispatch to WebSocket connections via gateway server
+		const gateway = getGatewayServer()
+		const dispatched = gateway.dispatchToSession(this.id, event, data, guildId)
+
+		mockLogger.debug(`Session ${this.id} dispatched: ${event} to ${dispatched} connection(s)`)
 	}
 
 	/**
-	 * Record an action from the bot (REST API call, etc.)
+	 * Dispatch a MESSAGE_CREATE event
+	 * Creates a message in state and dispatches it to connected bots
+	 *
+	 * @param options - Message creation options
+	 * @returns The created message
 	 */
-	recordAction(type: string, data: unknown): void {
-		this.recordedActions.push({
-			timestamp: Date.now(),
-			type,
-			data
+	async dispatchMessage(options: {
+		channelId: string
+		content?: string
+		author?: Partial<MockUser> & { id?: string; username?: string }
+		guildId?: string
+		embeds?: unknown[]
+		attachments?: unknown[]
+	}): Promise<MockMessage> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		// Get or create author
+		let author: MockUser
+		if (options.author?.id) {
+			// Check if user exists
+			const existingUser = this.state.getUser(options.author.id)
+			if (existingUser) {
+				author = existingUser
+			} else {
+				// Create and store the user
+				author = createMockUser({
+					id: options.author.id,
+					username: options.author.username ?? 'TestUser',
+					bot: options.author.bot ?? false,
+					...options.author
+				})
+				this.state.addUser(author)
+			}
+		} else {
+			// Create a default test user
+			author = this.state.getOrCreateTestUser()
+		}
+
+		// Validate channel exists
+		const channel = this.state.getChannel(options.channelId)
+		if (!channel) {
+			throw new Error(`Channel not found: ${options.channelId}`)
+		}
+
+		// Determine guild ID from channel if not specified
+		const guildId = options.guildId ?? channel.guildId
+
+		// Create the message in state
+		const message = this.state.createMessage({
+			channelId: options.channelId,
+			guildId,
+			authorId: author.id,
+			content: options.content ?? '',
+			embeds: options.embeds ?? [],
+			attachments: options.attachments ?? []
 		})
+
+		// Build the MESSAGE_CREATE payload
+		const payload = buildMessageCreatePayload({
+			message,
+			author,
+			sessionState: this.state,
+			sequence: 0 // Sequence will be set per-connection by gateway
+		})
+
+		// Dispatch to connections (sequence handled by gateway)
+		await this.dispatch('MESSAGE_CREATE', (payload as GatewayPayload).d)
+
+		return message
+	}
+
+	/**
+	 * Record an action from the bot (REST API call, Gateway message, etc.)
+	 */
+	recordAction(type: ActionType, data: unknown, options?: RecordActionOptions): RecordedAction {
+		return this.recorder.record(type, data, options)
 	}
 
 	/**
 	 * Get all recorded actions for test assertions
 	 */
 	getActions(): RecordedAction[] {
-		return [...this.recordedActions]
+		return this.recorder.getAll()
 	}
 
 	/**
 	 * Get actions since a specific timestamp
 	 */
 	getActionsSince(timestamp: number): RecordedAction[] {
-		return this.recordedActions.filter((a) => a.timestamp >= timestamp)
+		return this.recorder.getSince(timestamp)
+	}
+
+	/**
+	 * Get actions by type
+	 */
+	getActionsByType(type: ActionType): RecordedAction[] {
+		return this.recorder.getByType(type)
+	}
+
+	/**
+	 * Get message_sent actions
+	 */
+	getMessagesSent(): RecordedAction[] {
+		return this.recorder.getMessagesSent()
+	}
+
+	/**
+	 * Get all interaction response actions
+	 */
+	getInteractionResponses(): RecordedAction[] {
+		return this.recorder.getInteractionResponses()
+	}
+
+	/**
+	 * Get all REST request actions
+	 */
+	getRestRequests(): RecordedAction[] {
+		return this.recorder.getRestRequests()
+	}
+
+	/**
+	 * Get all Gateway WebSocket message actions (client → server)
+	 */
+	getGatewayMessages(): RecordedAction[] {
+		return this.recorder.getGatewayMessages()
+	}
+
+	/**
+	 * Get dispatch events (server → client)
+	 */
+	getDispatches(): RecordedAction[] {
+		return this.recorder.getDispatches()
+	}
+
+	/**
+	 * Clear recorded actions without resetting state
+	 */
+	clearActions(): void {
+		this.recorder.clear()
+	}
+
+	/**
+	 * Get the number of recorded actions
+	 */
+	get actionCount(): number {
+		return this.recorder.length
 	}
 
 	/**
 	 * Reset session state (clear guilds, channels, etc. but keep bot user)
 	 */
 	reset(): void {
-		const botUser = this.state.botUser
-		const applicationId = this.state.applicationId
-
-		this.state.guilds.clear()
-		this.state.channels.clear()
-		this.state.users.clear()
-		this.state.users.set(botUser.id, botUser)
-		this.state.sequence = 0
-
-		this.recordedActions = []
+		this.state.reset()
+		this.recorder.clear()
 
 		mockLogger.debug(`Session reset: ${this.id}`)
 	}
@@ -148,18 +264,16 @@ export class Session implements ISession {
 		mockLogger.debug(`Session ending: ${this.id}`)
 
 		// Close all connections (will be implemented in future phases)
-		for (const conn of this.connections.values()) {
-			// conn.socket.close() - when WebSocket is implemented
+		for (const _conn of this.connections.values()) {
+			// _conn.socket.close() - when WebSocket is implemented
 		}
 		this.connections.clear()
 
-		// Clear state
-		this.state.guilds.clear()
-		this.state.channels.clear()
-		this.state.users.clear()
+		// Clear state using the reset method
+		this.state.reset()
 
 		// Clear recorded actions
-		this.recordedActions = []
+		this.recorder.clear()
 
 		mockLogger.debug(`Session ended: ${this.id}`)
 	}

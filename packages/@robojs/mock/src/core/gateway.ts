@@ -1,14 +1,14 @@
 import type { IncomingMessage } from 'node:http'
 import type { Duplex } from 'node:stream'
 import WebSocket, { WebSocketServer } from 'ws'
-import { GatewayCloseCodes, GatewayOpcodes } from 'discord-api-types/v10'
+import { GatewayCloseCodes, GatewayOpcodes, GatewayIntentBits } from 'discord-api-types/v10'
 import { buildHelloPayload, buildHeartbeatAckPayload, buildReadyPayload, buildGuildCreatePayload, isValidIdentifyPayload } from '../discord/payloads.js'
 import type { GatewayPayload } from '../discord/payloads.js'
 import { GATEWAY_VERSION, DEFAULT_HEARTBEAT_INTERVAL } from '../discord/opcodes.js'
 import { generateGatewaySessionId } from '../utils/id.js'
 import { sessionManager } from './manager.js'
 import { mockLogger } from './logger.js'
-import type { ConnectionState } from '../types/index.js'
+import type { ActionType, ConnectionState } from '../types/index.js'
 
 /**
  * Discord Gateway WebSocket server
@@ -112,6 +112,28 @@ export class GatewayServer {
 	}
 
 	/**
+	 * Map Gateway opcode to ActionType for recording
+	 */
+	private getActionTypeForOpcode(op: number): ActionType {
+		switch (op) {
+			case GatewayOpcodes.Identify:
+				return 'gateway_identify'
+			case GatewayOpcodes.Heartbeat:
+				return 'gateway_heartbeat'
+			case GatewayOpcodes.PresenceUpdate:
+				return 'gateway_presence_update'
+			case GatewayOpcodes.VoiceStateUpdate:
+				return 'gateway_voice_state_update'
+			case GatewayOpcodes.Resume:
+				return 'gateway_resume'
+			case GatewayOpcodes.RequestGuildMembers:
+				return 'gateway_request_guild_members'
+			default:
+				return 'gateway_message'
+		}
+	}
+
+	/**
 	 * Handle incoming WebSocket message
 	 */
 	private handleMessage(ws: WebSocket, data: WebSocket.RawData, isBinary: boolean): void {
@@ -139,6 +161,16 @@ export class GatewayServer {
 			mockLogger.error('No connection state found for WebSocket')
 			ws.close(GatewayCloseCodes.UnknownError, 'Internal error')
 			return
+		}
+
+		// Record the incoming message if we have a session
+		// (for IDENTIFY, we record after processing since session isn't available yet)
+		if (connState.sessionId && payload.op !== GatewayOpcodes.Identify) {
+			const session = sessionManager.get(connState.sessionId)
+			if (session) {
+				const actionType = this.getActionTypeForOpcode(payload.op)
+				session.recordAction(actionType, payload.d)
+			}
 		}
 
 		// Route by opcode
@@ -208,6 +240,12 @@ export class GatewayServer {
 		// Register connection with session
 		session.connections.set(connState.id, connState)
 
+		// Record the IDENTIFY action now that session is available
+		session.recordAction('gateway_identify', {
+			intents: data.intents,
+			properties: data.properties
+		})
+
 		mockLogger.info(`Client identified: connection=${connState.id}, session=${session.id}, intents=${data.intents}`)
 
 		// Send READY event (Phase 1D)
@@ -243,6 +281,98 @@ export class GatewayServer {
 			ws.send(data)
 			mockLogger.debug('Sent:', data)
 		}
+	}
+
+	/**
+	 * Get the WebSocket for a connection state
+	 */
+	private getWebSocketForConnection(connectionId: string): WebSocket | undefined {
+		for (const [ws, state] of this.connections) {
+			if (state.id === connectionId) {
+				return ws
+			}
+		}
+		return undefined
+	}
+
+	/**
+	 * Check if a connection has the required intent for an event
+	 */
+	private hasRequiredIntent(connState: ConnectionState, event: string, guildId?: string): boolean {
+		// Events that don't require intents
+		const noIntentEvents = ['READY', 'RESUMED', 'INTERACTION_CREATE']
+		if (noIntentEvents.includes(event)) {
+			return true
+		}
+
+		// Message events require specific intents based on context
+		if (event === 'MESSAGE_CREATE' || event === 'MESSAGE_UPDATE' || event === 'MESSAGE_DELETE') {
+			const requiredIntent = guildId ? GatewayIntentBits.GuildMessages : GatewayIntentBits.DirectMessages
+			return (connState.intents & requiredIntent) !== 0
+		}
+
+		// Guild events require GUILDS intent
+		if (event.startsWith('GUILD_') || event.startsWith('CHANNEL_')) {
+			return (connState.intents & GatewayIntentBits.Guilds) !== 0
+		}
+
+		// For other events, allow by default (can be expanded later)
+		return true
+	}
+
+	/**
+	 * Dispatch an event to all connections in a session
+	 * Handles intent filtering and sequence number management
+	 *
+	 * @param sessionId - The session to dispatch to
+	 * @param event - The event name (e.g., "MESSAGE_CREATE")
+	 * @param data - The event payload data (without op/s/t wrapper)
+	 * @param guildId - Optional guild ID for intent filtering
+	 * @returns Number of connections the event was sent to
+	 */
+	dispatchToSession(sessionId: string, event: string, data: unknown, guildId?: string): number {
+		const session = sessionManager.get(sessionId)
+		if (!session) {
+			mockLogger.warn(`Cannot dispatch to unknown session: ${sessionId}`)
+			return 0
+		}
+
+		let dispatched = 0
+
+		for (const [connectionId, connState] of session.connections) {
+			// Skip non-identified connections
+			if (!connState.identified) {
+				continue
+			}
+
+			// Check intents
+			if (!this.hasRequiredIntent(connState, event, guildId)) {
+				mockLogger.debug(`Connection ${connectionId} lacks intent for ${event}, skipping`)
+				continue
+			}
+
+			// Get the WebSocket for this connection
+			const ws = this.getWebSocketForConnection(connectionId)
+			if (!ws || ws.readyState !== WebSocket.OPEN) {
+				mockLogger.debug(`Connection ${connectionId} WebSocket not open, skipping`)
+				continue
+			}
+
+			// Increment sequence and send
+			connState.sequence++
+			const payload: GatewayPayload = {
+				op: GatewayOpcodes.Dispatch,
+				s: connState.sequence,
+				t: event,
+				d: data
+			}
+
+			this.send(ws, payload)
+			dispatched++
+			mockLogger.debug(`Dispatched ${event} (seq: ${connState.sequence}) to connection ${connectionId}`)
+		}
+
+		return dispatched
 	}
 
 	/**

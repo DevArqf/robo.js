@@ -1,7 +1,7 @@
-import { GatewayOpcodes, ChannelType, GuildDefaultMessageNotifications, GuildExplicitContentFilter, GuildMFALevel, GuildNSFWLevel, GuildPremiumTier, GuildVerificationLevel } from 'discord-api-types/v10'
-import type { APIUser, APIUnavailableGuild, APIChannel, APIRole, APIGuildMember, Snowflake } from 'discord-api-types/v10'
+import { GatewayOpcodes, ChannelType, GuildDefaultMessageNotifications, GuildExplicitContentFilter, GuildMFALevel, GuildNSFWLevel, GuildPremiumTier, GuildVerificationLevel, MessageType } from 'discord-api-types/v10'
+import type { APIUser, APIUnavailableGuild, APIChannel, APIDMChannel, APIRole, APIGuildMember, Snowflake, APIMessage } from 'discord-api-types/v10'
 import { DEFAULT_HEARTBEAT_INTERVAL, GATEWAY_VERSION } from './opcodes.js'
-import type { MockUser, MockGuild, MockChannel, SessionState } from '../types/index.js'
+import type { MockUser, MockGuild, MockChannel, MockMessage, SessionState } from '../types/index.js'
 
 /**
  * Gateway payload structure
@@ -218,6 +218,18 @@ export function mockChannelToAPIChannel(channel: MockChannel): APIChannel {
 }
 
 /**
+ * Convert MockChannel (DM type) to Discord APIDMChannel format
+ */
+export function mockDMChannelToAPIDMChannel(channel: MockChannel, recipient: MockUser): APIDMChannel {
+	return {
+		id: channel.id,
+		type: ChannelType.DM,
+		recipients: [mockUserToAPIUser(recipient)],
+		last_message_id: null
+	}
+}
+
+/**
  * Build the @everyone role for a guild
  */
 export function buildEveryoneRole(guildId: Snowflake): APIRole {
@@ -335,6 +347,190 @@ export function buildGuildCreatePayload(options: GuildCreatePayloadOptions): Gat
 		op: GatewayOpcodes.Dispatch,
 		s: sequence,
 		t: 'GUILD_CREATE',
+		d: data
+	}
+}
+
+// ============================================================================
+// MESSAGE_CREATE Payload (Phase 2C)
+// ============================================================================
+
+/**
+ * Options for building a MESSAGE_CREATE payload
+ */
+export interface MessageCreatePayloadOptions {
+	message: MockMessage
+	author: MockUser
+	sessionState: SessionState
+	sequence: number
+}
+
+/**
+ * Build a partial guild member object (without user field) for MESSAGE_CREATE
+ * Discord sends partial member data with messages in guilds
+ */
+export function buildPartialGuildMember(user: MockUser, joinedAt?: string): Omit<APIGuildMember, 'user'> {
+	return {
+		roles: [],
+		joined_at: joinedAt ?? new Date().toISOString(),
+		deaf: false,
+		mute: false,
+		flags: 0 as APIGuildMember['flags']
+	}
+}
+
+/**
+ * Convert MockMessage to Discord APIMessage format
+ */
+export function mockMessageToAPIMessage(message: MockMessage, author: MockUser): APIMessage {
+	return {
+		id: message.id,
+		channel_id: message.channelId,
+		author: mockUserToAPIUser(author),
+		content: message.content,
+		timestamp: message.timestamp,
+		edited_timestamp: message.editedTimestamp,
+		tts: message.tts,
+		mention_everyone: message.mentionEveryone,
+		mentions: [], // Will be populated with user objects if there are mentions
+		mention_roles: message.mentionRoles,
+		attachments: message.attachments as APIMessage['attachments'],
+		embeds: message.embeds as APIMessage['embeds'],
+		pinned: message.pinned,
+		type: message.type as MessageType
+	}
+}
+
+/**
+ * Build a MESSAGE_CREATE payload (op 0, t: "MESSAGE_CREATE")
+ * Sent by server when a message is created (either injected or from REST API)
+ */
+export function buildMessageCreatePayload(options: MessageCreatePayloadOptions): GatewayPayload {
+	const { message, author, sessionState, sequence } = options
+
+	// Build base message
+	const apiMessage = mockMessageToAPIMessage(message, author)
+
+	// Build the dispatch data
+	const data: APIMessage & {
+		guild_id?: Snowflake
+		member?: Omit<APIGuildMember, 'user'>
+	} = {
+		...apiMessage
+	}
+
+	// Add guild-specific fields if this is a guild message
+	if (message.guildId) {
+		data.guild_id = message.guildId
+
+		// Add partial member data for the author
+		data.member = buildPartialGuildMember(author)
+	}
+
+	// Build mentions array with member info if there are mentioned users
+	if (message.mentions.length > 0) {
+		const mentionsWithMembers: (APIUser & { member?: Omit<APIGuildMember, 'user'> })[] = []
+
+		for (const userId of message.mentions) {
+			const user = sessionState.users.get(userId)
+			if (user) {
+				const mentionData: APIUser & { member?: Omit<APIGuildMember, 'user'> } = mockUserToAPIUser(user)
+				// Add member info for guild messages
+				if (message.guildId) {
+					mentionData.member = buildPartialGuildMember(user)
+				}
+				mentionsWithMembers.push(mentionData)
+			}
+		}
+
+		data.mentions = mentionsWithMembers as APIMessage['mentions']
+	}
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'MESSAGE_CREATE',
+		d: data
+	}
+}
+
+// ============================================================================
+// MESSAGE_UPDATE Payload (Phase 2F)
+// ============================================================================
+
+/**
+ * Options for building a MESSAGE_UPDATE payload
+ */
+export interface MessageUpdatePayloadOptions {
+	message: MockMessage
+	author: MockUser
+	sessionState: SessionState
+	sequence: number
+}
+
+/**
+ * Build a MESSAGE_UPDATE payload (op 0, t: "MESSAGE_UPDATE")
+ * Sent when a message is edited
+ */
+export function buildMessageUpdatePayload(options: MessageUpdatePayloadOptions): GatewayPayload {
+	const { message, author, sequence } = options
+
+	// Build base message (same as MESSAGE_CREATE)
+	const apiMessage = mockMessageToAPIMessage(message, author)
+
+	const data: APIMessage & {
+		guild_id?: Snowflake
+		member?: Omit<APIGuildMember, 'user'>
+	} = { ...apiMessage }
+
+	// Add guild-specific fields if this is a guild message
+	if (message.guildId) {
+		data.guild_id = message.guildId
+		data.member = buildPartialGuildMember(author)
+	}
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'MESSAGE_UPDATE',
+		d: data
+	}
+}
+
+// ============================================================================
+// MESSAGE_DELETE Payload (Phase 2F)
+// ============================================================================
+
+/**
+ * Options for building a MESSAGE_DELETE payload
+ */
+export interface MessageDeletePayloadOptions {
+	messageId: Snowflake
+	channelId: Snowflake
+	guildId?: Snowflake
+	sequence: number
+}
+
+/**
+ * Build a MESSAGE_DELETE payload (op 0, t: "MESSAGE_DELETE")
+ * Sent when a message is deleted
+ */
+export function buildMessageDeletePayload(options: MessageDeletePayloadOptions): GatewayPayload {
+	const { messageId, channelId, guildId, sequence } = options
+
+	const data: { id: Snowflake; channel_id: Snowflake; guild_id?: Snowflake } = {
+		id: messageId,
+		channel_id: channelId
+	}
+
+	if (guildId) {
+		data.guild_id = guildId
+	}
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'MESSAGE_DELETE',
 		d: data
 	}
 }
