@@ -5,6 +5,20 @@
 	"private": false,
 	"type": "module",
 	"main": ".robo/build/index.js",
+	"exports": {
+		".": {
+			"import": "./.robo/build/index.js",
+			"types": "./src/index.ts"
+		},
+		"./engines": {
+			"import": "./engines.js",
+			"types": "./engines.d.ts"
+		},
+		"./testing": {
+			"import": "./testing.js",
+			"types": "./testing.d.ts"
+		}
+	},
 	"license": "MIT",
 	"author": "WavePlay <dev@waveplay.com> (waveplay.com)",
 	"contributors": [
@@ -16,6 +30,8 @@
 		"src/",
 		"engines.d.ts",
 		"engines.js",
+		"testing.d.ts",
+		"testing.js",
 		"LICENSE",
 		"README.md"
 	],

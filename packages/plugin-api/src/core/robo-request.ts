@@ -8,6 +8,26 @@ interface FromOptions {
 }
 
 /**
+ * Options for creating a RoboRequest for testing purposes
+ */
+export interface ForTestingOptions {
+	/** HTTP method (defaults to 'GET') */
+	method?: string
+	/** URL path (defaults to '/test') */
+	path?: string
+	/** URL parameters extracted from dynamic segments like [id] */
+	params?: Record<string, string>
+	/** Query string parameters */
+	query?: Record<string, string | string[]>
+	/** Request headers */
+	headers?: Record<string, string>
+	/** Request body (will be JSON stringified if object) */
+	body?: unknown
+	/** Base URL for constructing absolute URLs (defaults to 'http://localhost:3000') */
+	baseUrl?: string
+}
+
+/**
  * Extends the [Web Request API](https://developer.mozilla.org/docs/Web/API/Request) with additional convenience methods.
  */
 export class RoboRequest extends Request {
@@ -70,6 +90,68 @@ export class RoboRequest extends Request {
 
 		const request = new RoboRequest(url, { body: body as BodyInit, headers, method })
 		request[INTERNALS].raw = req
+
+		return request
+	}
+
+	/**
+	 * Creates a RoboRequest for testing purposes without requiring an IncomingMessage.
+	 * This factory method allows creating fully-functional RoboRequest instances
+	 * with params, query, headers, and body for unit testing API handlers.
+	 *
+	 * @example
+	 * ```typescript
+	 * const request = RoboRequest.forTesting({
+	 *   method: 'POST',
+	 *   path: '/users',
+	 *   params: { id: '123' },
+	 *   query: { include: 'profile' },
+	 *   body: { name: 'John' }
+	 * })
+	 * const response = await handler(request)
+	 * ```
+	 */
+	public static forTesting(options: ForTestingOptions = {}): RoboRequest {
+		const {
+			method = 'GET',
+			path = '/test',
+			params = {},
+			query = {},
+			headers = {},
+			body,
+			baseUrl = 'http://localhost:3000'
+		} = options
+
+		// Build the full URL with query parameters
+		const url = new URL(path, baseUrl)
+		for (const [key, value] of Object.entries(query)) {
+			if (Array.isArray(value)) {
+				value.forEach((v) => url.searchParams.append(key, v))
+			} else {
+				url.searchParams.set(key, value)
+			}
+		}
+
+		// Prepare request init
+		const init: RequestInit = {
+			method,
+			headers: new Headers(headers)
+		}
+
+		// Handle body for non-GET/HEAD requests
+		if (body !== undefined && !['GET', 'HEAD'].includes(method)) {
+			if (typeof body === 'string') {
+				init.body = body
+			} else if (body instanceof FormData || body instanceof URLSearchParams) {
+				init.body = body
+			} else {
+				init.body = JSON.stringify(body)
+				;(init.headers as Headers).set('Content-Type', 'application/json')
+			}
+		}
+
+		const request = new RoboRequest(url.toString(), init)
+		request[INTERNALS].params = params
 
 		return request
 	}
