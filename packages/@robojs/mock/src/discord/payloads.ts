@@ -1,7 +1,7 @@
 import { GatewayOpcodes, ChannelType, GuildDefaultMessageNotifications, GuildExplicitContentFilter, GuildMFALevel, GuildNSFWLevel, GuildPremiumTier, GuildVerificationLevel, MessageType, InteractionType, ApplicationCommandType, ComponentType } from 'discord-api-types/v10'
 import type { APIUser, APIUnavailableGuild, APIChannel, APIDMChannel, APIRole, APIGuildMember, Snowflake, APIMessage, APIEmbed, APIAttachment, APIMessageInteractionMetadata, APIMessageSnapshot } from 'discord-api-types/v10'
 import { DEFAULT_HEARTBEAT_INTERVAL, GATEWAY_VERSION } from './opcodes.js'
-import type { MockUser, MockGuild, MockChannel, MockMessage, MockInteraction, SessionState, MockMessageSnapshot } from '../types/index.js'
+import type { MockUser, MockGuild, MockChannel, MockMessage, MockInteraction, SessionState, MockMessageSnapshot, MockThread, MockThreadMember } from '../types/index.js'
 import { generateSnowflake } from '../utils/snowflake.js'
 
 /**
@@ -269,11 +269,21 @@ export function buildGuildCreatePayload(options: GuildCreatePayloadOptions): Gat
 	const { guild, sessionState, sequence } = options
 	const joinedAt = new Date().toISOString()
 
-	// Get channels for this guild
+	// Get channels for this guild (excluding threads)
 	const channels: APIChannel[] = guild.channels
 		.map((channelId) => sessionState.channels.get(channelId))
 		.filter((channel): channel is MockChannel => channel !== undefined)
+		.filter((channel) => channel.type !== 10 && channel.type !== 11 && channel.type !== 12) // Exclude threads
 		.map(mockChannelToAPIChannel)
+
+	// Get active threads for this guild
+	const threads: APIChannel[] = guild.channels
+		.map((channelId) => sessionState.channels.get(channelId))
+		.filter((channel): channel is MockThread => {
+			return channel !== undefined && (channel.type === 10 || channel.type === 11 || channel.type === 12)
+		})
+		.filter((thread) => !thread.threadMetadata?.archived) // Only active threads
+		.map(mockThreadToAPIChannel)
 
 	// Build roles (at minimum @everyone)
 	const roles: APIRole[] = [buildEveryoneRole(guild.id)]
@@ -338,7 +348,7 @@ export function buildGuildCreatePayload(options: GuildCreatePayloadOptions): Gat
 		voice_states: [],
 		members,
 		channels,
-		threads: [],
+		threads,
 		presences: [],
 		stage_instances: [],
 		guild_scheduled_events: []
@@ -680,7 +690,6 @@ export function buildInteractionCreatePayload(options: InteractionCreatePayloadO
 	}
 }
 
-// ============================================================================
 // INTERACTION_CREATE Payload - Button (Phase 3C)
 // ============================================================================
 
@@ -757,7 +766,6 @@ export function buildButtonInteractionPayload(options: ButtonInteractionPayloadO
 	}
 }
 
-// ============================================================================
 // INTERACTION_CREATE Payload - Select Menu (Phase 3D)
 // ============================================================================
 
@@ -846,128 +854,6 @@ export function buildSelectMenuInteractionPayload(options: SelectMenuInteraction
 	}
 }
 
-/**
- * Build resolved data for entity select types
- * - UserSelect (5): resolved.users
- * - RoleSelect (6): resolved.roles
- * - MentionableSelect (7): resolved.users + resolved.roles
- * - ChannelSelect (8): resolved.channels
- */
-function buildResolvedData(
-	componentType: number,
-	values: string[],
-	sessionState: SessionState,
-	guildId?: Snowflake
-): Record<string, unknown> | null {
-	// StringSelect (3) doesn't need resolved data
-	if (componentType === ComponentType.StringSelect) {
-		return null
-	}
-
-	const resolved: Record<string, Record<string, unknown>> = {}
-
-	// UserSelect (5) or MentionableSelect (7)
-	if (componentType === ComponentType.UserSelect || componentType === ComponentType.MentionableSelect) {
-		const users: Record<string, unknown> = {}
-		const members: Record<string, unknown> = {}
-
-		for (const userId of values) {
-			const user = sessionState.users.get(userId)
-			if (user) {
-				users[userId] = mockUserToAPIUser(user)
-				// If in a guild, also add member data
-				if (guildId) {
-					members[userId] = {
-						roles: [],
-						joined_at: new Date().toISOString(),
-						deaf: false,
-						mute: false,
-						flags: 0
-					}
-				}
-			}
-		}
-
-		if (Object.keys(users).length > 0) {
-			resolved.users = users
-			if (guildId && Object.keys(members).length > 0) {
-				resolved.members = members
-			}
-		}
-	}
-
-	// RoleSelect (6) or MentionableSelect (7)
-	// Note: Roles support is not yet implemented in MockServerState
-	// For now, we return empty resolved data for roles
-	if (componentType === ComponentType.RoleSelect || componentType === ComponentType.MentionableSelect) {
-		const roles: Record<string, unknown> = {}
-
-		// Check if roles Map exists (future support)
-		const rolesMap = (sessionState as Record<string, unknown>).roles as Map<Snowflake, unknown> | undefined
-		if (rolesMap) {
-			for (const roleId of values) {
-				const role = rolesMap.get(roleId)
-				if (role) {
-					roles[roleId] = mockRoleToAPIRole(role as { id: Snowflake; name: string; color?: number; position?: number; permissions?: string })
-				}
-			}
-		}
-
-		if (Object.keys(roles).length > 0) {
-			resolved.roles = roles
-		}
-	}
-
-	// ChannelSelect (8)
-	if (componentType === ComponentType.ChannelSelect) {
-		const channels: Record<string, unknown> = {}
-
-		for (const channelId of values) {
-			const channel = sessionState.channels.get(channelId)
-			if (channel) {
-				channels[channelId] = mockChannelToResolvedChannel(channel, guildId)
-			}
-		}
-
-		if (Object.keys(channels).length > 0) {
-			resolved.channels = channels
-		}
-	}
-
-	return Object.keys(resolved).length > 0 ? resolved : null
-}
-
-/**
- * Convert MockRole to APIRole format
- */
-function mockRoleToAPIRole(role: { id: Snowflake; name: string; color?: number; position?: number; permissions?: string }): APIRole {
-	return {
-		id: role.id,
-		name: role.name,
-		color: role.color ?? 0,
-		hoist: false,
-		position: role.position ?? 0,
-		permissions: role.permissions ?? '0',
-		managed: false,
-		mentionable: false,
-		flags: 0
-	}
-}
-
-/**
- * Convert MockChannel to partial API channel format for resolved data
- */
-function mockChannelToResolvedChannel(channel: MockChannel, guildId?: Snowflake): Record<string, unknown> {
-	return {
-		id: channel.id,
-		type: channel.type ?? ChannelType.GuildText,
-		name: channel.name ?? 'channel',
-		permissions: '562949953421311', // Full permissions
-		...(guildId && { guild_id: guildId })
-	}
-}
-
-// ============================================================================
 // INTERACTION_CREATE Payload - Modal Submit (Phase 3E)
 // ============================================================================
 
@@ -1062,7 +948,6 @@ export function buildModalSubmitInteractionPayload(options: ModalSubmitInteracti
 	}
 }
 
-// ============================================================================
 // INTERACTION_CREATE Payload - Autocomplete (Phase 3F)
 // ============================================================================
 
@@ -1139,7 +1024,6 @@ export function buildAutocompleteInteractionPayload(options: AutocompleteInterac
 	}
 }
 
-// ============================================================================
 // INTERACTION_CREATE Payload - Context Menu (Phase 3G)
 // ============================================================================
 
@@ -1243,6 +1127,244 @@ export function buildContextMenuInteractionPayload(options: ContextMenuInteracti
 		op: GatewayOpcodes.Dispatch,
 		s: sequence,
 		t: 'INTERACTION_CREATE',
+		d: data
+	}
+}
+
+// ============================================================================
+// Thread Payload Builders (Phase 4D)
+// ============================================================================
+
+/**
+ * Convert MockThread to Discord API thread channel format
+ */
+export function mockThreadToAPIChannel(thread: MockThread): APIChannel {
+	return {
+		id: thread.id,
+		type: thread.type as ChannelType,
+		guild_id: thread.guildId,
+		name: thread.name,
+		parent_id: thread.parentId,
+		owner_id: thread.ownerId,
+		message_count: thread.messageCount,
+		member_count: thread.memberCount,
+		total_message_sent: thread.totalMessageSent,
+		last_message_id: thread.lastMessageId ?? null,
+		thread_metadata: {
+			archived: thread.threadMetadata.archived,
+			auto_archive_duration: thread.threadMetadata.auto_archive_duration,
+			archive_timestamp: thread.threadMetadata.archive_timestamp,
+			locked: thread.threadMetadata.locked,
+			invitable: thread.threadMetadata.invitable,
+			create_timestamp: thread.threadMetadata.create_timestamp
+		},
+		rate_limit_per_user: 0,
+		position: 0,
+		permission_overwrites: [],
+		nsfw: false
+	} as APIChannel
+}
+
+/**
+ * Options for building a THREAD_CREATE payload
+ */
+export interface ThreadCreatePayloadOptions {
+	thread: MockThread
+	sessionState: SessionState
+	sequence: number
+	newlyCreated?: boolean // True when thread is newly created, false when bot joins existing thread
+}
+
+/**
+ * Build a THREAD_CREATE payload (op 0, t: "THREAD_CREATE")
+ * Sent when a new thread is created or when the bot is added to an existing thread
+ */
+export function buildThreadCreatePayload(options: ThreadCreatePayloadOptions): GatewayPayload {
+	const { thread, sequence, newlyCreated = true } = options
+
+	const data = {
+		...mockThreadToAPIChannel(thread),
+		newly_created: newlyCreated
+	}
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'THREAD_CREATE',
+		d: data
+	}
+}
+
+/**
+ * Options for building a THREAD_UPDATE payload
+ */
+export interface ThreadUpdatePayloadOptions {
+	thread: MockThread
+	sessionState: SessionState
+	sequence: number
+}
+
+/**
+ * Build a THREAD_UPDATE payload (op 0, t: "THREAD_UPDATE")
+ * Sent when thread metadata is updated (archived, locked, name, etc.)
+ */
+export function buildThreadUpdatePayload(options: ThreadUpdatePayloadOptions): GatewayPayload {
+	const { thread, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'THREAD_UPDATE',
+		d: mockThreadToAPIChannel(thread)
+	}
+}
+
+/**
+ * Options for building a THREAD_DELETE payload
+ */
+export interface ThreadDeletePayloadOptions {
+	threadId: Snowflake
+	guildId: Snowflake
+	parentId: Snowflake
+	type: 10 | 11 | 12
+	sequence: number
+}
+
+/**
+ * Build a THREAD_DELETE payload (op 0, t: "THREAD_DELETE")
+ * Sent when a thread is deleted
+ */
+export function buildThreadDeletePayload(options: ThreadDeletePayloadOptions): GatewayPayload {
+	const { threadId, guildId, parentId, type, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'THREAD_DELETE',
+		d: {
+			id: threadId,
+			guild_id: guildId,
+			parent_id: parentId,
+			type: type
+		}
+	}
+}
+
+/**
+ * Options for building a THREAD_LIST_SYNC payload
+ */
+export interface ThreadListSyncPayloadOptions {
+	guildId: Snowflake
+	channelIds?: Snowflake[] // If syncing specific channels, otherwise all guild threads
+	threads: MockThread[]
+	members: MockThreadMember[]
+	sequence: number
+}
+
+/**
+ * Build a THREAD_LIST_SYNC payload (op 0, t: "THREAD_LIST_SYNC")
+ * Sent when bot gains access to channels, contains all active threads in those channels
+ */
+export function buildThreadListSyncPayload(options: ThreadListSyncPayloadOptions): GatewayPayload {
+	const { guildId, channelIds, threads, members, sequence } = options
+
+	const data: Record<string, unknown> = {
+		guild_id: guildId,
+		threads: threads.map(mockThreadToAPIChannel),
+		members: members.map((member) => ({
+			id: member.id,
+			user_id: member.user_id,
+			join_timestamp: member.join_timestamp,
+			flags: member.flags
+		}))
+	}
+
+	// Only include channel_ids if syncing specific channels (not entire guild)
+	if (channelIds && channelIds.length > 0) {
+		data.channel_ids = channelIds
+	}
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'THREAD_LIST_SYNC',
+		d: data
+	}
+}
+
+/**
+ * Options for building a THREAD_MEMBER_UPDATE payload
+ */
+export interface ThreadMemberUpdatePayloadOptions {
+	threadId: Snowflake
+	guildId: Snowflake
+	member: MockThreadMember
+	sequence: number
+}
+
+/**
+ * Build a THREAD_MEMBER_UPDATE payload (op 0, t: "THREAD_MEMBER_UPDATE")
+ * Sent when the current user's thread member object is updated
+ */
+export function buildThreadMemberUpdatePayload(options: ThreadMemberUpdatePayloadOptions): GatewayPayload {
+	const { threadId, guildId, member, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'THREAD_MEMBER_UPDATE',
+		d: {
+			id: threadId,
+			guild_id: guildId,
+			user_id: member.user_id,
+			join_timestamp: member.join_timestamp,
+			flags: member.flags
+		}
+	}
+}
+
+/**
+ * Options for building a THREAD_MEMBERS_UPDATE payload
+ */
+export interface ThreadMembersUpdatePayloadOptions {
+	threadId: Snowflake
+	guildId: Snowflake
+	memberCount: number
+	addedMembers?: MockThreadMember[]
+	removedMemberIds?: Snowflake[]
+	sequence: number
+}
+
+/**
+ * Build a THREAD_MEMBERS_UPDATE payload (op 0, t: "THREAD_MEMBERS_UPDATE")
+ * Sent when members are added/removed from a thread (requires GuildMembers privileged intent)
+ */
+export function buildThreadMembersUpdatePayload(options: ThreadMembersUpdatePayloadOptions): GatewayPayload {
+	const { threadId, guildId, memberCount, addedMembers, removedMemberIds, sequence } = options
+
+	const data: Record<string, unknown> = {
+		id: threadId,
+		guild_id: guildId,
+		member_count: memberCount
+	}
+
+	if (addedMembers && addedMembers.length > 0) {
+		data.added_members = addedMembers.map((member) => ({
+			id: member.id,
+			user_id: member.user_id,
+			join_timestamp: member.join_timestamp,
+			flags: member.flags
+		}))
+	}
+
+	if (removedMemberIds && removedMemberIds.length > 0) {
+		data.removed_member_ids = removedMemberIds
+	}
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'THREAD_MEMBERS_UPDATE',
 		d: data
 	}
 }

@@ -9,12 +9,16 @@ import type {
 	MockUser,
 	MockInteraction,
 	MockInteractionOption,
+	MockThread,
 	DispatchSlashCommandOptions,
 	DispatchButtonClickOptions,
 	DispatchSelectMenuOptions,
 	DispatchModalSubmitOptions,
 	DispatchAutocompleteOptions,
-	DispatchContextMenuOptions
+	DispatchContextMenuOptions,
+	DispatchThreadCreateOptions,
+	SessionRecording,
+	SessionConfig
 } from '../types/index.js'
 import { generateSessionId, createMockToken, generateInteractionToken } from '../utils/id.js'
 import { generateSnowflake } from '../utils/snowflake.js'
@@ -22,7 +26,22 @@ import { MockServerState, createDefaultGuildWithChannel, createMockUser, createM
 import { ActionRecorder } from './recorder.js'
 import { mockLogger } from '../core/logger.js'
 import { getGatewayServer } from '../core/gateway.js'
-import { buildMessageCreatePayload, buildInteractionCreatePayload, buildButtonInteractionPayload, buildSelectMenuInteractionPayload, buildModalSubmitInteractionPayload, buildAutocompleteInteractionPayload, buildContextMenuInteractionPayload, type GatewayPayload } from '../discord/payloads.js'
+import {
+	buildMessageCreatePayload,
+	buildInteractionCreatePayload,
+	buildButtonInteractionPayload,
+	buildSelectMenuInteractionPayload,
+	buildModalSubmitInteractionPayload,
+	buildAutocompleteInteractionPayload,
+	buildContextMenuInteractionPayload,
+	buildThreadCreatePayload,
+	buildThreadUpdatePayload,
+	buildThreadDeletePayload,
+	buildThreadListSyncPayload,
+	buildThreadMemberUpdatePayload,
+	buildThreadMembersUpdatePayload,
+	type GatewayPayload
+} from '../discord/payloads.js'
 
 // Default TTL: 1 hour
 const DEFAULT_TTL = 60 * 60 * 1000
@@ -728,6 +747,396 @@ export class Session implements ISession {
 		return interaction
 	}
 
+	// ============================================================================
+	// Thread Dispatch Methods (Phase 4D)
+	// ============================================================================
+
+	/**
+	 * Dispatch a THREAD_CREATE event
+	 * Creates a thread in state and dispatches it to connected bots
+	 *
+	 * @param options - Thread creation options
+	 * @returns The created thread
+	 */
+	async dispatchThreadCreate(options: DispatchThreadCreateOptions): Promise<MockThread> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		// Validate parent channel exists
+		const parentChannel = this.state.getChannel(options.parentChannelId)
+		if (!parentChannel) {
+			throw new Error(`Parent channel not found: ${options.parentChannelId}`)
+		}
+
+		// Validate parent channel type (must be text or announcement)
+		if (parentChannel.type !== 0 && parentChannel.type !== 5) {
+			throw new Error(`Cannot create thread in channel type ${parentChannel.type}. Must be text (0) or announcement (5)`)
+		}
+
+		// Get or create owner user
+		let owner: MockUser
+		if (options.user?.id) {
+			const existingUser = this.state.getUser(options.user.id)
+			if (existingUser) {
+				owner = existingUser
+			} else {
+				owner = createMockUser(options.user)
+				this.state.addUser(owner)
+			}
+		} else {
+			owner = this.state.getOrCreateTestUser()
+		}
+
+		// Determine thread type based on parent channel or explicit type
+		const threadType = options.type ?? (parentChannel.type === 5 ? 10 : 11) // Announcement thread or public thread
+
+		// Create thread in state
+		const thread = this.state.createThread({
+			name: options.name,
+			type: threadType,
+			parentId: options.parentChannelId,
+			ownerId: owner.id,
+			autoArchiveDuration: options.autoArchiveDuration,
+			invitable: options.invitable
+		})
+
+		// Build payload
+		const payload = buildThreadCreatePayload({
+			thread,
+			sessionState: this.state,
+			sequence: 0, // Will be set per-connection
+			newlyCreated: true
+		})
+
+		// Record the action
+		this.recorder.record('thread_created', {
+			threadId: thread.id,
+			name: thread.name,
+			type: thread.type,
+			parentId: thread.parentId,
+			ownerId: owner.id
+		})
+
+		// Dispatch to connections
+		await this.dispatch('THREAD_CREATE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched thread create: ${options.name}`)
+
+		return thread
+	}
+
+	/**
+	 * Dispatch a THREAD_UPDATE event
+	 * Updates thread metadata and dispatches the change
+	 *
+	 * @param threadId - ID of the thread to update
+	 * @param updates - Thread updates (name, archived, locked, etc.)
+	 * @returns The updated thread
+	 */
+	async dispatchThreadUpdate(
+		threadId: string,
+		updates: {
+			name?: string
+			archived?: boolean
+			locked?: boolean
+			autoArchiveDuration?: 60 | 1440 | 4320 | 10080
+			invitable?: boolean
+		}
+	): Promise<MockThread> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		// Update thread in state
+		const thread = this.state.updateThread(threadId, {
+			name: updates.name,
+			archived: updates.archived,
+			locked: updates.locked,
+			auto_archive_duration: updates.autoArchiveDuration,
+			invitable: updates.invitable
+		})
+
+		if (!thread) {
+			throw new Error(`Thread not found: ${threadId}`)
+		}
+
+		// Build payload
+		const payload = buildThreadUpdatePayload({
+			thread,
+			sessionState: this.state,
+			sequence: 0
+		})
+
+		// Record the action
+		this.recorder.record('thread_updated', {
+			threadId: thread.id,
+			updates
+		})
+
+		// Dispatch to connections
+		await this.dispatch('THREAD_UPDATE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched thread update: ${thread.name}`)
+
+		return thread
+	}
+
+	/**
+	 * Dispatch a THREAD_DELETE event
+	 * Deletes a thread and dispatches the event
+	 *
+	 * @param threadId - ID of the thread to delete
+	 */
+	async dispatchThreadDelete(threadId: string): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		// Get thread before deleting
+		const thread = this.state.getThread(threadId)
+		if (!thread) {
+			throw new Error(`Thread not found: ${threadId}`)
+		}
+
+		// Store info for payload before deletion
+		const { guildId, parentId, type } = thread
+
+		// Delete from state
+		this.state.deleteThread(threadId)
+
+		// Build payload
+		const payload = buildThreadDeletePayload({
+			threadId,
+			guildId: guildId!,
+			parentId: parentId!,
+			type: type as 10 | 11 | 12,
+			sequence: 0
+		})
+
+		// Record the action
+		this.recorder.record('thread_deleted', {
+			threadId,
+			guildId,
+			parentId,
+			type
+		})
+
+		// Dispatch to connections
+		await this.dispatch('THREAD_DELETE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched thread delete: ${threadId}`)
+	}
+
+	/**
+	 * Dispatch THREAD_MEMBER_UPDATE for bot joining a thread
+	 *
+	 * @param threadId - ID of the thread to join
+	 */
+	async dispatchThreadJoin(threadId: string): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		const thread = this.state.getThread(threadId)
+		if (!thread) {
+			throw new Error(`Thread not found: ${threadId}`)
+		}
+
+		// Add bot user to thread
+		const member = this.state.addThreadMember(threadId, this.state.botUser.id)
+		if (!member) {
+			throw new Error(`Failed to add bot to thread: ${threadId}`)
+		}
+
+		// Build payload
+		const payload = buildThreadMemberUpdatePayload({
+			threadId,
+			guildId: thread.guildId!,
+			member,
+			sequence: 0
+		})
+
+		// Record the action
+		this.recorder.record('thread_member_added', {
+			threadId,
+			userId: this.state.botUser.id
+		})
+
+		// Dispatch to connections
+		await this.dispatch('THREAD_MEMBER_UPDATE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} bot joined thread: ${threadId}`)
+	}
+
+	/**
+	 * Dispatch THREAD_MEMBER_UPDATE for bot leaving a thread
+	 *
+	 * @param threadId - ID of the thread to leave
+	 */
+	async dispatchThreadLeave(threadId: string): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		const thread = this.state.getThread(threadId)
+		if (!thread) {
+			throw new Error(`Thread not found: ${threadId}`)
+		}
+
+		// Get member info before removal
+		const member = this.state.getThreadMember(threadId, this.state.botUser.id)
+		if (!member) {
+			mockLogger.warn(`Bot is not a member of thread: ${threadId}`)
+			return
+		}
+
+		// Remove bot from thread
+		this.state.removeThreadMember(threadId, this.state.botUser.id)
+
+		// Note: Discord doesn't send THREAD_MEMBER_UPDATE on leave, only on join
+		// Instead, THREAD_MEMBERS_UPDATE is sent if GuildMembers intent is enabled
+		// For the bot's own membership, the thread simply becomes "invisible"
+
+		// Record the action
+		this.recorder.record('thread_member_removed', {
+			threadId,
+			userId: this.state.botUser.id
+		})
+
+		mockLogger.debug(`Session ${this.id} bot left thread: ${threadId}`)
+	}
+
+	/**
+	 * Dispatch THREAD_MEMBERS_UPDATE for adding a user to a thread
+	 * This is for testing - simulates another user being added
+	 *
+	 * @param threadId - ID of the thread
+	 * @param userId - ID of the user to add
+	 */
+	async dispatchThreadMemberAdd(threadId: string, userId: string): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		const thread = this.state.getThread(threadId)
+		if (!thread) {
+			throw new Error(`Thread not found: ${threadId}`)
+		}
+
+		// Add user to thread
+		const member = this.state.addThreadMember(threadId, userId)
+		if (!member) {
+			throw new Error(`Failed to add user to thread: ${threadId}`)
+		}
+
+		// Build payload (THREAD_MEMBERS_UPDATE for other users)
+		const payload = buildThreadMembersUpdatePayload({
+			threadId,
+			guildId: thread.guildId!,
+			memberCount: thread.memberCount,
+			addedMembers: [member],
+			sequence: 0
+		})
+
+		// Record the action
+		this.recorder.record('thread_member_added', {
+			threadId,
+			userId
+		})
+
+		// Dispatch to connections
+		await this.dispatch('THREAD_MEMBERS_UPDATE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} added user ${userId} to thread: ${threadId}`)
+	}
+
+	/**
+	 * Dispatch THREAD_MEMBERS_UPDATE for removing a user from a thread
+	 * This is for testing - simulates another user being removed
+	 *
+	 * @param threadId - ID of the thread
+	 * @param userId - ID of the user to remove
+	 */
+	async dispatchThreadMemberRemove(threadId: string, userId: string): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		const thread = this.state.getThread(threadId)
+		if (!thread) {
+			throw new Error(`Thread not found: ${threadId}`)
+		}
+
+		// Check if user is a member
+		const member = this.state.getThreadMember(threadId, userId)
+		if (!member) {
+			mockLogger.warn(`User ${userId} is not a member of thread: ${threadId}`)
+			return
+		}
+
+		// Remove user from thread
+		this.state.removeThreadMember(threadId, userId)
+
+		// Build payload
+		const payload = buildThreadMembersUpdatePayload({
+			threadId,
+			guildId: thread.guildId!,
+			memberCount: thread.memberCount,
+			removedMemberIds: [userId],
+			sequence: 0
+		})
+
+		// Record the action
+		this.recorder.record('thread_member_removed', {
+			threadId,
+			userId
+		})
+
+		// Dispatch to connections
+		await this.dispatch('THREAD_MEMBERS_UPDATE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} removed user ${userId} from thread: ${threadId}`)
+	}
+
+	/**
+	 * Dispatch THREAD_LIST_SYNC for syncing active threads
+	 * Sent when bot gains access to channels
+	 *
+	 * @param guildId - ID of the guild
+	 * @param channelIds - Optional specific channel IDs to sync (if not provided, syncs all)
+	 */
+	async dispatchThreadListSync(guildId: string, channelIds?: string[]): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		// Get all active threads for the guild (or specific channels)
+		let threads = this.state.getActiveThreadsForGuild(guildId)
+		if (channelIds && channelIds.length > 0) {
+			threads = threads.filter((t) => channelIds.includes(t.parentId))
+		}
+
+		// Get bot's membership in these threads
+		const members = threads
+			.map((t) => this.state.getThreadMember(t.id, this.state.botUser.id))
+			.filter((m) => m !== undefined)
+
+		// Build payload
+		const payload = buildThreadListSyncPayload({
+			guildId,
+			channelIds,
+			threads,
+			members: members as NonNullable<typeof members[number]>[],
+			sequence: 0
+		})
+
+		// Dispatch to connections
+		await this.dispatch('THREAD_LIST_SYNC', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched thread list sync: ${threads.length} threads`)
+	}
+
 	/**
 	 * Record an action from the bot (REST API call, Gateway message, etc.)
 	 */
@@ -803,6 +1212,80 @@ export class Session implements ISession {
 	 */
 	get actionCount(): number {
 		return this.recorder.length
+	}
+
+	// ============================================================================
+	// Recording Export (Phase 4A)
+	// ============================================================================
+
+	/**
+	 * Export the session as a recording object
+	 * Returns a JSON-serializable recording with metadata and all actions
+	 */
+	exportRecording(): SessionRecording {
+		const now = Date.now()
+
+		return {
+			version: 1,
+			metadata: {
+				sessionId: this.id,
+				sessionName: this.name,
+				startTime: this.createdAt,
+				endTime: now,
+				duration: now - this.createdAt,
+				actionCount: this.recorder.length,
+				botUser: {
+					id: this.state.botUser.id,
+					username: this.state.botUser.username
+				},
+				applicationId: this.state.applicationId,
+				recordedAt: new Date(now).toISOString()
+			},
+			initialConfig: this.captureInitialConfig(),
+			actions: this.recorder.getAll()
+		}
+	}
+
+	/**
+	 * Save the recording to a JSON file
+	 * @param filePath - Path to save the recording
+	 */
+	async saveRecording(filePath: string): Promise<void> {
+		const fs = await import('node:fs/promises')
+		const recording = this.exportRecording()
+		await fs.writeFile(filePath, JSON.stringify(recording, null, 2))
+		mockLogger.info(`Recording saved: ${filePath}`)
+	}
+
+	/**
+	 * Capture current state as initial config for replay
+	 */
+	private captureInitialConfig(): SessionConfig {
+		return {
+			botUser: {
+				id: this.state.botUser.id,
+				username: this.state.botUser.username,
+				discriminator: this.state.botUser.discriminator,
+				globalName: this.state.botUser.globalName,
+				avatar: this.state.botUser.avatar,
+				bot: this.state.botUser.bot
+			},
+			applicationId: this.state.applicationId,
+			guilds: Array.from(this.state.guilds.values()).map((g) => ({
+				id: g.id,
+				name: g.name,
+				ownerId: g.ownerId,
+				channels: Array.from(this.state.channels.values())
+					.filter((c) => c.guildId === g.id)
+					.map((c) => ({
+						id: c.id,
+						name: c.name,
+						type: c.type,
+						parentId: c.parentId
+					}))
+			})),
+			maxActions: this.recorder.maxLength
+		}
 	}
 
 	/**

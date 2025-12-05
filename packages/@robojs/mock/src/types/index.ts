@@ -121,6 +121,87 @@ export interface MockChannel {
 	parentId?: Snowflake | null
 }
 
+// ============================================================================
+// Thread Types (Phase 4D)
+// ============================================================================
+
+/**
+ * Thread metadata (nested in thread channel)
+ */
+export interface MockThreadMetadata {
+	archived: boolean
+	auto_archive_duration: 60 | 1440 | 4320 | 10080 // Minutes until auto-archive
+	archive_timestamp: string // ISO 8601
+	locked: boolean
+	invitable?: boolean // Private threads only - whether non-mods can add members
+	create_timestamp?: string // ISO 8601
+}
+
+/**
+ * Thread member representation
+ */
+export interface MockThreadMember {
+	id?: Snowflake // Thread ID (only in certain endpoints)
+	user_id?: Snowflake // User ID (only in certain endpoints)
+	join_timestamp: string // ISO 8601
+	flags: number // User's notification settings
+}
+
+/**
+ * Thread channel data (extends MockChannel)
+ * Types: 10 = ANNOUNCEMENT_THREAD, 11 = PUBLIC_THREAD, 12 = PRIVATE_THREAD
+ */
+export interface MockThread extends MockChannel {
+	type: 10 | 11 | 12
+	parentId: Snowflake // Required for threads (parent text/announcement channel)
+	ownerId: Snowflake // User who created the thread
+	threadMetadata: MockThreadMetadata
+	memberCount: number // Approximate count (max 50)
+	messageCount: number // Approximate count
+	totalMessageSent?: number // Total messages ever sent (including deleted)
+	lastMessageId?: Snowflake | null
+}
+
+/**
+ * Configuration for creating a mock thread
+ */
+export interface MockThreadConfig {
+	id?: Snowflake
+	name: string
+	type: 10 | 11 | 12
+	parentId: Snowflake
+	ownerId?: Snowflake // Defaults to bot user
+	autoArchiveDuration?: 60 | 1440 | 4320 | 10080
+	invitable?: boolean // For private threads
+	rateLimitPerUser?: number
+}
+
+/**
+ * Options for dispatching a thread create event
+ */
+export interface DispatchThreadCreateOptions {
+	name: string
+	parentChannelId: Snowflake
+	type?: 10 | 11 | 12 // Default: 11 (PUBLIC_THREAD)
+	messageId?: Snowflake // If creating thread from a message
+	autoArchiveDuration?: 60 | 1440 | 4320 | 10080
+	invitable?: boolean
+	user?: MockUserConfig
+}
+
+/**
+ * Options for dispatching a thread update event
+ */
+export interface DispatchThreadUpdateOptions {
+	threadId: Snowflake
+	name?: string
+	archived?: boolean
+	locked?: boolean
+	autoArchiveDuration?: 60 | 1440 | 4320 | 10080
+	invitable?: boolean
+	rateLimitPerUser?: number
+}
+
 /**
  * Mock message data
  */
@@ -480,6 +561,12 @@ export type ActionType =
 	| 'interaction_edit'
 	| 'typing_started'
 	| 'rest_request'
+	// Thread actions (Phase 4D)
+	| 'thread_created'
+	| 'thread_updated'
+	| 'thread_deleted'
+	| 'thread_member_added'
+	| 'thread_member_removed'
 	// Gateway WebSocket actions (client → server)
 	| 'gateway_message'
 	| 'gateway_identify'
@@ -527,6 +614,51 @@ export interface RecordActionOptions {
 }
 
 // ============================================================================
+// Session Recording Types (Phase 4A)
+// ============================================================================
+
+/**
+ * Complete session recording with metadata for replay
+ */
+export interface SessionRecording {
+	/** Recording format version */
+	version: 1
+	/** Metadata about the session */
+	metadata: RecordingMetadata
+	/** Initial session configuration for replay */
+	initialConfig: SessionConfig
+	/** All recorded actions in order */
+	actions: RecordedAction[]
+}
+
+/**
+ * Metadata for a session recording
+ */
+export interface RecordingMetadata {
+	/** Session ID */
+	sessionId: string
+	/** Optional session name */
+	sessionName?: string
+	/** Session start timestamp (ms) */
+	startTime: number
+	/** Session end/export timestamp (ms) */
+	endTime: number
+	/** Duration in milliseconds */
+	duration: number
+	/** Total number of actions recorded */
+	actionCount: number
+	/** Bot user info */
+	botUser: {
+		id: string
+		username: string
+	}
+	/** Application ID */
+	applicationId: string
+	/** Recording creation timestamp (ISO 8601) */
+	recordedAt: string
+}
+
+// ============================================================================
 // Serialized Types (for API responses)
 // ============================================================================
 
@@ -560,6 +692,24 @@ export interface SerializedMockChannel {
 	name: string
 	type: number
 	parentId?: string | null
+}
+
+export interface SerializedMockThread extends SerializedMockChannel {
+	type: 10 | 11 | 12
+	parentId: string // Required for threads
+	ownerId: string
+	threadMetadata: {
+		archived: boolean
+		auto_archive_duration: number
+		archive_timestamp: string
+		locked: boolean
+		invitable?: boolean
+		create_timestamp?: string
+	}
+	memberCount: number
+	messageCount: number
+	totalMessageSent?: number
+	lastMessageId?: string | null
 }
 
 export interface SerializedMockUser {
@@ -618,4 +768,97 @@ export interface SerializedMockInteraction {
 	// For tracking response messages (Phase 3H)
 	responseMessageId?: string
 	followupMessageIds?: string[]
+}
+
+// ============================================================================
+// Replay Types (Phase 4B)
+// ============================================================================
+
+/**
+ * Validation mode for comparing bot responses during replay
+ */
+export type ValidationMode = 'strict' | 'flexible' | 'type-only'
+
+/**
+ * Options for replaying a recorded session
+ */
+export interface ReplayOptions {
+	/** Speed multiplier (1 = real-time, 2 = 2x speed, 0 = instant). Default: 1 */
+	speed?: number
+	/** Whether to validate bot responses against recording. Default: false */
+	validate?: boolean
+	/** Validation strictness mode. Default: 'flexible' */
+	validationMode?: ValidationMode
+	/** Timeout in ms for waiting on bot responses. Default: 5000 */
+	responseTimeout?: number
+	/** Callback for progress updates (for UI integration) */
+	onProgress?: (state: ReplayState) => void
+	/** Callback when replay completes */
+	onComplete?: (result: ReplayResult) => void
+}
+
+/**
+ * Real-time playback state for UI binding (Phase 5J compatible)
+ */
+export interface ReplayState {
+	/** Current playback mode */
+	mode: 'idle' | 'playing' | 'paused' | 'completed'
+	/** Current time in ms since recording start */
+	currentTime: number
+	/** Total recording duration in ms */
+	duration: number
+	/** Current action index being replayed */
+	currentIndex: number
+	/** Total number of actions to replay */
+	totalActions: number
+	/** Current playback speed multiplier */
+	speed: number
+	/** The action currently being replayed */
+	currentAction?: RecordedAction
+}
+
+/**
+ * Result of a replay operation
+ */
+export interface ReplayResult {
+	/** Whether replay completed successfully */
+	success: boolean
+	/** Number of actions that were replayed */
+	actionsReplayed: number
+	/** Actual duration of replay in ms */
+	duration: number
+	/** Validation results if validation was enabled */
+	validation?: ValidationResult
+}
+
+/**
+ * Results of validating bot responses during replay
+ */
+export interface ValidationResult {
+	/** Whether all validations passed */
+	passed: boolean
+	/** Number of responses that matched */
+	matched: number
+	/** Number of responses that did not match */
+	mismatched: number
+	/** Number of extra responses not in recording */
+	extra: number
+	/** Number of expected responses that were missing */
+	missing: number
+	/** Details of each mismatch */
+	mismatches: ValidationMismatch[]
+}
+
+/**
+ * Details of a single validation mismatch
+ */
+export interface ValidationMismatch {
+	/** Index of the action in the recording */
+	index: number
+	/** The expected action from the recording */
+	expected: RecordedAction
+	/** The actual action received (null if missing) */
+	actual: RecordedAction | null
+	/** Human-readable reason for the mismatch */
+	reason: string
 }

@@ -1,0 +1,66 @@
+import type { RoboRequest } from '@robojs/server'
+import type { ActionType } from '../../../../types/index.js'
+import { sessionManager } from '../../../../core/manager.js'
+import { validateMethod, notFound } from '../../utils.js'
+
+/**
+ * GET /api/control/sessions/:id/actions - Get recorded actions
+ *
+ * Query params:
+ * - type: Filter by action type (e.g., "message_sent", "dispatch")
+ * - since: Filter actions after timestamp (ms)
+ * - limit: Maximum number of actions to return (default: 100)
+ * - offset: Offset for pagination (default: 0)
+ *
+ * Response:
+ * {
+ *   actions: RecordedAction[],
+ *   total: number,
+ *   limit: number,
+ *   offset: number
+ * }
+ */
+export default async (request: RoboRequest) => {
+	validateMethod(request, ['GET'])
+
+	const { id } = request.params as { id: string }
+	const url = new URL(request.url, 'http://localhost')
+	const type = url.searchParams.get('type') as ActionType | null
+	const since = url.searchParams.get('since')
+	const limit = parseInt(url.searchParams.get('limit') ?? '100', 10)
+	const offset = parseInt(url.searchParams.get('offset') ?? '0', 10)
+
+	if (!id) {
+		return notFound('Session ID required')
+	}
+
+	const session = sessionManager.get(id)
+
+	if (!session) {
+		return notFound('Session not found')
+	}
+
+	let actions = session.getActions()
+
+	// Apply filters
+	if (type) {
+		actions = actions.filter((a) => a.type === type)
+	}
+	if (since) {
+		const sinceTs = parseInt(since, 10)
+		actions = actions.filter((a) => a.timestamp >= sinceTs)
+	}
+
+	// Get total before pagination
+	const total = actions.length
+
+	// Apply pagination
+	actions = actions.slice(offset, offset + limit)
+
+	return {
+		actions,
+		total,
+		limit,
+		offset
+	}
+}

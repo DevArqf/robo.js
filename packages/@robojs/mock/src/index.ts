@@ -18,7 +18,7 @@
  */
 
 // Core exports
-export { Session, SessionManager, InMemoryStorage, MockServerState, ActionRecorder } from './session/index.js'
+export { Session, SessionManager, InMemoryStorage, MockServerState, ActionRecorder, RecordingPlayer } from './session/index.js'
 export type { StateOptions } from './session/index.js'
 export { sessionManager } from './core/manager.js'
 export { mockLogger } from './core/logger.js'
@@ -40,7 +40,15 @@ export {
 	buildSelectMenuInteractionPayload,
 	buildModalSubmitInteractionPayload,
 	buildAutocompleteInteractionPayload,
-	buildContextMenuInteractionPayload
+	buildContextMenuInteractionPayload,
+	// Thread payload builders (Phase 4D)
+	mockThreadToAPIChannel,
+	buildThreadCreatePayload,
+	buildThreadUpdatePayload,
+	buildThreadDeletePayload,
+	buildThreadListSyncPayload,
+	buildThreadMemberUpdatePayload,
+	buildThreadMembersUpdatePayload
 } from './discord/payloads.js'
 export type {
 	GatewayPayload,
@@ -51,7 +59,14 @@ export type {
 	SelectMenuInteractionPayloadOptions,
 	ModalSubmitInteractionPayloadOptions,
 	AutocompleteInteractionPayloadOptions,
-	ContextMenuInteractionPayloadOptions
+	ContextMenuInteractionPayloadOptions,
+	// Thread payload types (Phase 4D)
+	ThreadCreatePayloadOptions,
+	ThreadUpdatePayloadOptions,
+	ThreadDeletePayloadOptions,
+	ThreadListSyncPayloadOptions,
+	ThreadMemberUpdatePayloadOptions,
+	ThreadMembersUpdatePayloadOptions
 } from './discord/payloads.js'
 
 // Utility exports
@@ -80,7 +95,10 @@ export {
 	serializeMockChannel,
 	serializeMockUser,
 	serializeMockMessage,
-	serializeMockInteraction
+	serializeMockInteraction,
+	// Thread helpers (Phase 4D)
+	createMockThread,
+	serializeMockThread
 } from './session/state.js'
 
 // Auth exports
@@ -121,5 +139,22 @@ export type {
 	SerializedMockChannel,
 	SerializedMockUser,
 	SerializedMockMessage,
-	SerializedMockInteraction
+	SerializedMockInteraction,
+	// Session Recording types (Phase 4A)
+	SessionRecording,
+	RecordingMetadata,
+	// Replay types (Phase 4B)
+	ValidationMode,
+	ReplayOptions,
+	ReplayState,
+	ReplayResult,
+	ValidationResult,
+	ValidationMismatch,
+	// Thread types (Phase 4D)
+	MockThread,
+	MockThreadConfig,
+	MockThreadMetadata,
+	MockThreadMember,
+	DispatchThreadCreateOptions,
+	SerializedMockThread
 } from './types/index.js'

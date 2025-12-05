@@ -316,6 +316,22 @@ export class GatewayServer {
 			return (connState.intents & GatewayIntentBits.Guilds) !== 0
 		}
 
+		// Thread events (Phase 4D)
+		if (event.startsWith('THREAD_')) {
+			// THREAD_CREATE, THREAD_UPDATE, THREAD_DELETE, THREAD_LIST_SYNC require Guilds intent
+			if (['THREAD_CREATE', 'THREAD_UPDATE', 'THREAD_DELETE', 'THREAD_LIST_SYNC'].includes(event)) {
+				return (connState.intents & GatewayIntentBits.Guilds) !== 0
+			}
+			// THREAD_MEMBER_UPDATE requires no intent (always sent for current user's membership)
+			if (event === 'THREAD_MEMBER_UPDATE') {
+				return true
+			}
+			// THREAD_MEMBERS_UPDATE requires GuildMembers privileged intent
+			if (event === 'THREAD_MEMBERS_UPDATE') {
+				return (connState.intents & GatewayIntentBits.GuildMembers) !== 0
+			}
+		}
+
 		// For other events, allow by default (can be expanded later)
 		return true
 	}

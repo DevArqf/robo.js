@@ -8,12 +8,16 @@ import type {
 	MockInteraction,
 	MockUserConfig,
 	MockMessageConfig,
+	MockThread,
+	MockThreadConfig,
+	MockThreadMember,
 	SerializedSessionState,
 	SerializedMockGuild,
 	SerializedMockChannel,
 	SerializedMockUser,
 	SerializedMockMessage,
-	SerializedMockInteraction
+	SerializedMockInteraction,
+	SerializedMockThread
 } from '../types/index.js'
 import { generateSnowflake } from '../utils/snowflake.js'
 
@@ -42,6 +46,7 @@ export class MockServerState implements SessionState {
 	readonly users: Map<Snowflake, MockUser>
 	readonly messages: Map<Snowflake, MockMessage>
 	readonly interactions: Map<Snowflake, MockInteraction>
+	readonly threadMembers: Map<Snowflake, Map<Snowflake, MockThreadMember>> // threadId -> userId -> member
 	readonly botUser: MockUser
 	readonly applicationId: Snowflake
 
@@ -57,6 +62,7 @@ export class MockServerState implements SessionState {
 		this.users = new Map()
 		this.messages = new Map()
 		this.interactions = new Map()
+		this.threadMembers = new Map()
 		this.interactionsByToken = new Map()
 		this.maxMessages = options?.maxMessages ?? DEFAULT_MAX_MESSAGES
 		this.maxInteractions = DEFAULT_MAX_INTERACTIONS
@@ -430,6 +436,264 @@ export class MockServerState implements SessionState {
 	}
 
 	// ============================================================================
+	// Thread Operations (Phase 4D)
+	// ============================================================================
+
+	/**
+	 * Check if a channel is a thread type (10, 11, or 12)
+	 */
+	isThread(channelId: Snowflake): boolean {
+		const channel = this.channels.get(channelId)
+		return channel?.type === 10 || channel?.type === 11 || channel?.type === 12
+	}
+
+	/**
+	 * Get a thread by ID (returns undefined if not a thread)
+	 */
+	getThread(id: Snowflake): MockThread | undefined {
+		const channel = this.channels.get(id)
+		if (channel && (channel.type === 10 || channel.type === 11 || channel.type === 12)) {
+			return channel as MockThread
+		}
+		return undefined
+	}
+
+	/**
+	 * Get all threads for a parent channel
+	 */
+	getThreadsForChannel(channelId: Snowflake, options?: { archived?: boolean }): MockThread[] {
+		const threads: MockThread[] = []
+		for (const channel of this.channels.values()) {
+			if (
+				(channel.type === 10 || channel.type === 11 || channel.type === 12) &&
+				channel.parentId === channelId
+			) {
+				const thread = channel as MockThread
+				if (options?.archived === undefined || thread.threadMetadata.archived === options.archived) {
+					threads.push(thread)
+				}
+			}
+		}
+		return threads
+	}
+
+	/**
+	 * Get all active (non-archived) threads in a guild
+	 */
+	getActiveThreadsForGuild(guildId: Snowflake): MockThread[] {
+		const threads: MockThread[] = []
+		for (const channel of this.channels.values()) {
+			if (
+				(channel.type === 10 || channel.type === 11 || channel.type === 12) &&
+				channel.guildId === guildId
+			) {
+				const thread = channel as MockThread
+				if (!thread.threadMetadata.archived) {
+					threads.push(thread)
+				}
+			}
+		}
+		return threads
+	}
+
+	/**
+	 * Create a thread channel
+	 */
+	createThread(config: MockThreadConfig): MockThread {
+		const thread = createMockThread(config)
+
+		// Get guild ID from parent channel
+		const parentChannel = this.channels.get(config.parentId)
+		if (parentChannel?.guildId) {
+			thread.guildId = parentChannel.guildId
+
+			// Add to guild's channel list
+			const guild = this.guilds.get(parentChannel.guildId)
+			if (guild && !guild.channels.includes(thread.id)) {
+				guild.channels.push(thread.id)
+			}
+		}
+
+		// Store in channels map
+		this.channels.set(thread.id, thread)
+
+		// Initialize thread members map and add owner as first member
+		const membersMap = new Map<Snowflake, MockThreadMember>()
+		const ownerMember: MockThreadMember = {
+			id: thread.id,
+			user_id: thread.ownerId,
+			join_timestamp: new Date().toISOString(),
+			flags: 0
+		}
+		membersMap.set(thread.ownerId, ownerMember)
+		this.threadMembers.set(thread.id, membersMap)
+
+		return thread
+	}
+
+	/**
+	 * Update thread metadata
+	 */
+	updateThread(
+		threadId: Snowflake,
+		updates: Partial<{
+			name: string
+			archived: boolean
+			locked: boolean
+			auto_archive_duration: 60 | 1440 | 4320 | 10080
+			invitable: boolean
+			rateLimitPerUser: number
+		}>
+	): MockThread | undefined {
+		const thread = this.getThread(threadId)
+		if (!thread) {
+			return undefined
+		}
+
+		// Update name if provided
+		if (updates.name !== undefined) {
+			thread.name = updates.name
+		}
+
+		// Update thread metadata fields
+		if (updates.archived !== undefined) {
+			thread.threadMetadata.archived = updates.archived
+			thread.threadMetadata.archive_timestamp = new Date().toISOString()
+		}
+		if (updates.locked !== undefined) {
+			thread.threadMetadata.locked = updates.locked
+		}
+		if (updates.auto_archive_duration !== undefined) {
+			thread.threadMetadata.auto_archive_duration = updates.auto_archive_duration
+		}
+		if (updates.invitable !== undefined && thread.type === 12) {
+			thread.threadMetadata.invitable = updates.invitable
+		}
+
+		return thread
+	}
+
+	/**
+	 * Delete a thread
+	 */
+	deleteThread(threadId: Snowflake): boolean {
+		const thread = this.getThread(threadId)
+		if (!thread) {
+			return false
+		}
+
+		// Remove from guild's channel list
+		if (thread.guildId) {
+			const guild = this.guilds.get(thread.guildId)
+			if (guild) {
+				const idx = guild.channels.indexOf(threadId)
+				if (idx !== -1) {
+					guild.channels.splice(idx, 1)
+				}
+			}
+		}
+
+		// Remove messages in this thread
+		for (const [messageId, message] of this.messages) {
+			if (message.channelId === threadId) {
+				this.messages.delete(messageId)
+			}
+		}
+
+		// Remove thread members
+		this.threadMembers.delete(threadId)
+
+		// Remove from channels
+		return this.channels.delete(threadId)
+	}
+
+	/**
+	 * Add a member to a thread
+	 */
+	addThreadMember(threadId: Snowflake, userId: Snowflake): MockThreadMember | undefined {
+		const thread = this.getThread(threadId)
+		if (!thread) {
+			return undefined
+		}
+
+		// Get or create thread members map
+		let membersMap = this.threadMembers.get(threadId)
+		if (!membersMap) {
+			membersMap = new Map()
+			this.threadMembers.set(threadId, membersMap)
+		}
+
+		// Check if already a member
+		if (membersMap.has(userId)) {
+			return membersMap.get(userId)
+		}
+
+		// Create member
+		const member: MockThreadMember = {
+			id: threadId,
+			user_id: userId,
+			join_timestamp: new Date().toISOString(),
+			flags: 0
+		}
+		membersMap.set(userId, member)
+
+		// Update member count (capped at 50 for display)
+		thread.memberCount = Math.min(membersMap.size, 50)
+
+		return member
+	}
+
+	/**
+	 * Remove a member from a thread
+	 */
+	removeThreadMember(threadId: Snowflake, userId: Snowflake): boolean {
+		const thread = this.getThread(threadId)
+		if (!thread) {
+			return false
+		}
+
+		const membersMap = this.threadMembers.get(threadId)
+		if (!membersMap) {
+			return false
+		}
+
+		const removed = membersMap.delete(userId)
+		if (removed) {
+			// Update member count
+			thread.memberCount = Math.min(membersMap.size, 50)
+		}
+
+		return removed
+	}
+
+	/**
+	 * Get a thread member
+	 */
+	getThreadMember(threadId: Snowflake, userId: Snowflake): MockThreadMember | undefined {
+		const membersMap = this.threadMembers.get(threadId)
+		return membersMap?.get(userId)
+	}
+
+	/**
+	 * Get all members of a thread
+	 */
+	getThreadMembers(threadId: Snowflake): MockThreadMember[] {
+		const membersMap = this.threadMembers.get(threadId)
+		return membersMap ? Array.from(membersMap.values()) : []
+	}
+
+	/**
+	 * Increment thread message count
+	 */
+	incrementThreadMessageCount(threadId: Snowflake): void {
+		const thread = this.getThread(threadId)
+		if (thread) {
+			thread.messageCount = Math.min((thread.messageCount || 0) + 1, 50)
+			thread.totalMessageSent = (thread.totalMessageSent || 0) + 1
+		}
+	}
+
+	// ============================================================================
 	// State Management
 	// ============================================================================
 
@@ -442,6 +706,7 @@ export class MockServerState implements SessionState {
 		this.dmChannels.clear()
 		this.messages.clear()
 		this.interactions.clear()
+		this.threadMembers.clear()
 		this.interactionsByToken.clear()
 		this.users.clear()
 
@@ -526,6 +791,33 @@ export function createMockChannel(config?: {
 		name: config?.name ?? 'general',
 		type: config?.type ?? 0, // GUILD_TEXT
 		parentId: config?.parentId ?? null
+	}
+}
+
+/**
+ * Create a mock thread from config
+ */
+export function createMockThread(config: MockThreadConfig): MockThread {
+	const now = new Date().toISOString()
+	return {
+		id: config.id ?? generateSnowflake(),
+		guildId: undefined, // Will be set when added to state
+		name: config.name,
+		type: config.type,
+		parentId: config.parentId,
+		ownerId: config.ownerId ?? generateSnowflake(),
+		threadMetadata: {
+			archived: false,
+			auto_archive_duration: config.autoArchiveDuration ?? 1440, // 24 hours default
+			archive_timestamp: now,
+			locked: false,
+			invitable: config.type === 12 ? (config.invitable ?? true) : undefined,
+			create_timestamp: now
+		},
+		memberCount: 1, // Owner is always a member
+		messageCount: 0,
+		totalMessageSent: 0,
+		lastMessageId: null
 	}
 }
 
@@ -690,6 +982,32 @@ export function serializeMockChannel(channel: MockChannel): SerializedMockChanne
 		name: channel.name,
 		type: channel.type,
 		parentId: channel.parentId
+	}
+}
+
+/**
+ * Serialize a mock thread
+ */
+export function serializeMockThread(thread: MockThread): SerializedMockThread {
+	return {
+		id: thread.id,
+		guildId: thread.guildId,
+		name: thread.name,
+		type: thread.type,
+		parentId: thread.parentId,
+		ownerId: thread.ownerId,
+		threadMetadata: {
+			archived: thread.threadMetadata.archived,
+			auto_archive_duration: thread.threadMetadata.auto_archive_duration,
+			archive_timestamp: thread.threadMetadata.archive_timestamp,
+			locked: thread.threadMetadata.locked,
+			invitable: thread.threadMetadata.invitable,
+			create_timestamp: thread.threadMetadata.create_timestamp
+		},
+		memberCount: thread.memberCount,
+		messageCount: thread.messageCount,
+		totalMessageSent: thread.totalMessageSent,
+		lastMessageId: thread.lastMessageId
 	}
 }
 

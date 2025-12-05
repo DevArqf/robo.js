@@ -1,0 +1,81 @@
+import type { RoboRequest } from '@robojs/server'
+import { sessionManager } from '../../../../../core/manager.js'
+import { parseMockToken } from '../../../../../utils/id.js'
+import { mockThreadToAPIChannel } from '../../../../../discord/payloads.js'
+
+/**
+ * GET /api/v10/guilds/:id/threads/active - Get all active threads in a guild
+ *
+ * Response:
+ * {
+ *   threads: APIChannel[],   // Array of active thread channels
+ *   members: ThreadMember[], // Bot's membership in each thread
+ *   has_more: boolean        // Whether there are more threads
+ * }
+ */
+export default async (request: RoboRequest) => {
+	// 1. Validate GET method
+	if (request.method !== 'GET') {
+		return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+			status: 405,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// 2. Parse Authorization header → get session
+	const authHeader = request.headers.get('Authorization') || ''
+	const sessionId = parseMockToken(authHeader)
+
+	if (!sessionId) {
+		return new Response(JSON.stringify({ error: 'Unauthorized', code: 0 }), {
+			status: 401,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	const session = sessionManager.get(sessionId)
+	if (!session) {
+		return new Response(JSON.stringify({ error: 'Unauthorized', code: 0 }), {
+			status: 401,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// 3. Extract guild ID from params
+	const { id: guildId } = request.params as { id: string }
+
+	// 4. Validate guild exists
+	const guild = session.state.guilds.get(guildId)
+	if (!guild) {
+		return new Response(JSON.stringify({ error: 'Unknown Guild', code: 10004 }), {
+			status: 404,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// 5. Get all active (non-archived) threads in the guild
+	const threads = session.state.getActiveThreadsForGuild(guildId)
+
+	// 6. Get bot's membership in each thread
+	const members = threads
+		.map((thread) => {
+			const member = session.state.getThreadMember(thread.id, session.state.botUser.id)
+			if (member) {
+				return {
+					id: thread.id,
+					user_id: session.state.botUser.id,
+					join_timestamp: member.join_timestamp,
+					flags: member.flags
+				}
+			}
+			return null
+		})
+		.filter((m) => m !== null)
+
+	// 7. Return response
+	return {
+		threads: threads.map(mockThreadToAPIChannel),
+		members,
+		has_more: false // We return all threads at once in mock
+	}
+}

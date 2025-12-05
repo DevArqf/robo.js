@@ -306,6 +306,171 @@ export default async (request: RoboRequest) => {
 		}
 	}
 
+	// Handle THREAD_CREATE (Phase 4D)
+	if (body.event === 'THREAD_CREATE') {
+		const data = body.data as {
+			name: string
+			parent_channel_id: string
+			type?: 10 | 11 | 12
+			auto_archive_duration?: 60 | 1440 | 4320 | 10080
+			invitable?: boolean
+			user?: {
+				id?: string
+				username?: string
+				bot?: boolean
+			}
+		}
+
+		if (!data.name || !data.parent_channel_id) {
+			return badRequest('THREAD_CREATE requires "name" and "parent_channel_id" in data')
+		}
+
+		try {
+			const thread = await session.dispatchThreadCreate({
+				name: data.name,
+				parentChannelId: data.parent_channel_id,
+				type: data.type,
+				autoArchiveDuration: data.auto_archive_duration,
+				invitable: data.invitable,
+				user: data.user
+			})
+
+			return {
+				success: true,
+				dispatched: session.connections.size,
+				thread_id: thread.id,
+				parent_id: thread.parentId,
+				type: thread.type,
+				name: thread.name
+			}
+		} catch (error) {
+			return badRequest((error as Error).message)
+		}
+	}
+
+	// Handle THREAD_UPDATE (Phase 4D)
+	if (body.event === 'THREAD_UPDATE') {
+		const data = body.data as {
+			thread_id: string
+			name?: string
+			archived?: boolean
+			locked?: boolean
+			auto_archive_duration?: 60 | 1440 | 4320 | 10080
+			invitable?: boolean
+		}
+
+		if (!data.thread_id) {
+			return badRequest('THREAD_UPDATE requires "thread_id" in data')
+		}
+
+		try {
+			const thread = await session.dispatchThreadUpdate(data.thread_id, {
+				name: data.name,
+				archived: data.archived,
+				locked: data.locked,
+				autoArchiveDuration: data.auto_archive_duration,
+				invitable: data.invitable
+			})
+
+			return {
+				success: true,
+				dispatched: session.connections.size,
+				thread_id: thread.id,
+				name: thread.name,
+				archived: thread.threadMetadata.archived,
+				locked: thread.threadMetadata.locked
+			}
+		} catch (error) {
+			return badRequest((error as Error).message)
+		}
+	}
+
+	// Handle THREAD_DELETE (Phase 4D)
+	if (body.event === 'THREAD_DELETE') {
+		const data = body.data as {
+			thread_id: string
+		}
+
+		if (!data.thread_id) {
+			return badRequest('THREAD_DELETE requires "thread_id" in data')
+		}
+
+		try {
+			await session.dispatchThreadDelete(data.thread_id)
+
+			return {
+				success: true,
+				dispatched: session.connections.size,
+				thread_id: data.thread_id
+			}
+		} catch (error) {
+			return badRequest((error as Error).message)
+		}
+	}
+
+	// Handle THREAD_MEMBER_UPDATE (join/leave) (Phase 4D)
+	if (body.event === 'THREAD_MEMBER_UPDATE') {
+		const data = body.data as {
+			thread_id: string
+			action: 'join' | 'leave'
+			user_id?: string
+		}
+
+		if (!data.thread_id || !data.action) {
+			return badRequest('THREAD_MEMBER_UPDATE requires "thread_id" and "action" in data')
+		}
+
+		try {
+			if (data.action === 'join') {
+				if (data.user_id) {
+					await session.dispatchThreadMemberAdd(data.thread_id, data.user_id)
+				} else {
+					await session.dispatchThreadJoin(data.thread_id)
+				}
+			} else {
+				if (data.user_id) {
+					await session.dispatchThreadMemberRemove(data.thread_id, data.user_id)
+				} else {
+					await session.dispatchThreadLeave(data.thread_id)
+				}
+			}
+
+			return {
+				success: true,
+				dispatched: session.connections.size,
+				thread_id: data.thread_id,
+				action: data.action,
+				user_id: data.user_id ?? session.state.botUser.id
+			}
+		} catch (error) {
+			return badRequest((error as Error).message)
+		}
+	}
+
+	// Handle THREAD_LIST_SYNC (Phase 4D)
+	if (body.event === 'THREAD_LIST_SYNC') {
+		const data = body.data as {
+			guild_id: string
+			channel_ids?: string[]
+		}
+
+		if (!data.guild_id) {
+			return badRequest('THREAD_LIST_SYNC requires "guild_id" in data')
+		}
+
+		try {
+			await session.dispatchThreadListSync(data.guild_id, data.channel_ids)
+
+			return {
+				success: true,
+				dispatched: session.connections.size,
+				guild_id: data.guild_id
+			}
+		} catch (error) {
+			return badRequest((error as Error).message)
+		}
+	}
+
 	// For other events, dispatch raw data
 	await session.dispatch(body.event, body.data)
 
