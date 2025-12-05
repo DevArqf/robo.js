@@ -11,15 +11,26 @@ import type {
 	MockThread,
 	MockThreadConfig,
 	MockThreadMember,
+	MockAttachment,
+	StoredAttachment,
 	SerializedSessionState,
 	SerializedMockGuild,
 	SerializedMockChannel,
 	SerializedMockUser,
 	SerializedMockMessage,
 	SerializedMockInteraction,
-	SerializedMockThread
+	SerializedMockThread,
+	SerializedMockAttachment,
+	SerializedStoredAttachment,
+	ComponentsV2ValidationResult,
+	MockPoll,
+	MockPollConfig,
+	MockPollAnswer,
+	MockPollResults
 } from '../types/index.js'
+import { ComponentsV2Limits, ComponentTypeV2, PollLayoutType } from '../types/index.js'
 import { generateSnowflake } from '../utils/snowflake.js'
+import { MemoryAttachmentStorage, type AttachmentStorage, type StorageConfig, createStorage } from '../storage/attachment-storage.js'
 
 // Default limits for memory management
 const DEFAULT_MAX_MESSAGES = 1000
@@ -33,6 +44,8 @@ export interface StateOptions {
 	botUser?: MockUserConfig
 	applicationId?: Snowflake
 	maxMessages?: number
+	/** Storage backend configuration for attachments */
+	storage?: StorageConfig
 }
 
 /**
@@ -47,8 +60,25 @@ export class MockServerState implements SessionState {
 	readonly messages: Map<Snowflake, MockMessage>
 	readonly interactions: Map<Snowflake, MockInteraction>
 	readonly threadMembers: Map<Snowflake, Map<Snowflake, MockThreadMember>> // threadId -> userId -> member
+	readonly pollVotes: Map<Snowflake, Map<Snowflake, number[]>> // Phase 4G: messageId -> userId -> answerIds[]
 	readonly botUser: MockUser
 	readonly applicationId: Snowflake
+
+	/**
+	 * Attachment storage backend.
+	 * @see AttachmentStorage for the interface
+	 * @see MemoryAttachmentStorage for the default implementation
+	 */
+	readonly attachmentStorage: MemoryAttachmentStorage
+
+	/**
+	 * @deprecated Use attachmentStorage methods instead. This getter provides backward compatibility.
+	 */
+	get attachments(): Map<Snowflake, StoredAttachment> {
+		// Return a proxy Map that delegates to the storage backend
+		// This maintains backward compatibility with code that accesses attachments directly
+		return (this.attachmentStorage as unknown as { attachments: Map<Snowflake, StoredAttachment> }).attachments
+	}
 
 	private _sequence: number = 0
 	private readonly maxMessages: number
@@ -63,9 +93,15 @@ export class MockServerState implements SessionState {
 		this.messages = new Map()
 		this.interactions = new Map()
 		this.threadMembers = new Map()
+		this.pollVotes = new Map()
 		this.interactionsByToken = new Map()
 		this.maxMessages = options?.maxMessages ?? DEFAULT_MAX_MESSAGES
 		this.maxInteractions = DEFAULT_MAX_INTERACTIONS
+
+		// Initialize attachment storage backend
+		// Currently only memory storage is supported synchronously
+		// Future async backends would require architectural changes
+		this.attachmentStorage = new MemoryAttachmentStorage()
 
 		// Create bot user
 		this.botUser = createMockUser({
@@ -333,10 +369,50 @@ export class MockServerState implements SessionState {
 	}
 
 	/**
-	 * Delete a message
+	 * Delete a message and its associated attachments
 	 */
 	deleteMessage(id: Snowflake): boolean {
+		const message = this.messages.get(id)
+		if (message) {
+			// Clean up associated attachments
+			for (const attachment of message.attachments) {
+				this.attachments.delete(attachment.id)
+			}
+		}
 		return this.messages.delete(id)
+	}
+
+	// ============================================================================
+	// Attachment Operations (Phase 4E)
+	// Uses AttachmentStorage interface for pluggable backends
+	// ============================================================================
+
+	/**
+	 * Store an attachment using the configured storage backend.
+	 */
+	storeAttachment(attachment: StoredAttachment): void {
+		this.attachmentStorage.storeSync(attachment)
+	}
+
+	/**
+	 * Get an attachment by ID.
+	 */
+	getAttachment(id: Snowflake): StoredAttachment | undefined {
+		return this.attachmentStorage.getSync(id)
+	}
+
+	/**
+	 * Delete an attachment by ID.
+	 */
+	deleteAttachment(id: Snowflake): boolean {
+		return this.attachmentStorage.deleteSync(id)
+	}
+
+	/**
+	 * Get all attachments for a message.
+	 */
+	getAttachmentsForMessage(messageId: Snowflake): StoredAttachment[] {
+		return this.attachmentStorage.getForMessageSync(messageId)
 	}
 
 	// ============================================================================
@@ -683,14 +759,253 @@ export class MockServerState implements SessionState {
 	}
 
 	/**
-	 * Increment thread message count
+	 * Increment thread message count and update activity timestamp
 	 */
 	incrementThreadMessageCount(threadId: Snowflake): void {
 		const thread = this.getThread(threadId)
 		if (thread) {
 			thread.messageCount = Math.min((thread.messageCount || 0) + 1, 50)
 			thread.totalMessageSent = (thread.totalMessageSent || 0) + 1
+			// Update activity timestamp for auto-archive tracking
+			thread.threadMetadata.last_activity_timestamp = new Date().toISOString()
 		}
+	}
+
+	/**
+	 * Check and archive inactive threads based on auto_archive_duration
+	 * Returns array of thread IDs that were archived
+	 */
+	checkAutoArchiveThreads(): Snowflake[] {
+		const archivedIds: Snowflake[] = []
+		const now = Date.now()
+
+		for (const [channelId, channel] of this.channels) {
+			// Only check threads (types 10, 11, 12)
+			if (channel.type !== 10 && channel.type !== 11 && channel.type !== 12) {
+				continue
+			}
+
+			const thread = channel as MockThread
+
+			// Skip already archived threads
+			if (thread.threadMetadata.archived) {
+				continue
+			}
+
+			// Get last activity time
+			const lastActivity = thread.threadMetadata.last_activity_timestamp
+				? new Date(thread.threadMetadata.last_activity_timestamp).getTime()
+				: new Date(thread.threadMetadata.create_timestamp || new Date().toISOString()).getTime()
+
+			// Calculate inactivity duration in minutes
+			const inactiveMinutes = (now - lastActivity) / (1000 * 60)
+
+			// Archive if inactive for longer than auto_archive_duration
+			if (inactiveMinutes >= thread.threadMetadata.auto_archive_duration) {
+				thread.threadMetadata.archived = true
+				thread.threadMetadata.archive_timestamp = new Date().toISOString()
+				archivedIds.push(channelId)
+			}
+		}
+
+		return archivedIds
+	}
+
+	// ============================================================================
+	// Poll Operations (Phase 4G)
+	// ============================================================================
+
+	/**
+	 * Add a vote to a poll
+	 * @returns true if vote was added, false if already voted (single-select) or invalid
+	 */
+	addPollVote(messageId: Snowflake, userId: Snowflake, answerId: number): boolean {
+		const message = this.getMessage(messageId)
+		if (!message?.poll || message.poll.results?.is_finalized) {
+			return false
+		}
+
+		// Validate answer exists
+		const answerExists = message.poll.answers.some((a) => a.answer_id === answerId)
+		if (!answerExists) {
+			return false
+		}
+
+		// Get or create user votes for this message
+		let messageVotes = this.pollVotes.get(messageId)
+		if (!messageVotes) {
+			messageVotes = new Map()
+			this.pollVotes.set(messageId, messageVotes)
+		}
+
+		// Get user's current votes
+		let userVotes = messageVotes.get(userId) ?? []
+
+		// Check if already voted for this answer
+		if (userVotes.includes(answerId)) {
+			return false
+		}
+
+		// If single-select, replace existing vote
+		if (!message.poll.allow_multiselect && userVotes.length > 0) {
+			// Remove vote from previous answer count
+			const previousAnswerId = userVotes[0]
+			const prevCount = message.poll.results?.answer_counts.find((c) => c.id === previousAnswerId)
+			if (prevCount && prevCount.count > 0) {
+				prevCount.count--
+			}
+			userVotes = []
+		}
+
+		// Add vote
+		userVotes.push(answerId)
+		messageVotes.set(userId, userVotes)
+
+		// Update results
+		this.updatePollResults(messageId)
+
+		return true
+	}
+
+	/**
+	 * Remove a vote from a poll (only for multiselect polls)
+	 * @returns true if vote was removed, false if not voted or invalid
+	 */
+	removePollVote(messageId: Snowflake, userId: Snowflake, answerId: number): boolean {
+		const message = this.getMessage(messageId)
+		if (!message?.poll || message.poll.results?.is_finalized) {
+			return false
+		}
+
+		const messageVotes = this.pollVotes.get(messageId)
+		if (!messageVotes) {
+			return false
+		}
+
+		const userVotes = messageVotes.get(userId)
+		if (!userVotes) {
+			return false
+		}
+
+		const voteIndex = userVotes.indexOf(answerId)
+		if (voteIndex === -1) {
+			return false
+		}
+
+		// Remove vote
+		userVotes.splice(voteIndex, 1)
+		if (userVotes.length === 0) {
+			messageVotes.delete(userId)
+		}
+
+		// Update results
+		this.updatePollResults(messageId)
+
+		return true
+	}
+
+	/**
+	 * Get all users who voted for a specific answer
+	 */
+	getPollVoters(messageId: Snowflake, answerId: number): Snowflake[] {
+		const messageVotes = this.pollVotes.get(messageId)
+		if (!messageVotes) {
+			return []
+		}
+
+		const voters: Snowflake[] = []
+		for (const [userId, votes] of messageVotes) {
+			if (votes.includes(answerId)) {
+				voters.push(userId)
+			}
+		}
+
+		return voters
+	}
+
+	/**
+	 * Get all votes for a user on a poll
+	 */
+	getUserPollVotes(messageId: Snowflake, userId: Snowflake): number[] {
+		const messageVotes = this.pollVotes.get(messageId)
+		return messageVotes?.get(userId) ?? []
+	}
+
+	/**
+	 * Update poll results based on current votes
+	 */
+	updatePollResults(messageId: Snowflake): void {
+		const message = this.getMessage(messageId)
+		if (!message?.poll) {
+			return
+		}
+
+		const messageVotes = this.pollVotes.get(messageId)
+		const voteCounts = new Map<number, number>()
+
+		// Initialize counts for all answers
+		for (const answer of message.poll.answers) {
+			voteCounts.set(answer.answer_id, 0)
+		}
+
+		// Count votes
+		if (messageVotes) {
+			for (const votes of messageVotes.values()) {
+				for (const answerId of votes) {
+					voteCounts.set(answerId, (voteCounts.get(answerId) ?? 0) + 1)
+				}
+			}
+		}
+
+		// Update results
+		message.poll.results = {
+			is_finalized: message.poll.results?.is_finalized ?? false,
+			answer_counts: message.poll.answers.map((a) => ({
+				id: a.answer_id,
+				count: voteCounts.get(a.answer_id) ?? 0,
+				me_voted: false // Will be set per-user in API response
+			}))
+		}
+	}
+
+	/**
+	 * Expire (finalize) a poll
+	 * @returns true if poll was expired, false if already expired or no poll
+	 */
+	expirePoll(messageId: Snowflake): boolean {
+		const message = this.getMessage(messageId)
+		if (!message?.poll || message.poll.results?.is_finalized) {
+			return false
+		}
+
+		// Finalize results
+		this.updatePollResults(messageId)
+		message.poll.results!.is_finalized = true
+		message.poll.expiry = new Date().toISOString()
+
+		return true
+	}
+
+	/**
+	 * Check if a poll has expired and finalize it
+	 * @returns true if poll was expired
+	 */
+	checkPollExpiry(messageId: Snowflake): boolean {
+		const message = this.getMessage(messageId)
+		if (!message?.poll || message.poll.results?.is_finalized) {
+			return false
+		}
+
+		if (!message.poll.expiry) {
+			return false
+		}
+
+		const expiryTime = new Date(message.poll.expiry).getTime()
+		if (Date.now() >= expiryTime) {
+			return this.expirePoll(messageId)
+		}
+
+		return false
 	}
 
 	// ============================================================================
@@ -707,6 +1022,7 @@ export class MockServerState implements SessionState {
 		this.messages.clear()
 		this.interactions.clear()
 		this.threadMembers.clear()
+		this.pollVotes.clear()
 		this.interactionsByToken.clear()
 		this.users.clear()
 
@@ -728,6 +1044,7 @@ export class MockServerState implements SessionState {
 			users: Array.from(this.users.values()).map(serializeMockUser),
 			messages: Array.from(this.messages.values()).map(serializeMockMessage),
 			interactions: Array.from(this.interactions.values()).map(serializeMockInteraction),
+			attachments: Array.from(this.attachments.values()).map(serializeStoredAttachment),
 			botUser: serializeMockUser(this.botUser),
 			applicationId: this.applicationId,
 			sequence: this._sequence
@@ -812,7 +1129,8 @@ export function createMockThread(config: MockThreadConfig): MockThread {
 			archive_timestamp: now,
 			locked: false,
 			invitable: config.type === 12 ? (config.invitable ?? true) : undefined,
-			create_timestamp: now
+			create_timestamp: now,
+			last_activity_timestamp: now // Track for auto-archive
 		},
 		memberCount: 1, // Owner is always a member
 		messageCount: 0,
@@ -865,7 +1183,88 @@ export function createMockMessage(config: MockMessageConfig): MockMessage {
 		message.resolved = config.resolved
 	}
 
+	// Phase 4F: Components V2
+	if (config.flags !== undefined) {
+		message.flags = config.flags
+	}
+	if (config.components) {
+		message.components = config.components
+	}
+
+	// Phase 4G: Polls
+	if (config.poll) {
+		message.poll = createMockPoll(config.poll)
+	}
+
 	return message
+}
+
+/** Maximum number of answers in a poll */
+export const MAX_POLL_ANSWERS = 10
+
+/** Maximum character length for poll question text */
+export const MAX_POLL_QUESTION_LENGTH = 300
+
+/** Maximum character length for poll answer text */
+export const MAX_POLL_ANSWER_LENGTH = 55
+
+/**
+ * Create a mock poll from config
+ */
+export function createMockPoll(config: MockPollConfig): MockPoll {
+	// Validate max answers (Discord limit is 10)
+	if (config.answers.length > MAX_POLL_ANSWERS) {
+		throw new Error(`Poll cannot have more than ${MAX_POLL_ANSWERS} answers`)
+	}
+	if (config.answers.length < 1) {
+		throw new Error('Poll must have at least 1 answer')
+	}
+
+	// Validate question text length
+	if (config.question.text && config.question.text.length > MAX_POLL_QUESTION_LENGTH) {
+		throw new Error(`Poll question text cannot exceed ${MAX_POLL_QUESTION_LENGTH} characters`)
+	}
+
+	// Validate answer text lengths
+	for (let i = 0; i < config.answers.length; i++) {
+		const answerText = config.answers[i].poll_media.text
+		if (answerText && answerText.length > MAX_POLL_ANSWER_LENGTH) {
+			throw new Error(`Poll answer ${i + 1} text cannot exceed ${MAX_POLL_ANSWER_LENGTH} characters`)
+		}
+	}
+
+	// Calculate expiry timestamp from duration (in hours)
+	let expiry: string | null = null
+	if (config.duration && config.duration > 0) {
+		const expiryDate = new Date()
+		expiryDate.setHours(expiryDate.getHours() + config.duration)
+		expiry = expiryDate.toISOString()
+	}
+
+	// Generate answer_ids (1-indexed)
+	const answers: MockPollAnswer[] = config.answers.map((answer, index) => ({
+		answer_id: index + 1,
+		poll_media: answer.poll_media
+	}))
+
+	// Initialize empty results
+	const results: MockPollResults = {
+		is_finalized: false,
+		answer_counts: answers.map((a) => ({
+			id: a.answer_id,
+			count: 0,
+			me_voted: false
+		}))
+	}
+
+	return {
+		question: config.question,
+		answers,
+		expiry,
+		allow_multiselect: config.allow_multiselect ?? false,
+		layout_type: config.layout_type ?? PollLayoutType.Default,
+		results
+	}
 }
 
 // ============================================================================
@@ -1002,7 +1401,8 @@ export function serializeMockThread(thread: MockThread): SerializedMockThread {
 			archive_timestamp: thread.threadMetadata.archive_timestamp,
 			locked: thread.threadMetadata.locked,
 			invitable: thread.threadMetadata.invitable,
-			create_timestamp: thread.threadMetadata.create_timestamp
+			create_timestamp: thread.threadMetadata.create_timestamp,
+			last_activity_timestamp: thread.threadMetadata.last_activity_timestamp
 		},
 		memberCount: thread.memberCount,
 		messageCount: thread.messageCount,
@@ -1041,7 +1441,7 @@ export function serializeMockMessage(message: MockMessage): SerializedMockMessag
 		mentionEveryone: message.mentionEveryone,
 		mentions: [...message.mentions],
 		mentionRoles: [...message.mentionRoles],
-		attachments: [...message.attachments],
+		attachments: message.attachments.map(serializeMockAttachment),
 		embeds: [...message.embeds],
 		pinned: message.pinned,
 		type: message.type
@@ -1078,5 +1478,228 @@ export function serializeMockInteraction(interaction: MockInteraction): Serializ
 		// Context menu commands (Phase 3G)
 		targetId: interaction.targetId,
 		contextMenuType: interaction.contextMenuType
+	}
+}
+
+/**
+ * Serialize a mock attachment (API format)
+ */
+export function serializeMockAttachment(attachment: MockAttachment): SerializedMockAttachment {
+	return {
+		id: attachment.id,
+		filename: attachment.filename,
+		title: attachment.title,
+		description: attachment.description,
+		content_type: attachment.content_type,
+		size: attachment.size,
+		url: attachment.url,
+		proxy_url: attachment.proxy_url,
+		width: attachment.width,
+		height: attachment.height,
+		duration_secs: attachment.duration_secs,
+		waveform: attachment.waveform,
+		ephemeral: attachment.ephemeral,
+		flags: attachment.flags
+	}
+}
+
+/**
+ * Serialize a stored attachment (includes binary data as base64)
+ */
+export function serializeStoredAttachment(attachment: StoredAttachment): SerializedStoredAttachment {
+	// Convert Uint8Array to base64 string
+	const base64 = Buffer.from(attachment.data).toString('base64')
+
+	return {
+		id: attachment.id,
+		channelId: attachment.channelId,
+		messageId: attachment.messageId,
+		filename: attachment.filename,
+		contentType: attachment.contentType,
+		size: attachment.size,
+		data: base64,
+		width: attachment.width,
+		height: attachment.height
+	}
+}
+
+/**
+ * Deserialize a stored attachment (converts base64 back to Uint8Array)
+ */
+export function deserializeStoredAttachment(serialized: SerializedStoredAttachment): StoredAttachment {
+	return {
+		id: serialized.id,
+		channelId: serialized.channelId,
+		messageId: serialized.messageId,
+		filename: serialized.filename,
+		contentType: serialized.contentType,
+		size: serialized.size,
+		data: new Uint8Array(Buffer.from(serialized.data, 'base64')),
+		width: serialized.width,
+		height: serialized.height
+	}
+}
+
+// ============================================================================
+// Phase 4F: Components V2 Validation
+// ============================================================================
+
+/**
+ * Validate Components V2 structure according to Discord's rules:
+ * - Max 40 total components (including nested)
+ * - Max 4000 chars total across all TextDisplay components
+ * - Component IDs must be unique
+ * - attachment:// URLs must reference valid attachments
+ * - MediaGallery: 1-10 items
+ * - Section: 1-3 TextDisplay components
+ *
+ * @param components - Array of V2 components to validate
+ * @param attachmentFilenames - Set of valid attachment filenames for attachment:// URLs
+ * @returns Validation result with any errors
+ */
+export function validateComponentsV2(
+	components: unknown[],
+	attachmentFilenames?: Set<string>
+): ComponentsV2ValidationResult {
+	const errors: string[] = []
+	let totalComponents = 0
+	let totalTextLength = 0
+	const usedIds = new Set<number>()
+
+	function validateComponent(comp: Record<string, unknown>, depth = 0): void {
+		// Prevent excessive nesting
+		if (depth > 10) {
+			errors.push('Component nesting too deep (max 10 levels)')
+			return
+		}
+
+		totalComponents++
+
+		// Check component count limit
+		if (totalComponents > ComponentsV2Limits.MAX_COMPONENTS) {
+			// Only add error once
+			if (totalComponents === ComponentsV2Limits.MAX_COMPONENTS + 1) {
+				errors.push(`Too many components (max ${ComponentsV2Limits.MAX_COMPONENTS})`)
+			}
+			return
+		}
+
+		// Check ID uniqueness
+		if (comp.id !== undefined) {
+			if (typeof comp.id === 'number') {
+				if (usedIds.has(comp.id)) {
+					errors.push(`Duplicate component ID: ${comp.id}`)
+				}
+				usedIds.add(comp.id)
+			}
+		}
+
+		const compType = comp.type as number
+
+		// TextDisplay validation (type 10)
+		if (compType === ComponentTypeV2.TextDisplay) {
+			if (typeof comp.content === 'string') {
+				totalTextLength += comp.content.length
+				if (totalTextLength > ComponentsV2Limits.MAX_TEXT_LENGTH) {
+					// Only add error once when we exceed
+					if (
+						totalTextLength - comp.content.length <= ComponentsV2Limits.MAX_TEXT_LENGTH &&
+						totalTextLength > ComponentsV2Limits.MAX_TEXT_LENGTH
+					) {
+						errors.push(`Total text length exceeds ${ComponentsV2Limits.MAX_TEXT_LENGTH} chars`)
+					}
+				}
+			}
+		}
+
+		// Section validation (type 9)
+		if (compType === ComponentTypeV2.Section) {
+			if (Array.isArray(comp.components)) {
+				if (comp.components.length > ComponentsV2Limits.MAX_SECTION_TEXT_COMPONENTS) {
+					errors.push(
+						`Section has too many text components: ${comp.components.length} (max ${ComponentsV2Limits.MAX_SECTION_TEXT_COMPONENTS})`
+					)
+				}
+				// Validate nested components
+				for (const nested of comp.components) {
+					if (nested && typeof nested === 'object') {
+						validateComponent(nested as Record<string, unknown>, depth + 1)
+					}
+				}
+			}
+			// Validate accessory
+			if (comp.accessory && typeof comp.accessory === 'object') {
+				validateComponent(comp.accessory as Record<string, unknown>, depth + 1)
+			}
+		}
+
+		// MediaGallery validation (type 12)
+		if (compType === ComponentTypeV2.MediaGallery) {
+			if (Array.isArray(comp.items)) {
+				if (comp.items.length === 0) {
+					errors.push('MediaGallery must have at least 1 item')
+				} else if (comp.items.length > ComponentsV2Limits.MAX_MEDIA_GALLERY_ITEMS) {
+					errors.push(
+						`MediaGallery has too many items: ${comp.items.length} (max ${ComponentsV2Limits.MAX_MEDIA_GALLERY_ITEMS})`
+					)
+				}
+				// Validate attachment:// URLs in items
+				for (const item of comp.items) {
+					if (item && typeof item === 'object') {
+						const galleryItem = item as { media?: { url?: string } }
+						validateAttachmentUrl(galleryItem.media?.url)
+					}
+				}
+			}
+		}
+
+		// Container validation (type 17)
+		if (compType === ComponentTypeV2.Container) {
+			if (Array.isArray(comp.components)) {
+				for (const nested of comp.components) {
+					if (nested && typeof nested === 'object') {
+						validateComponent(nested as Record<string, unknown>, depth + 1)
+					}
+				}
+			}
+		}
+
+		// Thumbnail validation (type 11)
+		if (compType === ComponentTypeV2.Thumbnail) {
+			if (comp.media && typeof comp.media === 'object') {
+				const media = comp.media as { url?: string }
+				validateAttachmentUrl(media.url)
+			}
+		}
+
+		// File validation (type 13)
+		if (compType === ComponentTypeV2.File) {
+			if (comp.file && typeof comp.file === 'object') {
+				const file = comp.file as { url?: string }
+				validateAttachmentUrl(file.url)
+			}
+		}
+	}
+
+	function validateAttachmentUrl(url: string | undefined): void {
+		if (!url) return
+		if (url.startsWith('attachment://') && attachmentFilenames) {
+			const filename = url.slice('attachment://'.length)
+			if (!attachmentFilenames.has(filename)) {
+				errors.push(`Unknown attachment reference: ${url}`)
+			}
+		}
+	}
+
+	// Validate each top-level component
+	for (const comp of components) {
+		if (comp && typeof comp === 'object') {
+			validateComponent(comp as Record<string, unknown>)
+		}
+	}
+
+	return {
+		valid: errors.length === 0,
+		errors
 	}
 }

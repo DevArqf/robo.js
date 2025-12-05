@@ -29,6 +29,8 @@ export interface SessionState {
 	users: Map<Snowflake, MockUser>
 	messages: Map<Snowflake, MockMessage>
 	interactions: Map<Snowflake, MockInteraction>
+	attachments: Map<Snowflake, StoredAttachment> // Phase 4E: File storage
+	pollVotes: Map<Snowflake, Map<Snowflake, number[]>> // Phase 4G: messageId -> userId -> answerIds[]
 	botUser: MockUser
 	applicationId: Snowflake
 	sequence: number
@@ -135,6 +137,7 @@ export interface MockThreadMetadata {
 	locked: boolean
 	invitable?: boolean // Private threads only - whether non-mods can add members
 	create_timestamp?: string // ISO 8601
+	last_activity_timestamp?: string // ISO 8601 - tracks last message for auto-archive
 }
 
 /**
@@ -217,7 +220,7 @@ export interface MockMessage {
 	mentionEveryone: boolean
 	mentions: Snowflake[]
 	mentionRoles: Snowflake[]
-	attachments: unknown[]
+	attachments: MockAttachment[]
 	embeds: unknown[]
 	pinned: boolean
 	type: number
@@ -227,6 +230,163 @@ export interface MockMessage {
 	interaction?: MockMessageInteraction // Deprecated, kept for backwards compatibility
 	message_snapshots?: MockMessageSnapshot[]
 	resolved?: unknown
+	// Phase 4F: Components V2
+	flags?: number
+	components?: unknown[]
+	// Phase 4G: Polls
+	poll?: MockPoll
+}
+
+// ============================================================================
+// Phase 4G: Poll Types
+// ============================================================================
+
+/**
+ * Poll layout types
+ * @see https://discord.com/developers/docs/resources/poll#layout-type
+ */
+export enum PollLayoutType {
+	Default = 1
+}
+
+/**
+ * Poll media object (question or answer content)
+ */
+export interface MockPollMedia {
+	text?: string
+	emoji?: {
+		id?: Snowflake | null
+		name?: string | null
+		animated?: boolean
+	}
+}
+
+/**
+ * Poll answer option
+ */
+export interface MockPollAnswer {
+	answer_id: number // 1-indexed
+	poll_media: MockPollMedia
+}
+
+/**
+ * Vote count for a poll answer
+ */
+export interface MockPollAnswerCount {
+	id: number // answer_id
+	count: number
+	me_voted: boolean
+}
+
+/**
+ * Poll results (vote counts)
+ */
+export interface MockPollResults {
+	is_finalized: boolean
+	answer_counts: MockPollAnswerCount[]
+}
+
+/**
+ * Poll object attached to a message
+ * @see https://discord.com/developers/docs/resources/poll#poll-object
+ */
+export interface MockPoll {
+	question: MockPollMedia
+	answers: MockPollAnswer[]
+	expiry: string | null // ISO8601 timestamp when poll ends
+	allow_multiselect: boolean
+	layout_type: PollLayoutType
+	results?: MockPollResults
+}
+
+/**
+ * Configuration for creating a poll (used in message creation)
+ */
+export interface MockPollConfig {
+	question: {
+		text: string
+		emoji?: MockPollMedia['emoji']
+	}
+	answers: Array<{
+		poll_media: MockPollMedia
+	}>
+	duration?: number // Hours until expiry (1, 4, 8, 24, 72, 168)
+	allow_multiselect?: boolean
+	layout_type?: PollLayoutType
+}
+
+// ============================================================================
+// Phase 4E: Attachment Types
+// ============================================================================
+
+/**
+ * Discord attachment flags (bitfield)
+ * @see https://discord.com/developers/docs/resources/message#attachment-object-attachment-flags
+ */
+export const AttachmentFlags = {
+	/** This attachment has been edited using the remix feature on mobile */
+	IS_REMIX: 1 << 2 // 4
+} as const
+
+/**
+ * Validation constants for attachments
+ */
+export const AttachmentLimits = {
+	/** Maximum description (alt text) length in characters */
+	MAX_DESCRIPTION_LENGTH: 1024,
+	/** Maximum files per message */
+	MAX_FILES_PER_MESSAGE: 10,
+	/** Maximum total file size per message in bytes (25MB) */
+	MAX_TOTAL_SIZE: 25 * 1024 * 1024,
+	/** Spoiler filename prefix */
+	SPOILER_PREFIX: 'SPOILER_'
+} as const
+
+/**
+ * Attachment metadata as returned in API responses
+ */
+export interface MockAttachment {
+	id: Snowflake
+	filename: string
+	title?: string
+	description?: string // Alt text for accessibility (max 1024 chars)
+	content_type?: string
+	size: number
+	url: string
+	proxy_url: string
+	width?: number // For images
+	height?: number // For images
+	duration_secs?: number // For audio
+	waveform?: string // For audio (base64)
+	ephemeral?: boolean
+	flags?: number
+	/** Computed from filename starting with SPOILER_ */
+	spoiler?: boolean
+}
+
+/**
+ * Attachment data stored in session state (includes binary data)
+ */
+export interface StoredAttachment {
+	id: Snowflake
+	channelId: Snowflake
+	messageId: Snowflake
+	filename: string
+	contentType: string
+	size: number
+	data: Uint8Array
+	width?: number
+	height?: number
+}
+
+/**
+ * Attachment metadata from payload_json (used during upload)
+ */
+export interface AttachmentPayload {
+	id: number // Index matching files[n], not a snowflake
+	filename?: string
+	description?: string
+	title?: string
 }
 
 // ============================================================================
@@ -458,7 +618,7 @@ export interface MockMessageConfig {
 	authorId: Snowflake
 	content?: string
 	embeds?: unknown[]
-	attachments?: unknown[]
+	attachments?: MockAttachment[]
 	tts?: boolean
 	type?: number
 	// Phase 3I: APIMessage completeness config fields
@@ -466,6 +626,11 @@ export interface MockMessageConfig {
 	interactionMetadata?: MockMessageInteractionMetadata
 	messageSnapshots?: MockMessageSnapshot[]
 	resolved?: unknown
+	// Phase 4F: Components V2
+	flags?: number
+	components?: unknown[]
+	// Phase 4G: Polls
+	poll?: MockPollConfig
 }
 
 /**
@@ -672,6 +837,7 @@ export interface SerializedSessionState {
 	users: SerializedMockUser[]
 	messages: SerializedMockMessage[]
 	interactions: SerializedMockInteraction[]
+	attachments: SerializedStoredAttachment[] // Phase 4E
 	botUser: SerializedMockUser
 	applicationId: string
 	sequence: number
@@ -705,6 +871,7 @@ export interface SerializedMockThread extends SerializedMockChannel {
 		locked: boolean
 		invitable?: boolean
 		create_timestamp?: string
+		last_activity_timestamp?: string
 	}
 	memberCount: number
 	messageCount: number
@@ -733,10 +900,45 @@ export interface SerializedMockMessage {
 	mentionEveryone: boolean
 	mentions: string[]
 	mentionRoles: string[]
-	attachments: unknown[]
+	attachments: SerializedMockAttachment[]
 	embeds: unknown[]
 	pinned: boolean
 	type: number
+}
+
+/**
+ * Serialized attachment metadata
+ */
+export interface SerializedMockAttachment {
+	id: string
+	filename: string
+	title?: string
+	description?: string
+	content_type?: string
+	size: number
+	url: string
+	proxy_url: string
+	width?: number
+	height?: number
+	duration_secs?: number
+	waveform?: string
+	ephemeral?: boolean
+	flags?: number
+}
+
+/**
+ * Serialized stored attachment (binary data as base64)
+ */
+export interface SerializedStoredAttachment {
+	id: string
+	channelId: string
+	messageId: string
+	filename: string
+	contentType: string
+	size: number
+	data: string // Base64 encoded
+	width?: number
+	height?: number
 }
 
 export interface SerializedMockInteraction {
@@ -861,4 +1063,270 @@ export interface ValidationMismatch {
 	actual: RecordedAction | null
 	/** Human-readable reason for the mismatch */
 	reason: string
+}
+
+// ============================================================================
+// Phase 4F: Components V2 Types
+// ============================================================================
+
+/**
+ * Discord message flags (bitfield)
+ * @see https://discord.com/developers/docs/resources/message#message-object-message-flags
+ */
+export const MessageFlags = {
+	/** Message has been published to subscribed channels */
+	Crossposted: 1 << 0,
+	/** Message originated from a message in another channel */
+	IsCrosspost: 1 << 1,
+	/** Do not include embeds when serializing this message */
+	SuppressEmbeds: 1 << 2,
+	/** Source message for this crosspost has been deleted */
+	SourceMessageDeleted: 1 << 3,
+	/** Message came from the urgent message system */
+	Urgent: 1 << 4,
+	/** Message has an associated thread */
+	HasThread: 1 << 5,
+	/** Message is only visible to the user who invoked the interaction */
+	Ephemeral: 1 << 6,
+	/** Message is an interaction response and the bot is "thinking" */
+	Loading: 1 << 7,
+	/** Message failed to mention some roles and add their members to the thread */
+	FailedToMentionSomeRolesInThread: 1 << 8,
+	/** Message will not trigger push and desktop notifications */
+	SuppressNotifications: 1 << 12,
+	/** Message is a voice message */
+	IsVoiceMessage: 1 << 13,
+	/** Message uses Components V2 format (replaces content/embeds) */
+	IsComponentsV2: 1 << 15 // 32768
+} as const
+
+/**
+ * Component types for V2 components
+ * @see https://discord.com/developers/docs/interactions/message-components
+ */
+export const ComponentTypeV2 = {
+	// V1 Components (existing)
+	ActionRow: 1,
+	Button: 2,
+	StringSelect: 3,
+	TextInput: 4,
+	UserSelect: 5,
+	RoleSelect: 6,
+	MentionableSelect: 7,
+	ChannelSelect: 8,
+	// V2 Display Components
+	Section: 9,
+	TextDisplay: 10,
+	Thumbnail: 11,
+	MediaGallery: 12,
+	File: 13,
+	Separator: 14,
+	ContentInventoryEntry: 16,
+	Container: 17
+} as const
+
+/**
+ * V2 validation limits
+ */
+export const ComponentsV2Limits = {
+	/** Maximum total components (including nested) */
+	MAX_COMPONENTS: 40,
+	/** Maximum total text length across all TextDisplay components */
+	MAX_TEXT_LENGTH: 4000,
+	/** Maximum items in a MediaGallery */
+	MAX_MEDIA_GALLERY_ITEMS: 10,
+	/** Maximum TextDisplay components in a Section */
+	MAX_SECTION_TEXT_COMPONENTS: 3
+} as const
+
+/**
+ * Media item for V2 components (image/file reference)
+ */
+export interface UnfurledMediaItem {
+	/** URL - can be attachment:// or https:// */
+	url: string
+}
+
+/**
+ * TextDisplay component - standalone markdown text
+ */
+export interface TextDisplayComponent {
+	type: typeof ComponentTypeV2.TextDisplay
+	id?: number
+	content: string
+}
+
+/**
+ * Thumbnail component - image accessory for Section
+ */
+export interface ThumbnailComponent {
+	type: typeof ComponentTypeV2.Thumbnail
+	id?: number
+	media: UnfurledMediaItem
+	description?: string
+	spoiler?: boolean
+}
+
+/**
+ * Button component reference for V2 (can be Section accessory)
+ */
+export interface ButtonComponentV2 {
+	type: typeof ComponentTypeV2.Button
+	id?: number
+	style: number
+	label?: string
+	emoji?: { id?: string; name?: string; animated?: boolean }
+	custom_id?: string
+	url?: string
+	disabled?: boolean
+}
+
+/**
+ * Section component - text with optional accessory (thumbnail or button)
+ */
+export interface SectionComponent {
+	type: typeof ComponentTypeV2.Section
+	id?: number
+	components: TextDisplayComponent[]
+	accessory?: ThumbnailComponent | ButtonComponentV2
+}
+
+/**
+ * Item in a MediaGallery
+ */
+export interface MediaGalleryItem {
+	media: UnfurledMediaItem
+	description?: string
+	spoiler?: boolean
+}
+
+/**
+ * MediaGallery component - grid of images (1-10)
+ */
+export interface MediaGalleryComponent {
+	type: typeof ComponentTypeV2.MediaGallery
+	id?: number
+	items: MediaGalleryItem[]
+}
+
+/**
+ * File component - single file display
+ */
+export interface FileComponent {
+	type: typeof ComponentTypeV2.File
+	id?: number
+	file: UnfurledMediaItem
+	spoiler?: boolean
+}
+
+/**
+ * Separator component - horizontal divider
+ */
+export interface SeparatorComponent {
+	type: typeof ComponentTypeV2.Separator
+	id?: number
+	divider?: boolean
+	spacing?: 'small' | 'large'
+}
+
+/**
+ * ActionRow component reference for V2 Container
+ */
+export interface ActionRowComponentV2 {
+	type: typeof ComponentTypeV2.ActionRow
+	id?: number
+	components: unknown[]
+}
+
+/**
+ * Container component - styled wrapper with optional accent color
+ */
+export interface ContainerComponent {
+	type: typeof ComponentTypeV2.Container
+	id?: number
+	accent_color?: number
+	spoiler?: boolean
+	components: (
+		| ActionRowComponentV2
+		| TextDisplayComponent
+		| SectionComponent
+		| MediaGalleryComponent
+		| FileComponent
+		| SeparatorComponent
+	)[]
+}
+
+/**
+ * Union type for all V2 top-level components
+ */
+export type ComponentV2 =
+	| ActionRowComponentV2
+	| TextDisplayComponent
+	| SectionComponent
+	| MediaGalleryComponent
+	| FileComponent
+	| SeparatorComponent
+	| ContainerComponent
+
+/**
+ * Validation result for Components V2
+ */
+export interface ComponentsV2ValidationResult {
+	valid: boolean
+	errors: string[]
+}
+
+/**
+ * Discord API Error response format
+ * Matches Discord's exact error structure for compatibility with Discord.js
+ */
+export interface DiscordAPIError {
+	code: number
+	message: string
+	errors?: {
+		[key: string]: {
+			_errors: Array<{
+				code: string
+				message: string
+			}>
+		}
+	}
+}
+
+/**
+ * Creates a Discord-formatted error response for component validation failures
+ */
+export function createComponentValidationError(validationErrors: string[]): DiscordAPIError {
+	return {
+		code: 50035,
+		message: 'Invalid Form Body',
+		errors: {
+			components: {
+				_errors: validationErrors.map((msg) => ({
+					code: 'COMPONENT_VALIDATION_FAILED',
+					message: msg
+				}))
+			}
+		}
+	}
+}
+
+/**
+ * Creates a Discord-formatted error for content/embeds conflict with V2
+ */
+export function createV2ConflictError(): DiscordAPIError {
+	return {
+		code: 50035,
+		message: 'Invalid Form Body',
+		errors: {
+			components: {
+				_errors: [
+					{
+						code: 'COMPONENT_VALIDATION_FAILED',
+						message: 'Cannot use content or embeds with Components V2'
+					}
+				]
+			}
+		}
+	}
 }

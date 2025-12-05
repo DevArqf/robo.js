@@ -40,6 +40,8 @@ import {
 	buildThreadListSyncPayload,
 	buildThreadMemberUpdatePayload,
 	buildThreadMembersUpdatePayload,
+	buildMessagePollVoteAddPayload,
+	buildMessagePollVoteRemovePayload,
 	type GatewayPayload
 } from '../discord/payloads.js'
 
@@ -60,6 +62,7 @@ export class Session implements ISession {
 
 	private readonly recorder: ActionRecorder
 	private ending = false
+	private autoArchiveInterval: ReturnType<typeof setInterval> | null = null
 
 	constructor(options?: CreateSessionOptions) {
 		this.id = generateSessionId()
@@ -200,6 +203,60 @@ export class Session implements ISession {
 		await this.dispatch('MESSAGE_CREATE', (payload as GatewayPayload).d)
 
 		return message
+	}
+
+	/**
+	 * Dispatch a MESSAGE_POLL_VOTE_ADD or MESSAGE_POLL_VOTE_REMOVE event
+	 * Adds/removes a vote from a poll and dispatches the event to connected bots
+	 *
+	 * @param options - Poll vote options
+	 * @returns true if the vote was successfully added/removed
+	 */
+	async dispatchPollVote(options: {
+		userId: string
+		messageId: string
+		answerId: number
+		action: 'add' | 'remove'
+	}): Promise<boolean> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		// Validate message exists and has poll
+		const message = this.state.getMessage(options.messageId)
+		if (!message?.poll) {
+			throw new Error(`Message not found or has no poll: ${options.messageId}`)
+		}
+
+		// Perform the vote action
+		let success: boolean
+		if (options.action === 'add') {
+			success = this.state.addPollVote(options.messageId, options.userId, options.answerId)
+		} else {
+			success = this.state.removePollVote(options.messageId, options.userId, options.answerId)
+		}
+
+		if (!success) {
+			return false
+		}
+
+		// Build the appropriate payload
+		const payloadBuilder = options.action === 'add' ? buildMessagePollVoteAddPayload : buildMessagePollVoteRemovePayload
+
+		const payload = payloadBuilder({
+			userId: options.userId,
+			channelId: message.channelId,
+			messageId: options.messageId,
+			guildId: message.guildId,
+			answerId: options.answerId,
+			sequence: 0 // Sequence will be set per-connection by gateway
+		})
+
+		// Dispatch to connections
+		const eventName = options.action === 'add' ? 'MESSAGE_POLL_VOTE_ADD' : 'MESSAGE_POLL_VOTE_REMOVE'
+		await this.dispatch(eventName, (payload as GatewayPayload).d)
+
+		return true
 	}
 
 	/**
@@ -1298,6 +1355,61 @@ export class Session implements ISession {
 		mockLogger.debug(`Session reset: ${this.id}`)
 	}
 
+	// ============================================================================
+	// Auto-Archive (Phase 4D)
+	// ============================================================================
+
+	/**
+	 * Start automatic thread archiving based on auto_archive_duration
+	 * @param intervalMs - How often to check for inactive threads (default: 60000ms / 1 minute)
+	 */
+	startAutoArchive(intervalMs: number = 60000): void {
+		if (this.autoArchiveInterval) {
+			return // Already running
+		}
+
+		this.autoArchiveInterval = setInterval(async () => {
+			await this.runAutoArchiveCheck()
+		}, intervalMs)
+
+		mockLogger.debug(`Session ${this.id}: Auto-archive started (interval: ${intervalMs}ms)`)
+	}
+
+	/**
+	 * Stop automatic thread archiving
+	 */
+	stopAutoArchive(): void {
+		if (this.autoArchiveInterval) {
+			clearInterval(this.autoArchiveInterval)
+			this.autoArchiveInterval = null
+			mockLogger.debug(`Session ${this.id}: Auto-archive stopped`)
+		}
+	}
+
+	/**
+	 * Manually run auto-archive check and dispatch THREAD_UPDATE for archived threads
+	 * @returns Array of archived thread IDs
+	 */
+	async runAutoArchiveCheck(): Promise<string[]> {
+		const archivedIds = this.state.checkAutoArchiveThreads()
+
+		// Dispatch THREAD_UPDATE for each archived thread
+		for (const threadId of archivedIds) {
+			const thread = this.state.getThread(threadId)
+			if (thread) {
+				const payload = buildThreadUpdatePayload({
+					thread,
+					sequence: this.state.nextSequence()
+				})
+				await this.dispatch('THREAD_UPDATE', payload.d)
+
+				mockLogger.debug(`Session ${this.id}: Thread ${threadId} auto-archived`)
+			}
+		}
+
+		return archivedIds
+	}
+
 	/**
 	 * End the session and clean up resources
 	 */
@@ -1308,6 +1420,9 @@ export class Session implements ISession {
 
 		this.ending = true
 		mockLogger.debug(`Session ending: ${this.id}`)
+
+		// Stop auto-archive interval
+		this.stopAutoArchive()
 
 		// Close all connections (will be implemented in future phases)
 		for (const _conn of this.connections.values()) {

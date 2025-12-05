@@ -475,6 +475,19 @@ export function mockMessageToAPIMessage(message: MockMessage, author: MockUser):
 		apiMessage.resolved = message.resolved as APIMessage['resolved']
 	}
 
+	// Phase 4F: Components V2
+	if (message.flags !== undefined) {
+		apiMessage.flags = message.flags
+	}
+	if (message.components) {
+		apiMessage.components = message.components as APIMessage['components']
+	}
+
+	// Phase 4G: Polls
+	if (message.poll) {
+		;(apiMessage as unknown as { poll: unknown }).poll = message.poll
+	}
+
 	return apiMessage
 }
 
@@ -608,6 +621,86 @@ export function buildMessageDeletePayload(options: MessageDeletePayloadOptions):
 		op: GatewayOpcodes.Dispatch,
 		s: sequence,
 		t: 'MESSAGE_DELETE',
+		d: data
+	}
+}
+
+// ============================================================================
+// MESSAGE_POLL_VOTE Payloads (Phase 4G)
+// ============================================================================
+
+/**
+ * Options for building MESSAGE_POLL_VOTE_ADD/REMOVE payloads
+ */
+export interface MessagePollVotePayloadOptions {
+	userId: Snowflake
+	channelId: Snowflake
+	messageId: Snowflake
+	guildId?: Snowflake
+	answerId: number
+	sequence: number
+}
+
+/**
+ * Build a MESSAGE_POLL_VOTE_ADD payload (op 0, t: "MESSAGE_POLL_VOTE_ADD")
+ * Sent when a user votes in a poll
+ */
+export function buildMessagePollVoteAddPayload(options: MessagePollVotePayloadOptions): GatewayPayload {
+	const { userId, channelId, messageId, guildId, answerId, sequence } = options
+
+	const data: {
+		user_id: Snowflake
+		channel_id: Snowflake
+		message_id: Snowflake
+		guild_id?: Snowflake
+		answer_id: number
+	} = {
+		user_id: userId,
+		channel_id: channelId,
+		message_id: messageId,
+		answer_id: answerId
+	}
+
+	if (guildId) {
+		data.guild_id = guildId
+	}
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'MESSAGE_POLL_VOTE_ADD',
+		d: data
+	}
+}
+
+/**
+ * Build a MESSAGE_POLL_VOTE_REMOVE payload (op 0, t: "MESSAGE_POLL_VOTE_REMOVE")
+ * Sent when a user removes their vote from a poll (multiselect only)
+ */
+export function buildMessagePollVoteRemovePayload(options: MessagePollVotePayloadOptions): GatewayPayload {
+	const { userId, channelId, messageId, guildId, answerId, sequence } = options
+
+	const data: {
+		user_id: Snowflake
+		channel_id: Snowflake
+		message_id: Snowflake
+		guild_id?: Snowflake
+		answer_id: number
+	} = {
+		user_id: userId,
+		channel_id: channelId,
+		message_id: messageId,
+		answer_id: answerId
+	}
+
+	if (guildId) {
+		data.guild_id = guildId
+	}
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'MESSAGE_POLL_VOTE_REMOVE',
 		d: data
 	}
 }

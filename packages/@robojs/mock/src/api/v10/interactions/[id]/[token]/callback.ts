@@ -1,6 +1,19 @@
 import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../../../core/manager.js'
-import type { InteractionResponseData } from '../../../../../types/index.js'
+import { generateSnowflake } from '../../../../../utils/snowflake.js'
+import { isMultipartRequest, parseMultipartMessage, MultipartError } from '../../../../../utils/multipart.js'
+import { getImageDimensions, isImageContentType } from '../../../../../utils/image.js'
+import type {
+	InteractionResponseData,
+	MockAttachment,
+	AttachmentPayload,
+	StoredAttachment
+} from '../../../../../types/index.js'
+import { MessageFlags, createComponentValidationError, createV2ConflictError } from '../../../../../types/index.js'
+import { validateComponentsV2 } from '../../../../../session/state.js'
+
+// Default port for CDN URLs (can be overridden via environment)
+const CDN_BASE_URL = process.env.MOCK_CDN_URL || 'http://localhost:53596'
 
 /**
  * POST /api/v10/interactions/:id/:token/callback - Respond to an interaction
@@ -8,18 +21,9 @@ import type { InteractionResponseData } from '../../../../../types/index.js'
  * This endpoint captures interaction responses from bots.
  * Discord uses this endpoint when a bot calls interaction.reply(), interaction.deferReply(), etc.
  *
- * Request body:
- * {
- *   type: number,     // InteractionResponseType (4=reply, 5=defer, 6=defer update, 7=update, 8=autocomplete, 9=modal)
- *   data?: {          // Response data (varies by type)
- *     content?: string,
- *     embeds?: object[],
- *     components?: object[],
- *     flags?: number,    // 64 = ephemeral
- *     tts?: boolean,
- *     allowed_mentions?: object
- *   }
- * }
+ * Supports both:
+ * - JSON body: { type, data: { content, embeds, components, flags, tts, allowed_mentions } }
+ * - Multipart: payload_json + files[0], files[1], etc.
  *
  * Response: 204 No Content on success
  */
@@ -107,12 +111,78 @@ export default async (request: RoboRequest) => {
 		)
 	}
 
-	// 8. Parse response body
-	let body: { type: number; data?: unknown }
+	// 8. Parse response body (JSON or multipart)
+	let body: { type: number; data?: InteractionResponseData & { attachments?: AttachmentPayload[] } }
+	const attachments: MockAttachment[] = []
+	const messageId = generateSnowflake() // Pre-generate for attachment URLs
+
 	try {
-		body = await request.json()
-	} catch {
-		return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+		if (isMultipartRequest(request)) {
+			// Handle multipart/form-data (file uploads)
+			const parsed = await parseMultipartMessage(request)
+			body = parsed.body as typeof body
+
+			// Process each uploaded file
+			for (let i = 0; i < parsed.files.length; i++) {
+				const file = parsed.files[i]
+				const attachmentId = generateSnowflake()
+
+				// Find metadata from payload_json.data.attachments (if provided)
+				const meta = body.data?.attachments?.find((a) => a.id === i) || {}
+
+				// Detect image dimensions if applicable
+				let width: number | undefined
+				let height: number | undefined
+				if (isImageContentType(file.contentType)) {
+					const dims = getImageDimensions(file.data, file.contentType)
+					if (dims) {
+						width = dims.width
+						height = dims.height
+					}
+				}
+
+				// Store attachment data in session state
+				const channelId = interaction.channelId
+				const storedAttachment: StoredAttachment = {
+					id: attachmentId,
+					channelId,
+					messageId,
+					filename: meta.filename || file.filename,
+					contentType: file.contentType,
+					size: file.size,
+					data: file.data,
+					width,
+					height
+				}
+				session.state.storeAttachment(storedAttachment)
+
+				// Build attachment metadata for message
+				const attachment: MockAttachment = {
+					id: attachmentId,
+					filename: storedAttachment.filename,
+					title: meta.title,
+					description: meta.description,
+					content_type: file.contentType,
+					size: file.size,
+					url: `${CDN_BASE_URL}/cdn/attachments/${channelId}/${attachmentId}/${encodeURIComponent(storedAttachment.filename)}`,
+					proxy_url: `${CDN_BASE_URL}/cdn/attachments/${channelId}/${attachmentId}/${encodeURIComponent(storedAttachment.filename)}`,
+					width,
+					height
+				}
+				attachments.push(attachment)
+			}
+		} else {
+			// Standard JSON body
+			body = await request.json()
+		}
+	} catch (error) {
+		if (error instanceof MultipartError) {
+			return new Response(JSON.stringify({ error: error.message, code: error.code }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+		return new Response(JSON.stringify({ error: 'Invalid request body' }), {
 			status: 400,
 			headers: { 'Content-Type': 'application/json' }
 		})
@@ -163,9 +233,30 @@ export default async (request: RoboRequest) => {
 		}
 	}
 
+	// 9c. Validate Components V2 if flag is set (Phase 4F)
+	const responseData = body.data as InteractionResponseData | undefined
+	if (responseData?.flags && responseData.flags & MessageFlags.IsComponentsV2) {
+		// V2 components cannot coexist with content or embeds
+		if (responseData.content || (responseData.embeds && responseData.embeds.length > 0)) {
+			return new Response(JSON.stringify(createV2ConflictError()), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// Validate V2 component structure
+		const attachmentFilenames = new Set(attachments.map((a) => a.filename))
+		const validation = validateComponentsV2(responseData.components ?? [], attachmentFilenames)
+		if (!validation.valid) {
+			return new Response(JSON.stringify(createComponentValidationError(validation.errors)), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+	}
+
 	// 10. Store response on interaction
 	const now = Date.now()
-	const responseData = body.data as InteractionResponseData | undefined
 	interaction.response = {
 		type: body.type,
 		timestamp: now,
@@ -180,12 +271,17 @@ export default async (request: RoboRequest) => {
 		const interactionUser = session.state.getUser(interaction.userId)
 
 		const message = session.state.createMessage({
+			id: messageId, // Use pre-generated ID for attachment consistency
 			channelId: interaction.channelId,
 			guildId: interaction.guildId,
 			authorId: session.state.botUser.id,
 			content: responseData.content ?? '',
 			embeds: responseData.embeds,
+			attachments, // Phase 4E: Include uploaded attachments
 			tts: responseData.tts ?? false,
+			// Phase 4F: Components V2 support
+			flags: responseData.flags,
+			components: responseData.components,
 			// Phase 3I: Add interaction metadata to the response message
 			interactionMetadata: interactionUser
 				? {
@@ -208,9 +304,17 @@ export default async (request: RoboRequest) => {
 		interaction.responseMessageId = message.id
 	} else if (body.type === 7 && responseData && interaction.messageId) {
 		// Type 7: Update the original component message
+		// Merge existing attachments with new ones if provided
+		const existingMessage = session.state.getMessage(interaction.messageId)
+		const finalAttachments = attachments.length > 0 ? attachments : existingMessage?.attachments ?? []
+
 		session.state.updateMessage(interaction.messageId, {
 			content: responseData.content ?? '',
-			embeds: responseData.embeds as unknown[]
+			embeds: responseData.embeds as unknown[],
+			attachments: finalAttachments,
+			// Phase 4F: Components V2 support
+			flags: responseData.flags,
+			components: responseData.components as unknown[]
 		})
 		interaction.responseMessageId = interaction.messageId
 	}
@@ -223,7 +327,8 @@ export default async (request: RoboRequest) => {
 			response_type: body.type,
 			response_data: body.data,
 			command_name: interaction.commandName,
-			response_time_ms: now - interaction.createdAt
+			response_time_ms: now - interaction.createdAt,
+			attachments: attachments.length > 0 ? attachments : undefined
 		},
 		{
 			endpoint: `POST /interactions/${interactionId}/${token}/callback`,

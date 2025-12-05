@@ -2,6 +2,15 @@ import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../../core/manager.js'
 import { parseMockToken } from '../../../../utils/id.js'
 import { mockMessageToAPIMessage } from '../../../../discord/payloads.js'
+import { generateSnowflake } from '../../../../utils/snowflake.js'
+import { isMultipartRequest, parseMultipartMessage, MultipartError } from '../../../../utils/multipart.js'
+import { getImageDimensions, isImageContentType } from '../../../../utils/image.js'
+import type { MockAttachment, AttachmentPayload, StoredAttachment } from '../../../../types/index.js'
+import { MessageFlags, createComponentValidationError, createV2ConflictError } from '../../../../types/index.js'
+import { validateComponentsV2 } from '../../../../session/state.js'
+
+// Default port for CDN URLs (can be overridden via environment)
+const CDN_BASE_URL = process.env.MOCK_CDN_URL || 'http://localhost:53596'
 
 /**
  * POST /api/v10/channels/:id/messages - Create a message in a channel
@@ -10,16 +19,9 @@ import { mockMessageToAPIMessage } from '../../../../discord/payloads.js'
  * It creates the message in session state, records it as an action,
  * and returns the created message in Discord's APIMessage format.
  *
- * Request body:
- * {
- *   content?: string,      // Message content
- *   embeds?: object[],     // Embed objects
- *   components?: object[], // Message components
- *   tts?: boolean,         // Text-to-speech
- *   message_reference?: {  // Reply reference
- *     message_id: string
- *   }
- * }
+ * Supports both:
+ * - JSON body: { content, embeds, components, tts, message_reference }
+ * - Multipart: payload_json + files[0], files[1], etc.
  *
  * Response: APIMessage object
  */
@@ -63,33 +65,171 @@ export default async (request: RoboRequest) => {
 		})
 	}
 
-	// 5. Parse message payload from body
+	// 5. Parse message payload (JSON or multipart)
 	let body: {
 		content?: string
 		embeds?: unknown[]
 		components?: unknown[]
+		flags?: number
 		tts?: boolean
 		message_reference?: { message_id: string }
+		attachments?: AttachmentPayload[] // Metadata for uploaded files
+		// Phase 4G: Poll support
+		poll?: {
+			question: { text: string; emoji?: { id?: string; name?: string } }
+			answers: Array<{ poll_media: { text?: string; emoji?: { id?: string; name?: string } } }>
+			duration?: number // Hours until expiry
+			allow_multiselect?: boolean
+			layout_type?: number
+		}
 	}
 
+	const attachments: MockAttachment[] = []
+	const messageId = generateSnowflake()
+
 	try {
-		body = await request.json()
-	} catch {
-		return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+		if (isMultipartRequest(request)) {
+			// Handle multipart/form-data (file uploads)
+			const parsed = await parseMultipartMessage(request)
+			body = parsed.body as typeof body
+
+			// Process each uploaded file
+			for (let i = 0; i < parsed.files.length; i++) {
+				const file = parsed.files[i]
+				const attachmentId = generateSnowflake()
+
+				// Find metadata from payload_json.attachments (if provided)
+				const meta = body.attachments?.find((a) => a.id === i) || {}
+
+				// Detect image dimensions if applicable
+				let width: number | undefined
+				let height: number | undefined
+				if (isImageContentType(file.contentType)) {
+					const dims = getImageDimensions(file.data, file.contentType)
+					if (dims) {
+						width = dims.width
+						height = dims.height
+					}
+				}
+
+				// Store attachment data in session state
+				const storedAttachment: StoredAttachment = {
+					id: attachmentId,
+					channelId,
+					messageId,
+					filename: meta.filename || file.filename,
+					contentType: file.contentType,
+					size: file.size,
+					data: file.data,
+					width,
+					height
+				}
+				session.state.storeAttachment(storedAttachment)
+
+				// Build attachment metadata for message
+				const attachment: MockAttachment = {
+					id: attachmentId,
+					filename: storedAttachment.filename,
+					title: meta.title,
+					description: meta.description,
+					content_type: file.contentType,
+					size: file.size,
+					url: `${CDN_BASE_URL}/cdn/attachments/${channelId}/${attachmentId}/${encodeURIComponent(storedAttachment.filename)}`,
+					proxy_url: `${CDN_BASE_URL}/cdn/attachments/${channelId}/${attachmentId}/${encodeURIComponent(storedAttachment.filename)}`,
+					width,
+					height
+				}
+				attachments.push(attachment)
+			}
+		} else {
+			// Standard JSON body
+			body = await request.json()
+		}
+	} catch (error) {
+		if (error instanceof MultipartError) {
+			return new Response(JSON.stringify({ error: error.message, code: error.code }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+		return new Response(JSON.stringify({ error: 'Invalid request body' }), {
 			status: 400,
 			headers: { 'Content-Type': 'application/json' }
 		})
 	}
 
+	// 5b. Validate Components V2 if flag is set
+	if (body.flags && body.flags & MessageFlags.IsComponentsV2) {
+		// V2 components cannot coexist with content or embeds
+		if (body.content || (body.embeds && body.embeds.length > 0)) {
+			return new Response(JSON.stringify(createV2ConflictError()), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// Validate V2 component structure
+		const attachmentFilenames = new Set(attachments.map((a) => a.filename))
+		const validation = validateComponentsV2(body.components ?? [], attachmentFilenames)
+		if (!validation.valid) {
+			return new Response(JSON.stringify(createComponentValidationError(validation.errors)), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+	}
+
+	// 5c. Validate poll if present
+	if (body.poll) {
+		if (!body.poll.question?.text) {
+			return new Response(JSON.stringify({ error: 'Poll question text is required', code: 50035 }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+		if (body.poll.question.text.length > 300) {
+			return new Response(JSON.stringify({ error: 'Poll question text cannot exceed 300 characters', code: 50035 }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+		if (!body.poll.answers || body.poll.answers.length < 1) {
+			return new Response(JSON.stringify({ error: 'Poll must have at least 1 answer', code: 50035 }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+		if (body.poll.answers.length > 10) {
+			return new Response(JSON.stringify({ error: 'Poll cannot have more than 10 answers', code: 50035 }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+		// Validate answer text lengths
+		for (let i = 0; i < body.poll.answers.length; i++) {
+			const answerText = body.poll.answers[i].poll_media?.text
+			if (answerText && answerText.length > 55) {
+				return new Response(JSON.stringify({ error: `Poll answer ${i + 1} text cannot exceed 55 characters`, code: 50035 }), {
+					status: 400,
+					headers: { 'Content-Type': 'application/json' }
+				})
+			}
+		}
+	}
+
 	// 6. Create message in state (author is bot user)
 	const message = session.state.createMessage({
+		id: messageId,
 		channelId,
 		guildId: channel.guildId,
 		authorId: session.state.botUser.id,
 		content: body.content ?? '',
 		embeds: body.embeds ?? [],
-		attachments: [],
-		tts: body.tts ?? false
+		attachments,
+		tts: body.tts ?? false,
+		flags: body.flags,
+		components: body.components,
+		poll: body.poll
 	})
 
 	// 7. Record as 'message_sent' action
@@ -100,7 +240,11 @@ export default async (request: RoboRequest) => {
 			channel_id: channelId,
 			guild_id: channel.guildId,
 			content: message.content,
-			embeds: message.embeds
+			embeds: message.embeds,
+			attachments: message.attachments,
+			components: message.components,
+			flags: message.flags,
+			poll: message.poll
 		},
 		{
 			endpoint: `POST /channels/${channelId}/messages`,

@@ -3,8 +3,14 @@ import { sessionManager } from '../../../../../core/manager.js'
 import { parseMockToken } from '../../../../../utils/id.js'
 import { mockMessageToAPIMessage } from '../../../../../discord/payloads.js'
 import { getGatewayServer } from '../../../../../core/gateway.js'
-import type { MockChannel, MockMessage } from '../../../../../types/index.js'
+import { generateSnowflake } from '../../../../../utils/snowflake.js'
+import { isMultipartRequest, parseMultipartMessage, MultipartError } from '../../../../../utils/multipart.js'
+import { getImageDimensions, isImageContentType } from '../../../../../utils/image.js'
+import type { MockChannel, MockMessage, MockAttachment, AttachmentPayload, StoredAttachment } from '../../../../../types/index.js'
 import type { Session } from '../../../../../session/session.js'
+
+// Default port for CDN URLs (can be overridden via environment)
+const CDN_BASE_URL = process.env.MOCK_CDN_URL || 'http://localhost:53596'
 
 /**
  * PATCH/DELETE /api/v10/channels/:id/messages/:messageId
@@ -12,11 +18,12 @@ import type { Session } from '../../../../../session/session.js'
  * PATCH - Edit a message (bot can only edit its own messages)
  * DELETE - Delete a message
  *
- * Request body (PATCH):
+ * Request body (PATCH - JSON or multipart):
  * {
  *   content?: string,      // New message content
  *   embeds?: object[],     // New embed objects
- *   components?: object[]  // New message components
+ *   components?: object[], // New message components
+ *   attachments?: object[] // Attachment metadata (IDs to keep, new file metadata)
  * }
  *
  * Response (PATCH): APIMessage object
@@ -103,21 +110,126 @@ async function handlePatch(
 		})
 	}
 
-	// Parse body
-	let body: { content?: string; embeds?: unknown[]; components?: unknown[] }
+	// Parse body (JSON or multipart)
+	let body: {
+		content?: string
+		embeds?: unknown[]
+		components?: unknown[]
+		attachments?: (AttachmentPayload | { id: string })[] // Can include existing attachment IDs or new file metadata
+	}
+
+	const newAttachments: MockAttachment[] = []
+
 	try {
-		body = await request.json()
-	} catch {
-		return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+		if (isMultipartRequest(request)) {
+			// Handle multipart/form-data (file uploads)
+			const parsed = await parseMultipartMessage(request)
+			body = parsed.body as typeof body
+
+			// Process each uploaded file
+			for (let i = 0; i < parsed.files.length; i++) {
+				const file = parsed.files[i]
+				const attachmentId = generateSnowflake()
+
+				// Find metadata from payload_json.attachments (if provided)
+				// New files use numeric IDs, existing attachments use string snowflake IDs
+				const meta = body.attachments?.find((a) => a.id === i) || {}
+
+				// Detect image dimensions if applicable
+				let width: number | undefined
+				let height: number | undefined
+				if (isImageContentType(file.contentType)) {
+					const dims = getImageDimensions(file.data, file.contentType)
+					if (dims) {
+						width = dims.width
+						height = dims.height
+					}
+				}
+
+				// Store attachment data in session state
+				const storedAttachment: StoredAttachment = {
+					id: attachmentId,
+					channelId,
+					messageId,
+					filename: ('filename' in meta && meta.filename) || file.filename,
+					contentType: file.contentType,
+					size: file.size,
+					data: file.data,
+					width,
+					height
+				}
+				session.state.storeAttachment(storedAttachment)
+
+				// Build attachment metadata for message
+				const attachment: MockAttachment = {
+					id: attachmentId,
+					filename: storedAttachment.filename,
+					title: 'title' in meta ? meta.title : undefined,
+					description: 'description' in meta ? meta.description : undefined,
+					content_type: file.contentType,
+					size: file.size,
+					url: `${CDN_BASE_URL}/cdn/attachments/${channelId}/${attachmentId}/${encodeURIComponent(storedAttachment.filename)}`,
+					proxy_url: `${CDN_BASE_URL}/cdn/attachments/${channelId}/${attachmentId}/${encodeURIComponent(storedAttachment.filename)}`,
+					width,
+					height
+				}
+				newAttachments.push(attachment)
+			}
+		} else {
+			// Standard JSON body
+			body = await request.json()
+		}
+	} catch (error) {
+		if (error instanceof MultipartError) {
+			return new Response(JSON.stringify({ error: error.message, code: error.code }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+		return new Response(JSON.stringify({ error: 'Invalid request body' }), {
 			status: 400,
 			headers: { 'Content-Type': 'application/json' }
 		})
 	}
 
+	// Determine final attachments array
+	let finalAttachments: MockAttachment[]
+
+	if (body.attachments !== undefined) {
+		// If attachments array is provided, only keep listed existing attachments + add new ones
+		finalAttachments = []
+
+		// Process attachment references in body
+		for (const attachmentRef of body.attachments) {
+			// Check if this is an existing attachment reference (string ID)
+			if (typeof attachmentRef.id === 'string') {
+				const existing = message.attachments.find((a) => a.id === attachmentRef.id)
+				if (existing) {
+					finalAttachments.push(existing)
+				}
+			}
+			// Numeric IDs are handled above (new files)
+		}
+
+		// Add newly uploaded files
+		finalAttachments.push(...newAttachments)
+
+		// Clean up removed attachments from storage
+		for (const oldAttachment of message.attachments) {
+			if (!finalAttachments.find((a) => a.id === oldAttachment.id)) {
+				session.state.deleteAttachment(oldAttachment.id)
+			}
+		}
+	} else {
+		// No attachments field means keep existing + add new
+		finalAttachments = [...message.attachments, ...newAttachments]
+	}
+
 	// Update message in state
 	const updatedMessage = session.state.updateMessage(messageId, {
 		content: body.content ?? message.content,
-		embeds: body.embeds ?? message.embeds
+		embeds: body.embeds ?? message.embeds,
+		attachments: finalAttachments
 	})
 
 	if (!updatedMessage) {
@@ -136,6 +248,7 @@ async function handlePatch(
 			guild_id: channel.guildId,
 			content: updatedMessage.content,
 			embeds: updatedMessage.embeds,
+			attachments: updatedMessage.attachments,
 			edited_timestamp: updatedMessage.editedTimestamp
 		},
 		{
@@ -161,7 +274,7 @@ async function handlePatch(
 }
 
 function handleDelete(session: Session, channel: MockChannel, channelId: string, messageId: string) {
-	// Delete message from state
+	// Delete message from state (this also cleans up attachments)
 	const deleted = session.state.deleteMessage(messageId)
 	if (!deleted) {
 		return new Response(JSON.stringify({ error: 'Failed to delete message' }), {

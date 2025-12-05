@@ -311,6 +311,15 @@ export class GatewayServer {
 			return (connState.intents & requiredIntent) !== 0
 		}
 
+		// Poll vote events (Phase 4G) require GuildMessagePolls (1 << 24) or DirectMessagePolls (1 << 25)
+		// Note: These intents may not be in discord-api-types yet, so we define them inline
+		if (event === 'MESSAGE_POLL_VOTE_ADD' || event === 'MESSAGE_POLL_VOTE_REMOVE') {
+			const GuildMessagePolls = 1 << 24
+			const DirectMessagePolls = 1 << 25
+			const requiredIntent = guildId ? GuildMessagePolls : DirectMessagePolls
+			return (connState.intents & requiredIntent) !== 0
+		}
+
 		// Guild events require GUILDS intent
 		if (event.startsWith('GUILD_') || event.startsWith('CHANNEL_')) {
 			return (connState.intents & GatewayIntentBits.Guilds) !== 0

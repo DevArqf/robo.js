@@ -104,6 +104,15 @@ export {
 // Auth exports
 export { createAuthMiddleware, NoOpAuthProvider, ApiKeyAuthProvider } from './auth/index.js'
 
+// Storage exports (Phase 4E)
+export {
+	MemoryAttachmentStorage,
+	createStorage,
+	type AttachmentStorage,
+	type StorageConfig,
+	type StorageStats
+} from './storage/attachment-storage.js'
+
 // Type exports
 export type {
 	Session as ISession,
@@ -156,5 +165,12 @@ export type {
 	MockThreadMetadata,
 	MockThreadMember,
 	DispatchThreadCreateOptions,
-	SerializedMockThread
+	SerializedMockThread,
+	// Attachment types (Phase 4E)
+	MockAttachment,
+	StoredAttachment,
+	AttachmentPayload
 } from './types/index.js'
+
+// Attachment constants (Phase 4E)
+export { AttachmentFlags, AttachmentLimits } from './types/index.js'

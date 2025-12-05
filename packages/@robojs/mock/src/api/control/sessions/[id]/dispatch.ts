@@ -26,6 +26,11 @@ import { validateMethod, notFound, badRequest } from '../../utils.js'
  *     user?: { id?: string, username?: string, bot?: boolean }
  *     channel_id?: string
  *     guild_id?: string
+ *
+ *     // For MESSAGE_POLL_VOTE_ADD / MESSAGE_POLL_VOTE_REMOVE (Phase 4G):
+ *     user_id: string      // Required - user who voted
+ *     message_id: string   // Required - message with poll
+ *     answer_id: number    // Required - poll answer ID (1-indexed)
  *   }
  * }
  *
@@ -105,6 +110,44 @@ export default async (request: RoboRequest) => {
 				success: true,
 				dispatched: session.connections.size,
 				message_id: message.id
+			}
+		} catch (error) {
+			return badRequest((error as Error).message)
+		}
+	}
+
+	// Handle MESSAGE_POLL_VOTE_ADD and MESSAGE_POLL_VOTE_REMOVE (Phase 4G)
+	if (body.event === 'MESSAGE_POLL_VOTE_ADD' || body.event === 'MESSAGE_POLL_VOTE_REMOVE') {
+		const data = body.data as {
+			user_id?: string
+			message_id?: string
+			answer_id?: number
+		}
+
+		if (!data.user_id) {
+			return badRequest(`${body.event} requires "user_id" in data`)
+		}
+		if (!data.message_id) {
+			return badRequest(`${body.event} requires "message_id" in data`)
+		}
+		if (data.answer_id === undefined) {
+			return badRequest(`${body.event} requires "answer_id" in data`)
+		}
+
+		try {
+			const success = await session.dispatchPollVote({
+				userId: data.user_id,
+				messageId: data.message_id,
+				answerId: data.answer_id,
+				action: body.event === 'MESSAGE_POLL_VOTE_ADD' ? 'add' : 'remove'
+			})
+
+			return {
+				success,
+				dispatched: session.connections.size,
+				message_id: data.message_id,
+				user_id: data.user_id,
+				answer_id: data.answer_id
 			}
 		} catch (error) {
 			return badRequest((error as Error).message)
