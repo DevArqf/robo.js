@@ -31,8 +31,28 @@ export {
 	DEFAULT_HEARTBEAT_INTERVAL,
 	GATEWAY_VERSION
 } from './discord/opcodes.js'
-export { buildHelloPayload, buildHeartbeatAckPayload, isValidIdentifyPayload } from './discord/payloads.js'
-export type { GatewayPayload, HelloPayloadData, IdentifyPayloadData } from './discord/payloads.js'
+export {
+	buildHelloPayload,
+	buildHeartbeatAckPayload,
+	isValidIdentifyPayload,
+	buildInteractionCreatePayload,
+	buildButtonInteractionPayload,
+	buildSelectMenuInteractionPayload,
+	buildModalSubmitInteractionPayload,
+	buildAutocompleteInteractionPayload,
+	buildContextMenuInteractionPayload
+} from './discord/payloads.js'
+export type {
+	GatewayPayload,
+	HelloPayloadData,
+	IdentifyPayloadData,
+	InteractionCreatePayloadOptions,
+	ButtonInteractionPayloadOptions,
+	SelectMenuInteractionPayloadOptions,
+	ModalSubmitInteractionPayloadOptions,
+	AutocompleteInteractionPayloadOptions,
+	ContextMenuInteractionPayloadOptions
+} from './discord/payloads.js'
 
 // Utility exports
 export {
@@ -50,6 +70,7 @@ export {
 // State helpers
 export {
 	createSessionState,
+	createDefaultGuildWithChannel,
 	createMockUser,
 	createMockGuild,
 	createMockChannel,
@@ -58,7 +79,8 @@ export {
 	serializeMockGuild,
 	serializeMockChannel,
 	serializeMockUser,
-	serializeMockMessage
+	serializeMockMessage,
+	serializeMockInteraction
 } from './session/state.js'
 
 // Auth exports
@@ -81,6 +103,14 @@ export type {
 	MockUserConfig,
 	MockMessage,
 	MockMessageConfig,
+	MockInteraction,
+	MockInteractionOption,
+	DispatchSlashCommandOptions,
+	DispatchButtonClickOptions,
+	DispatchSelectMenuOptions,
+	DispatchModalSubmitOptions,
+	DispatchAutocompleteOptions,
+	DispatchContextMenuOptions,
 	AuthProvider,
 	AuthResult,
 	ActionType,
@@ -90,5 +120,6 @@ export type {
 	SerializedMockGuild,
 	SerializedMockChannel,
 	SerializedMockUser,
-	SerializedMockMessage
+	SerializedMockMessage,
+	SerializedMockInteraction
 } from './types/index.js'

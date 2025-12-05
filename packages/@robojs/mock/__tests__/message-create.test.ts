@@ -648,4 +648,276 @@ describe('Phase 2C: MESSAGE_CREATE Event', () => {
 			}
 		})
 	})
+
+	// ============================================================================
+	// Phase 3I: APIMessage Completeness Tests
+	// ============================================================================
+
+	describe('Phase 3I: APIMessage Completeness', () => {
+		describe('interaction_metadata field', () => {
+			it('should include interaction_metadata for messages from interactions', () => {
+				const author = createMockUser({ username: 'Author' })
+				const interactionUser = createMockUser({ username: 'CommandUser' })
+
+				const message = createMockMessage({
+					channelId: '123',
+					authorId: author.id,
+					content: 'Interaction response',
+					interactionMetadata: {
+						id: '999',
+						type: 2, // APPLICATION_COMMAND
+						user: interactionUser,
+						authorizing_integration_owners: {}
+					}
+				})
+
+				const apiMessage = mockMessageToAPIMessage(message, author)
+
+				expect(apiMessage.interaction_metadata).toBeDefined()
+				expect(apiMessage.interaction_metadata?.id).toBe('999')
+				expect(apiMessage.interaction_metadata?.type).toBe(2)
+				expect(apiMessage.interaction_metadata?.user.username).toBe('CommandUser')
+			})
+
+			it('should populate deprecated interaction field alongside interaction_metadata', () => {
+				const author = createMockUser({ username: 'Author' })
+				const interactionUser = createMockUser({ username: 'CommandUser' })
+
+				const message = createMockMessage({
+					channelId: '123',
+					authorId: author.id,
+					content: 'Response',
+					interactionMetadata: {
+						id: '888',
+						type: 2,
+						user: interactionUser
+					}
+				})
+
+				const apiMessage = mockMessageToAPIMessage(message, author)
+
+				expect(apiMessage.interaction_metadata).toBeDefined()
+				expect(apiMessage.interaction).toBeDefined()
+				expect(apiMessage.interaction?.id).toBe('888')
+			})
+
+			it('should include optional target_user for USER context menu commands', () => {
+				const author = createMockUser({ username: 'Author' })
+				const interactionUser = createMockUser({ username: 'CommandUser' })
+				const targetUser = createMockUser({ id: '777', username: 'TargetUser' })
+
+				const message = createMockMessage({
+					channelId: '123',
+					authorId: author.id,
+					content: 'User info',
+					interactionMetadata: {
+						id: '999',
+						type: 2,
+						user: interactionUser,
+						target_user: targetUser
+					}
+				})
+
+				const apiMessage = mockMessageToAPIMessage(message, author)
+
+				// Cast to access context menu specific fields
+				const metadata = apiMessage.interaction_metadata as unknown as Record<string, unknown>
+				expect(metadata?.target_user).toBeDefined()
+				expect((metadata?.target_user as { username: string })?.username).toBe('TargetUser')
+			})
+
+			it('should include optional target_message_id for MESSAGE context menu commands', () => {
+				const author = createMockUser({ username: 'Author' })
+				const interactionUser = createMockUser({ username: 'CommandUser' })
+
+				const message = createMockMessage({
+					channelId: '123',
+					authorId: author.id,
+					content: 'Message info',
+					interactionMetadata: {
+						id: '999',
+						type: 2,
+						user: interactionUser,
+						target_message_id: '555666777'
+					}
+				})
+
+				const apiMessage = mockMessageToAPIMessage(message, author)
+
+				// Cast to access context menu specific fields
+				const metadata = apiMessage.interaction_metadata as unknown as Record<string, unknown>
+				expect(metadata?.target_message_id).toBe('555666777')
+			})
+		})
+
+		describe('call field', () => {
+			it('should include call field for call messages', () => {
+				const author = createMockUser({ username: 'Author' })
+
+				const message = createMockMessage({
+					channelId: '123',
+					authorId: author.id,
+					content: '',
+					type: 3, // MessageType.Call
+					call: {
+						participants: ['user1', 'user2'],
+						ended_timestamp: null
+					}
+				})
+
+				const apiMessage = mockMessageToAPIMessage(message, author)
+
+				expect(apiMessage.call).toBeDefined()
+				expect(apiMessage.call?.participants).toContain('user1')
+				expect(apiMessage.call?.participants).toContain('user2')
+				expect(apiMessage.call?.ended_timestamp).toBeNull()
+			})
+
+			it('should include ended_timestamp for ended calls', () => {
+				const author = createMockUser({ username: 'Author' })
+				const endedAt = '2024-01-01T12:00:00.000Z'
+
+				const message = createMockMessage({
+					channelId: '123',
+					authorId: author.id,
+					content: '',
+					type: 3,
+					call: {
+						participants: ['user1'],
+						ended_timestamp: endedAt
+					}
+				})
+
+				const apiMessage = mockMessageToAPIMessage(message, author)
+
+				expect(apiMessage.call?.ended_timestamp).toBe(endedAt)
+			})
+
+			it('should not include call field for non-call messages', () => {
+				const author = createMockUser({ username: 'Author' })
+
+				const message = createMockMessage({
+					channelId: '123',
+					authorId: author.id,
+					content: 'Regular message',
+					type: 0 // DEFAULT
+				})
+
+				const apiMessage = mockMessageToAPIMessage(message, author)
+
+				expect(apiMessage.call).toBeUndefined()
+			})
+		})
+
+		describe('message_snapshots field', () => {
+			it('should include message_snapshots for forwarded messages', () => {
+				const author = createMockUser({ username: 'Author' })
+				const originalAuthor = createMockUser({ username: 'OriginalAuthor' })
+
+				const message = createMockMessage({
+					channelId: '123',
+					authorId: author.id,
+					content: '',
+					messageSnapshots: [
+						{
+							message: {
+								type: 0,
+								content: 'Original message content',
+								embeds: [],
+								attachments: [],
+								timestamp: '2024-01-01T12:00:00.000Z',
+								edited_timestamp: null,
+								mentions: [originalAuthor],
+								mention_roles: []
+							}
+						}
+					]
+				})
+
+				const apiMessage = mockMessageToAPIMessage(message, author)
+
+				expect(apiMessage.message_snapshots).toHaveLength(1)
+				expect(apiMessage.message_snapshots?.[0].message.content).toBe('Original message content')
+			})
+
+			it('should convert snapshot mentions to API format', () => {
+				const author = createMockUser({ username: 'Author' })
+				const mentionedUser = createMockUser({ id: '888', username: 'MentionedUser' })
+
+				const message = createMockMessage({
+					channelId: '123',
+					authorId: author.id,
+					content: '',
+					messageSnapshots: [
+						{
+							message: {
+								type: 0,
+								content: 'Hello <@888>!',
+								embeds: [],
+								attachments: [],
+								timestamp: '2024-01-01T12:00:00.000Z',
+								edited_timestamp: null,
+								mentions: [mentionedUser],
+								mention_roles: []
+							}
+						}
+					]
+				})
+
+				const apiMessage = mockMessageToAPIMessage(message, author)
+
+				expect(apiMessage.message_snapshots?.[0].message.mentions).toHaveLength(1)
+				expect(apiMessage.message_snapshots?.[0].message.mentions[0].username).toBe('MentionedUser')
+			})
+
+			it('should not include message_snapshots for regular messages', () => {
+				const author = createMockUser({ username: 'Author' })
+
+				const message = createMockMessage({
+					channelId: '123',
+					authorId: author.id,
+					content: 'Regular message'
+				})
+
+				const apiMessage = mockMessageToAPIMessage(message, author)
+
+				expect(apiMessage.message_snapshots).toBeUndefined()
+			})
+		})
+
+		describe('resolved field', () => {
+			it('should include resolved field when present', () => {
+				const author = createMockUser({ username: 'Author' })
+				const resolvedUser = createMockUser({ id: '777', username: 'ResolvedUser' })
+
+				const message = createMockMessage({
+					channelId: '123',
+					authorId: author.id,
+					content: 'Message with resolved data',
+					resolved: {
+						users: { '777': mockUserToAPIUser(resolvedUser) }
+					}
+				})
+
+				const apiMessage = mockMessageToAPIMessage(message, author)
+
+				expect(apiMessage.resolved).toBeDefined()
+				expect((apiMessage.resolved as Record<string, unknown>)?.users).toBeDefined()
+			})
+
+			it('should not include resolved field when not present', () => {
+				const author = createMockUser({ username: 'Author' })
+
+				const message = createMockMessage({
+					channelId: '123',
+					authorId: author.id,
+					content: 'Regular message'
+				})
+
+				const apiMessage = mockMessageToAPIMessage(message, author)
+
+				expect(apiMessage.resolved).toBeUndefined()
+			})
+		})
+	})
 })

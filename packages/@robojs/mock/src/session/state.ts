@@ -5,18 +5,22 @@ import type {
 	MockChannel,
 	MockUser,
 	MockMessage,
+	MockInteraction,
 	MockUserConfig,
 	MockMessageConfig,
 	SerializedSessionState,
 	SerializedMockGuild,
 	SerializedMockChannel,
 	SerializedMockUser,
-	SerializedMockMessage
+	SerializedMockMessage,
+	SerializedMockInteraction
 } from '../types/index.js'
 import { generateSnowflake } from '../utils/snowflake.js'
 
 // Default limits for memory management
 const DEFAULT_MAX_MESSAGES = 1000
+const DEFAULT_MAX_INTERACTIONS = 1000
+const INTERACTION_TTL = 15 * 60 * 1000 // 15 minutes
 
 /**
  * Options for creating a MockServerState
@@ -37,11 +41,14 @@ export class MockServerState implements SessionState {
 	readonly dmChannels: Map<Snowflake, MockChannel>
 	readonly users: Map<Snowflake, MockUser>
 	readonly messages: Map<Snowflake, MockMessage>
+	readonly interactions: Map<Snowflake, MockInteraction>
 	readonly botUser: MockUser
 	readonly applicationId: Snowflake
 
 	private _sequence: number = 0
 	private readonly maxMessages: number
+	private readonly maxInteractions: number
+	private readonly interactionsByToken: Map<string, Snowflake>
 
 	constructor(options?: StateOptions) {
 		this.guilds = new Map()
@@ -49,7 +56,10 @@ export class MockServerState implements SessionState {
 		this.dmChannels = new Map()
 		this.users = new Map()
 		this.messages = new Map()
+		this.interactions = new Map()
+		this.interactionsByToken = new Map()
 		this.maxMessages = options?.maxMessages ?? DEFAULT_MAX_MESSAGES
+		this.maxInteractions = DEFAULT_MAX_INTERACTIONS
 
 		// Create bot user
 		this.botUser = createMockUser({
@@ -354,6 +364,72 @@ export class MockServerState implements SessionState {
 	}
 
 	// ============================================================================
+	// Interaction Operations (Phase 3A)
+	// ============================================================================
+
+	/**
+	 * Get an interaction by ID
+	 */
+	getInteraction(id: Snowflake): MockInteraction | undefined {
+		return this.interactions.get(id)
+	}
+
+	/**
+	 * Get an interaction by token
+	 */
+	getInteractionByToken(token: string): MockInteraction | undefined {
+		const id = this.interactionsByToken.get(token)
+		return id ? this.interactions.get(id) : undefined
+	}
+
+	/**
+	 * Add an interaction to the state
+	 */
+	addInteraction(interaction: MockInteraction): void {
+		// Enforce max interactions limit (LRU-style)
+		if (this.interactions.size >= this.maxInteractions) {
+			// First try to cleanup expired
+			this.cleanupExpiredInteractions()
+
+			// If still at capacity, remove oldest
+			if (this.interactions.size >= this.maxInteractions) {
+				const oldest = this.interactions.keys().next().value
+				if (oldest) {
+					this.removeInteraction(oldest)
+				}
+			}
+		}
+
+		this.interactions.set(interaction.id, interaction)
+		this.interactionsByToken.set(interaction.token, interaction.id)
+	}
+
+	/**
+	 * Remove an interaction from the state
+	 */
+	removeInteraction(id: Snowflake): boolean {
+		const interaction = this.interactions.get(id)
+		if (interaction) {
+			this.interactionsByToken.delete(interaction.token)
+			return this.interactions.delete(id)
+		}
+		return false
+	}
+
+	/**
+	 * Cleanup expired interactions (older than 15 minutes)
+	 */
+	cleanupExpiredInteractions(): void {
+		const now = Date.now()
+		for (const [id, interaction] of this.interactions) {
+			if (now > interaction.expiresAt) {
+				this.interactionsByToken.delete(interaction.token)
+				this.interactions.delete(id)
+			}
+		}
+	}
+
+	// ============================================================================
 	// State Management
 	// ============================================================================
 
@@ -365,6 +441,8 @@ export class MockServerState implements SessionState {
 		this.channels.clear()
 		this.dmChannels.clear()
 		this.messages.clear()
+		this.interactions.clear()
+		this.interactionsByToken.clear()
 		this.users.clear()
 
 		// Re-add bot user
@@ -384,6 +462,7 @@ export class MockServerState implements SessionState {
 			dmChannels: Array.from(this.dmChannels.values()).map(serializeMockChannel),
 			users: Array.from(this.users.values()).map(serializeMockUser),
 			messages: Array.from(this.messages.values()).map(serializeMockMessage),
+			interactions: Array.from(this.interactions.values()).map(serializeMockInteraction),
 			botUser: serializeMockUser(this.botUser),
 			applicationId: this.applicationId,
 			sequence: this._sequence
@@ -455,7 +534,7 @@ export function createMockChannel(config?: {
  */
 export function createMockMessage(config: MockMessageConfig): MockMessage {
 	const content = config.content ?? ''
-	return {
+	const message: MockMessage = {
 		id: config.id ?? generateSnowflake(),
 		channelId: config.channelId,
 		guildId: config.guildId,
@@ -472,6 +551,29 @@ export function createMockMessage(config: MockMessageConfig): MockMessage {
 		pinned: false,
 		type: config.type ?? 0 // DEFAULT
 	}
+
+	// Phase 3I: Add optional fields if provided
+	if (config.call) {
+		message.call = config.call
+	}
+	if (config.interactionMetadata) {
+		message.interaction_metadata = config.interactionMetadata
+		// Also populate deprecated field for backwards compatibility
+		message.interaction = {
+			id: config.interactionMetadata.id,
+			type: config.interactionMetadata.type,
+			name: '', // Not available in metadata
+			user: config.interactionMetadata.user
+		}
+	}
+	if (config.messageSnapshots) {
+		message.message_snapshots = config.messageSnapshots
+	}
+	if (config.resolved) {
+		message.resolved = config.resolved
+	}
+
+	return message
 }
 
 // ============================================================================
@@ -557,6 +659,7 @@ export function serializeSessionState(state: SessionState): SerializedSessionSta
 		dmChannels: Array.from(state.dmChannels.values()).map(serializeMockChannel),
 		users: Array.from(state.users.values()).map(serializeMockUser),
 		messages: Array.from(state.messages.values()).map(serializeMockMessage),
+		interactions: Array.from(state.interactions.values()).map(serializeMockInteraction),
 		botUser: serializeMockUser(state.botUser),
 		applicationId: state.applicationId,
 		sequence: state.sequence
@@ -624,5 +727,38 @@ export function serializeMockMessage(message: MockMessage): SerializedMockMessag
 		embeds: [...message.embeds],
 		pinned: message.pinned,
 		type: message.type
+	}
+}
+
+/**
+ * Serialize a mock interaction
+ */
+export function serializeMockInteraction(interaction: MockInteraction): SerializedMockInteraction {
+	return {
+		id: interaction.id,
+		applicationId: interaction.applicationId,
+		type: interaction.type,
+		token: interaction.token,
+		channelId: interaction.channelId,
+		guildId: interaction.guildId,
+		userId: interaction.userId,
+		commandName: interaction.commandName,
+		commandId: interaction.commandId,
+		options: interaction.options,
+		createdAt: interaction.createdAt,
+		expiresAt: interaction.expiresAt,
+		// Response tracking (Phase 3B)
+		response: interaction.response,
+		respondedAt: interaction.respondedAt,
+		// MESSAGE_COMPONENT interactions (Phase 3C, 3D)
+		customId: interaction.customId,
+		componentType: interaction.componentType,
+		messageId: interaction.messageId,
+		values: interaction.values,
+		// MODAL_SUBMIT interactions (Phase 3E)
+		modalFields: interaction.modalFields,
+		// Context menu commands (Phase 3G)
+		targetId: interaction.targetId,
+		contextMenuType: interaction.contextMenuType
 	}
 }

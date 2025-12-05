@@ -28,6 +28,7 @@ export interface SessionState {
 	dmChannels: Map<Snowflake, MockChannel> // By recipient user ID
 	users: Map<Snowflake, MockUser>
 	messages: Map<Snowflake, MockMessage>
+	interactions: Map<Snowflake, MockInteraction>
 	botUser: MockUser
 	applicationId: Snowflake
 	sequence: number
@@ -139,6 +140,231 @@ export interface MockMessage {
 	embeds: unknown[]
 	pinned: boolean
 	type: number
+	// Phase 3I: APIMessage completeness fields
+	call?: MockMessageCall
+	interaction_metadata?: MockMessageInteractionMetadata
+	interaction?: MockMessageInteraction // Deprecated, kept for backwards compatibility
+	message_snapshots?: MockMessageSnapshot[]
+	resolved?: unknown
+}
+
+// ============================================================================
+// Phase 3I: APIMessage Completeness Types
+// ============================================================================
+
+/**
+ * Voice/video call info for DM messages (MessageType.Call = 3)
+ */
+export interface MockMessageCall {
+	participants: Snowflake[]
+	ended_timestamp?: string | null
+}
+
+/**
+ * Interaction metadata for messages created from interaction responses
+ * Replaces the deprecated `interaction` field
+ */
+export interface MockMessageInteractionMetadata {
+	id: Snowflake
+	type: number
+	user: MockUser
+	authorizing_integration_owners?: Record<number, Snowflake>
+	original_response_message_id?: Snowflake
+	target_user?: MockUser
+	target_message_id?: Snowflake
+}
+
+/**
+ * Deprecated interaction reference (kept for backwards compatibility)
+ */
+export interface MockMessageInteraction {
+	id: Snowflake
+	type: number
+	name: string
+	user: MockUser
+}
+
+/**
+ * Message snapshot for forwarded messages
+ */
+export interface MockMessageSnapshot {
+	message: MockMessageSnapshotContent
+}
+
+/**
+ * Content of a forwarded message snapshot
+ */
+export interface MockMessageSnapshotContent {
+	type: number
+	content: string
+	embeds: unknown[]
+	attachments: unknown[]
+	timestamp: string
+	edited_timestamp: string | null
+	flags?: number
+	mentions: MockUser[]
+	mention_roles: Snowflake[]
+	sticker_items?: unknown[]
+	components?: unknown[]
+}
+
+// ============================================================================
+// Mock Interaction Types (Phase 3A)
+// ============================================================================
+
+/**
+ * Mock interaction data (slash commands, buttons, modals, etc.)
+ */
+export interface MockInteraction {
+	id: Snowflake
+	applicationId: Snowflake
+	type: number // InteractionType enum value
+	token: string
+	channelId: Snowflake
+	guildId?: Snowflake
+	userId: Snowflake
+	commandName?: string // For APPLICATION_COMMAND
+	commandId?: Snowflake
+	options?: MockInteractionOption[]
+	createdAt: number
+	expiresAt: number // 15 minutes from creation
+	// Response tracking (Phase 3B)
+	response?: MockInteractionResponse
+	respondedAt?: number
+	// For MESSAGE_COMPONENT interactions (Phase 3C - buttons, Phase 3D - selects)
+	customId?: string // Button/select/modal custom_id
+	componentType?: number // 2 = button, 3 = string select, 5-8 = entity selects
+	messageId?: Snowflake // ID of message the component was on
+	values?: string[] // Selected values (Phase 3D - select menus only)
+	// For MODAL_SUBMIT interactions (Phase 3E)
+	modalFields?: Record<string, string> // { field_custom_id: value }
+	// For context menu commands (Phase 3G)
+	targetId?: Snowflake // Target user/message ID
+	contextMenuType?: 2 | 3 // 2=USER, 3=MESSAGE
+	// For tracking response messages (Phase 3H)
+	responseMessageId?: Snowflake // ID of message created by initial response (type 4/7)
+	followupMessageIds?: Snowflake[] // IDs of followup messages sent via webhook
+}
+
+/**
+ * Stored response for an interaction (Phase 3B)
+ */
+export interface MockInteractionResponse {
+	type: number // InteractionResponseType enum
+	timestamp: number
+	data?: InteractionResponseData
+}
+
+/**
+ * Response data (content, embeds, components, flags)
+ */
+export interface InteractionResponseData {
+	content?: string
+	embeds?: unknown[]
+	components?: unknown[]
+	flags?: number // 64 = ephemeral
+	tts?: boolean
+	allowed_mentions?: unknown
+}
+
+/**
+ * Interaction option value
+ */
+export interface MockInteractionOption {
+	name: string
+	type: number // ApplicationCommandOptionType
+	value?: string | number | boolean
+	options?: MockInteractionOption[] // For subcommands
+	focused?: boolean // For autocomplete
+}
+
+/**
+ * Options for dispatching a slash command
+ */
+export interface DispatchSlashCommandOptions {
+	commandName: string
+	options?: Record<string, string | number | boolean>
+	user?: MockUserConfig
+	channelId?: string
+	guildId?: string
+}
+
+/**
+ * Options for dispatching a button click (Phase 3C)
+ */
+export interface DispatchButtonClickOptions {
+	customId: string // Required: button's custom_id
+	messageId: Snowflake // Required: message with the button
+	user?: MockUserConfig // User who clicked (optional)
+	channelId?: string // Channel (optional, derived from message)
+	guildId?: string // Guild (optional, derived from message)
+}
+
+/**
+ * Options for dispatching a select menu interaction (Phase 3D)
+ */
+export interface DispatchSelectMenuOptions {
+	customId: string // Required: select menu's custom_id
+	messageId: Snowflake // Required: message with the select menu
+	values: string[] // Required: selected values
+	componentType?: number // Optional: 3=String, 5=User, 6=Role, 7=Mentionable, 8=Channel (default: 3)
+	user?: MockUserConfig // User who selected (optional)
+	channelId?: string // Channel (optional, derived from message)
+	guildId?: string // Guild (optional, derived from message)
+}
+
+/**
+ * Options for dispatching a modal submit interaction (Phase 3E)
+ */
+export interface DispatchModalSubmitOptions {
+	customId: string // Required: modal's custom_id
+	fields: Record<string, string> // Required: { field_custom_id: value }
+	messageId?: Snowflake // Optional: message that triggered the modal (links to original interaction)
+	user?: MockUserConfig // User who submitted (optional)
+	channelId?: string // Channel (optional, uses first available if not specified)
+	guildId?: string // Guild (optional, derived from channel)
+}
+
+/**
+ * Options for dispatching an autocomplete interaction (Phase 3F)
+ */
+export interface DispatchAutocompleteOptions {
+	/** Command name being typed */
+	commandName: string
+	/** The option being autocompleted (must have focused: true) */
+	focusedOption: {
+		name: string
+		/** Current partial value user has typed */
+		value: string
+		/** Option type (3=STRING, 4=INTEGER, 10=NUMBER) - defaults to STRING */
+		type?: number
+	}
+	/** Other options already filled in (optional) */
+	options?: Record<string, string | number | boolean>
+	/** User triggering autocomplete */
+	user?: MockUserConfig
+	/** Channel ID (auto-resolved if not provided) */
+	channelId?: string
+	/** Guild ID (auto-resolved if not provided) */
+	guildId?: string
+}
+
+/**
+ * Options for dispatching a context menu interaction (Phase 3G)
+ */
+export interface DispatchContextMenuOptions {
+	/** Command name (e.g., "Get Info", "Report Message") */
+	commandName: string
+	/** Target user ID (for USER commands) or message ID (for MESSAGE commands) */
+	targetId: Snowflake
+	/** Context menu type: 2=USER, 3=MESSAGE */
+	contextMenuType: 2 | 3
+	/** User who invoked the command */
+	user?: MockUserConfig
+	/** Channel ID (required for MESSAGE commands, optional for USER in guild) */
+	channelId?: string
+	/** Guild ID (optional, derived from channel/target) */
+	guildId?: string
 }
 
 /**
@@ -154,6 +380,11 @@ export interface MockMessageConfig {
 	attachments?: unknown[]
 	tts?: boolean
 	type?: number
+	// Phase 3I: APIMessage completeness config fields
+	call?: MockMessageCall
+	interactionMetadata?: MockMessageInteractionMetadata
+	messageSnapshots?: MockMessageSnapshot[]
+	resolved?: unknown
 }
 
 /**
@@ -308,6 +539,7 @@ export interface SerializedSessionState {
 	dmChannels: SerializedMockChannel[]
 	users: SerializedMockUser[]
 	messages: SerializedMockMessage[]
+	interactions: SerializedMockInteraction[]
 	botUser: SerializedMockUser
 	applicationId: string
 	sequence: number
@@ -355,4 +587,35 @@ export interface SerializedMockMessage {
 	embeds: unknown[]
 	pinned: boolean
 	type: number
+}
+
+export interface SerializedMockInteraction {
+	id: string
+	applicationId: string
+	type: number
+	token: string
+	channelId: string
+	guildId?: string
+	userId: string
+	commandName?: string
+	commandId?: string
+	options?: MockInteractionOption[]
+	createdAt: number
+	expiresAt: number
+	// Response tracking (Phase 3B)
+	response?: MockInteractionResponse
+	respondedAt?: number
+	// For MESSAGE_COMPONENT interactions (Phase 3C)
+	customId?: string
+	componentType?: number
+	messageId?: string
+	values?: string[] // Phase 3D - select menus
+	// For MODAL_SUBMIT interactions (Phase 3E)
+	modalFields?: Record<string, string>
+	// For context menu commands (Phase 3G)
+	targetId?: string
+	contextMenuType?: 2 | 3
+	// For tracking response messages (Phase 3H)
+	responseMessageId?: string
+	followupMessageIds?: string[]
 }

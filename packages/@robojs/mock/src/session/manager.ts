@@ -107,6 +107,19 @@ export class SessionManager {
 	}
 
 	/**
+	 * Find a session containing an interaction with the given token
+	 * Used by interaction callback endpoint to route responses to correct session
+	 */
+	findSessionByInteractionToken(token: string): Session | undefined {
+		for (const session of this.storage.values()) {
+			if ((session as Session).state.getInteractionByToken(token)) {
+				return session as Session
+			}
+		}
+		return undefined
+	}
+
+	/**
 	 * Get the number of active sessions
 	 */
 	get size(): number {

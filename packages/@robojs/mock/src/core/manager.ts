@@ -26,6 +26,7 @@ export const sessionManager = {
 	getByToken: (...args: Parameters<SessionManager['getByToken']>) => getSessionManager().getByToken(...args),
 	delete: (...args: Parameters<SessionManager['delete']>) => getSessionManager().delete(...args),
 	getAll: () => getSessionManager().getAll(),
+	findSessionByInteractionToken: (token: string) => getSessionManager().findSessionByInteractionToken(token),
 	get size() {
 		return _sessionManager?.size ?? 0
 	},

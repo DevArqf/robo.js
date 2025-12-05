@@ -20,6 +20,7 @@ export {
 	serializeMockGuild,
 	serializeMockChannel,
 	serializeMockUser,
-	serializeMockMessage
+	serializeMockMessage,
+	serializeMockInteraction
 } from './state.js'
 export type { StateOptions } from './state.js'

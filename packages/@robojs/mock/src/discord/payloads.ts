@@ -1,7 +1,8 @@
-import { GatewayOpcodes, ChannelType, GuildDefaultMessageNotifications, GuildExplicitContentFilter, GuildMFALevel, GuildNSFWLevel, GuildPremiumTier, GuildVerificationLevel, MessageType } from 'discord-api-types/v10'
-import type { APIUser, APIUnavailableGuild, APIChannel, APIDMChannel, APIRole, APIGuildMember, Snowflake, APIMessage } from 'discord-api-types/v10'
+import { GatewayOpcodes, ChannelType, GuildDefaultMessageNotifications, GuildExplicitContentFilter, GuildMFALevel, GuildNSFWLevel, GuildPremiumTier, GuildVerificationLevel, MessageType, InteractionType, ApplicationCommandType, ComponentType } from 'discord-api-types/v10'
+import type { APIUser, APIUnavailableGuild, APIChannel, APIDMChannel, APIRole, APIGuildMember, Snowflake, APIMessage, APIEmbed, APIAttachment, APIMessageInteractionMetadata, APIMessageSnapshot } from 'discord-api-types/v10'
 import { DEFAULT_HEARTBEAT_INTERVAL, GATEWAY_VERSION } from './opcodes.js'
-import type { MockUser, MockGuild, MockChannel, MockMessage, SessionState } from '../types/index.js'
+import type { MockUser, MockGuild, MockChannel, MockMessage, MockInteraction, SessionState, MockMessageSnapshot } from '../types/index.js'
+import { generateSnowflake } from '../utils/snowflake.js'
 
 /**
  * Gateway payload structure
@@ -383,7 +384,7 @@ export function buildPartialGuildMember(user: MockUser, joinedAt?: string): Omit
  * Convert MockMessage to Discord APIMessage format
  */
 export function mockMessageToAPIMessage(message: MockMessage, author: MockUser): APIMessage {
-	return {
+	const apiMessage: APIMessage = {
 		id: message.id,
 		channel_id: message.channelId,
 		author: mockUserToAPIUser(author),
@@ -399,6 +400,72 @@ export function mockMessageToAPIMessage(message: MockMessage, author: MockUser):
 		pinned: message.pinned,
 		type: message.type as MessageType
 	}
+
+	// Phase 3I: Add optional fields if present
+
+	// Call info for voice/video calls in DMs (MessageType.Call = 3)
+	if (message.call) {
+		apiMessage.call = {
+			participants: message.call.participants,
+			ended_timestamp: message.call.ended_timestamp ?? null
+		}
+	}
+
+	// Interaction metadata (new field that replaces deprecated interaction)
+	if (message.interaction_metadata) {
+		const metadata: APIMessageInteractionMetadata = {
+			id: message.interaction_metadata.id,
+			type: message.interaction_metadata.type as InteractionType,
+			user: mockUserToAPIUser(message.interaction_metadata.user),
+			authorizing_integration_owners: message.interaction_metadata.authorizing_integration_owners ?? {}
+		}
+
+		// Add optional fields
+		if (message.interaction_metadata.original_response_message_id) {
+			metadata.original_response_message_id = message.interaction_metadata.original_response_message_id
+		}
+		if (message.interaction_metadata.target_user) {
+			metadata.target_user = mockUserToAPIUser(message.interaction_metadata.target_user)
+		}
+		if (message.interaction_metadata.target_message_id) {
+			metadata.target_message_id = message.interaction_metadata.target_message_id
+		}
+
+		apiMessage.interaction_metadata = metadata
+	}
+
+	// Keep deprecated interaction field for backwards compatibility
+	if (message.interaction) {
+		apiMessage.interaction = {
+			id: message.interaction.id,
+			type: message.interaction.type as InteractionType,
+			name: message.interaction.name,
+			user: mockUserToAPIUser(message.interaction.user)
+		}
+	}
+
+	// Message snapshots for forwarded messages
+	if (message.message_snapshots?.length) {
+		apiMessage.message_snapshots = message.message_snapshots.map((snapshot: MockMessageSnapshot): APIMessageSnapshot => ({
+			message: {
+				type: snapshot.message.type as MessageType,
+				content: snapshot.message.content,
+				embeds: snapshot.message.embeds as APIEmbed[],
+				attachments: snapshot.message.attachments as APIAttachment[],
+				timestamp: snapshot.message.timestamp,
+				edited_timestamp: snapshot.message.edited_timestamp,
+				mentions: snapshot.message.mentions.map((u) => mockUserToAPIUser(u)),
+				mention_roles: snapshot.message.mention_roles
+			}
+		}))
+	}
+
+	// Resolved data for auto-populated select menus
+	if (message.resolved) {
+		apiMessage.resolved = message.resolved as APIMessage['resolved']
+	}
+
+	return apiMessage
 }
 
 /**
@@ -531,6 +598,651 @@ export function buildMessageDeletePayload(options: MessageDeletePayloadOptions):
 		op: GatewayOpcodes.Dispatch,
 		s: sequence,
 		t: 'MESSAGE_DELETE',
+		d: data
+	}
+}
+
+// ============================================================================
+// INTERACTION_CREATE Payload (Phase 3A)
+// ============================================================================
+
+/**
+ * Options for building an INTERACTION_CREATE payload
+ */
+export interface InteractionCreatePayloadOptions {
+	interaction: MockInteraction
+	user: MockUser
+	sessionState: SessionState
+	sequence: number
+}
+
+/**
+ * Build an INTERACTION_CREATE payload (op 0, t: "INTERACTION_CREATE")
+ * For slash commands (type 2 APPLICATION_COMMAND)
+ */
+export function buildInteractionCreatePayload(options: InteractionCreatePayloadOptions): GatewayPayload {
+	const { interaction, user, sessionState, sequence } = options
+
+	// Build command data
+	const commandData: Record<string, unknown> = {
+		id: interaction.commandId ?? generateSnowflake(),
+		name: interaction.commandName,
+		type: ApplicationCommandType.ChatInput // Slash command
+	}
+
+	// Add options if present
+	if (interaction.options && interaction.options.length > 0) {
+		commandData.options = interaction.options.map((opt) => ({
+			name: opt.name,
+			type: opt.type,
+			value: opt.value,
+			options: opt.options,
+			focused: opt.focused
+		}))
+	}
+
+	const data: Record<string, unknown> = {
+		id: interaction.id,
+		application_id: interaction.applicationId,
+		type: InteractionType.ApplicationCommand,
+		data: commandData,
+		channel_id: interaction.channelId,
+		token: interaction.token,
+		version: 1,
+		entitlements: [],
+		authorizing_integration_owners: {},
+		locale: 'en-US',
+		app_permissions: '562949953421311' // Full permissions
+	}
+
+	// Guild context
+	if (interaction.guildId) {
+		data.guild_id = interaction.guildId
+		data.guild_locale = 'en-US'
+		data.member = {
+			user: mockUserToAPIUser(user),
+			roles: [],
+			joined_at: new Date().toISOString(),
+			deaf: false,
+			mute: false,
+			flags: 0
+		}
+	} else {
+		// DM context
+		data.user = mockUserToAPIUser(user)
+	}
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'INTERACTION_CREATE',
+		d: data
+	}
+}
+
+// ============================================================================
+// INTERACTION_CREATE Payload - Button (Phase 3C)
+// ============================================================================
+
+/**
+ * Options for building a button INTERACTION_CREATE payload
+ */
+export interface ButtonInteractionPayloadOptions {
+	interaction: MockInteraction
+	user: MockUser
+	message: MockMessage // The message containing the button
+	sessionState: SessionState
+	sequence: number
+}
+
+/**
+ * Build an INTERACTION_CREATE payload for button clicks (op 0, t: "INTERACTION_CREATE")
+ * For button interactions (type 3 MESSAGE_COMPONENT, component_type 2)
+ */
+export function buildButtonInteractionPayload(options: ButtonInteractionPayloadOptions): GatewayPayload {
+	const { interaction, user, message, sessionState, sequence } = options
+
+	// Build component data
+	const componentData: Record<string, unknown> = {
+		component_type: ComponentType.Button, // 2
+		custom_id: interaction.customId
+	}
+
+	// Get the message author for the API message
+	const messageAuthor = sessionState.users.get(message.authorId)
+
+	const data: Record<string, unknown> = {
+		id: interaction.id,
+		application_id: interaction.applicationId,
+		type: InteractionType.MessageComponent, // 3
+		data: componentData,
+		channel_id: interaction.channelId,
+		token: interaction.token,
+		version: 1,
+		entitlements: [],
+		authorizing_integration_owners: {},
+		locale: 'en-US',
+		app_permissions: '562949953421311', // Full permissions
+		// Include the source message
+		message: messageAuthor ? mockMessageToAPIMessage(message, messageAuthor) : mockMessageToAPIMessage(message, sessionState.botUser)
+	}
+
+	// Add guild_id to message if present
+	if (message.guildId) {
+		;(data.message as Record<string, unknown>).guild_id = message.guildId
+	}
+
+	// Guild context
+	if (interaction.guildId) {
+		data.guild_id = interaction.guildId
+		data.guild_locale = 'en-US'
+		data.member = {
+			user: mockUserToAPIUser(user),
+			roles: [],
+			joined_at: new Date().toISOString(),
+			deaf: false,
+			mute: false,
+			flags: 0
+		}
+	} else {
+		// DM context
+		data.user = mockUserToAPIUser(user)
+	}
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'INTERACTION_CREATE',
+		d: data
+	}
+}
+
+// ============================================================================
+// INTERACTION_CREATE Payload - Select Menu (Phase 3D)
+// ============================================================================
+
+/**
+ * Options for building a select menu INTERACTION_CREATE payload
+ */
+export interface SelectMenuInteractionPayloadOptions {
+	interaction: MockInteraction
+	user: MockUser
+	message: MockMessage // The message containing the select menu
+	values: string[] // Selected values
+	sessionState: SessionState
+	sequence: number
+}
+
+/**
+ * Build an INTERACTION_CREATE payload for select menu interactions (op 0, t: "INTERACTION_CREATE")
+ * For MESSAGE_COMPONENT (type 3) with component_type 3 (StringSelect), 5 (UserSelect),
+ * 6 (RoleSelect), 7 (MentionableSelect), or 8 (ChannelSelect)
+ */
+export function buildSelectMenuInteractionPayload(options: SelectMenuInteractionPayloadOptions): GatewayPayload {
+	const { interaction, user, message, values, sessionState, sequence } = options
+
+	// Default to StringSelect (3) if componentType not specified
+	const componentType = interaction.componentType ?? ComponentType.StringSelect
+
+	// Build component data with values
+	const componentData: Record<string, unknown> = {
+		component_type: componentType,
+		custom_id: interaction.customId,
+		values: values
+	}
+
+	// Build resolved data for entity select types (UserSelect, RoleSelect, MentionableSelect, ChannelSelect)
+	const resolved = buildResolvedData(componentType, values, sessionState, interaction.guildId)
+	if (resolved && Object.keys(resolved).length > 0) {
+		componentData.resolved = resolved
+	}
+
+	// Get the message author for the API message
+	const messageAuthor = sessionState.users.get(message.authorId)
+
+	const data: Record<string, unknown> = {
+		id: interaction.id,
+		application_id: interaction.applicationId,
+		type: InteractionType.MessageComponent, // 3
+		data: componentData,
+		channel_id: interaction.channelId,
+		token: interaction.token,
+		version: 1,
+		entitlements: [],
+		authorizing_integration_owners: {},
+		locale: 'en-US',
+		app_permissions: '562949953421311', // Full permissions
+		// Include the source message for select menu
+		message: messageAuthor ? mockMessageToAPIMessage(message, messageAuthor) : mockMessageToAPIMessage(message, sessionState.botUser)
+	}
+
+	// Add guild_id to message if present
+	if (message.guildId) {
+		;(data.message as Record<string, unknown>).guild_id = message.guildId
+	}
+
+	// Guild context
+	if (interaction.guildId) {
+		data.guild_id = interaction.guildId
+		data.guild_locale = 'en-US'
+		data.member = {
+			user: mockUserToAPIUser(user),
+			roles: [],
+			joined_at: new Date().toISOString(),
+			deaf: false,
+			mute: false,
+			flags: 0
+		}
+	} else {
+		// DM context
+		data.user = mockUserToAPIUser(user)
+	}
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'INTERACTION_CREATE',
+		d: data
+	}
+}
+
+/**
+ * Build resolved data for entity select types
+ * - UserSelect (5): resolved.users
+ * - RoleSelect (6): resolved.roles
+ * - MentionableSelect (7): resolved.users + resolved.roles
+ * - ChannelSelect (8): resolved.channels
+ */
+function buildResolvedData(
+	componentType: number,
+	values: string[],
+	sessionState: SessionState,
+	guildId?: Snowflake
+): Record<string, unknown> | null {
+	// StringSelect (3) doesn't need resolved data
+	if (componentType === ComponentType.StringSelect) {
+		return null
+	}
+
+	const resolved: Record<string, Record<string, unknown>> = {}
+
+	// UserSelect (5) or MentionableSelect (7)
+	if (componentType === ComponentType.UserSelect || componentType === ComponentType.MentionableSelect) {
+		const users: Record<string, unknown> = {}
+		const members: Record<string, unknown> = {}
+
+		for (const userId of values) {
+			const user = sessionState.users.get(userId)
+			if (user) {
+				users[userId] = mockUserToAPIUser(user)
+				// If in a guild, also add member data
+				if (guildId) {
+					members[userId] = {
+						roles: [],
+						joined_at: new Date().toISOString(),
+						deaf: false,
+						mute: false,
+						flags: 0
+					}
+				}
+			}
+		}
+
+		if (Object.keys(users).length > 0) {
+			resolved.users = users
+			if (guildId && Object.keys(members).length > 0) {
+				resolved.members = members
+			}
+		}
+	}
+
+	// RoleSelect (6) or MentionableSelect (7)
+	// Note: Roles support is not yet implemented in MockServerState
+	// For now, we return empty resolved data for roles
+	if (componentType === ComponentType.RoleSelect || componentType === ComponentType.MentionableSelect) {
+		const roles: Record<string, unknown> = {}
+
+		// Check if roles Map exists (future support)
+		const rolesMap = (sessionState as Record<string, unknown>).roles as Map<Snowflake, unknown> | undefined
+		if (rolesMap) {
+			for (const roleId of values) {
+				const role = rolesMap.get(roleId)
+				if (role) {
+					roles[roleId] = mockRoleToAPIRole(role as { id: Snowflake; name: string; color?: number; position?: number; permissions?: string })
+				}
+			}
+		}
+
+		if (Object.keys(roles).length > 0) {
+			resolved.roles = roles
+		}
+	}
+
+	// ChannelSelect (8)
+	if (componentType === ComponentType.ChannelSelect) {
+		const channels: Record<string, unknown> = {}
+
+		for (const channelId of values) {
+			const channel = sessionState.channels.get(channelId)
+			if (channel) {
+				channels[channelId] = mockChannelToResolvedChannel(channel, guildId)
+			}
+		}
+
+		if (Object.keys(channels).length > 0) {
+			resolved.channels = channels
+		}
+	}
+
+	return Object.keys(resolved).length > 0 ? resolved : null
+}
+
+/**
+ * Convert MockRole to APIRole format
+ */
+function mockRoleToAPIRole(role: { id: Snowflake; name: string; color?: number; position?: number; permissions?: string }): APIRole {
+	return {
+		id: role.id,
+		name: role.name,
+		color: role.color ?? 0,
+		hoist: false,
+		position: role.position ?? 0,
+		permissions: role.permissions ?? '0',
+		managed: false,
+		mentionable: false,
+		flags: 0
+	}
+}
+
+/**
+ * Convert MockChannel to partial API channel format for resolved data
+ */
+function mockChannelToResolvedChannel(channel: MockChannel, guildId?: Snowflake): Record<string, unknown> {
+	return {
+		id: channel.id,
+		type: channel.type ?? ChannelType.GuildText,
+		name: channel.name ?? 'channel',
+		permissions: '562949953421311', // Full permissions
+		...(guildId && { guild_id: guildId })
+	}
+}
+
+// ============================================================================
+// INTERACTION_CREATE Payload - Modal Submit (Phase 3E)
+// ============================================================================
+
+/**
+ * Options for building a modal submit INTERACTION_CREATE payload
+ */
+export interface ModalSubmitInteractionPayloadOptions {
+	interaction: MockInteraction
+	user: MockUser
+	sessionState: SessionState
+	sequence: number
+	message?: MockMessage // Optional: source message if modal was triggered from a message component
+}
+
+/**
+ * Convert fields object to Discord modal components array format
+ * Each field becomes an action row with a single text input
+ */
+function fieldsToComponents(fields: Record<string, string>): unknown[] {
+	return Object.entries(fields).map(([customId, value]) => ({
+		type: 1, // ActionRow
+		components: [
+			{
+				type: 4, // TextInput
+				custom_id: customId,
+				value: value
+			}
+		]
+	}))
+}
+
+/**
+ * Build an INTERACTION_CREATE payload for modal submit interactions (op 0, t: "INTERACTION_CREATE")
+ * For MODAL_SUBMIT (type 5)
+ */
+export function buildModalSubmitInteractionPayload(options: ModalSubmitInteractionPayloadOptions): GatewayPayload {
+	const { interaction, user, sessionState, sequence, message } = options
+
+	// Build modal data with components
+	const modalData: Record<string, unknown> = {
+		custom_id: interaction.customId,
+		components: fieldsToComponents(interaction.modalFields ?? {})
+	}
+
+	const data: Record<string, unknown> = {
+		id: interaction.id,
+		application_id: interaction.applicationId,
+		type: InteractionType.ModalSubmit, // 5
+		data: modalData,
+		channel_id: interaction.channelId,
+		token: interaction.token,
+		version: 1,
+		entitlements: [],
+		authorizing_integration_owners: {},
+		locale: 'en-US',
+		app_permissions: '562949953421311' // Full permissions
+	}
+
+	// Add message if modal was triggered from a message component (links to original interaction)
+	if (message) {
+		const messageAuthor = sessionState.users.get(message.authorId)
+		data.message = messageAuthor ? mockMessageToAPIMessage(message, messageAuthor) : mockMessageToAPIMessage(message, sessionState.botUser)
+
+		// Add guild_id to message if present
+		if (message.guildId) {
+			;(data.message as Record<string, unknown>).guild_id = message.guildId
+		}
+	}
+
+	// Guild context
+	if (interaction.guildId) {
+		data.guild_id = interaction.guildId
+		data.guild_locale = 'en-US'
+		data.member = {
+			user: mockUserToAPIUser(user),
+			roles: [],
+			joined_at: new Date().toISOString(),
+			deaf: false,
+			mute: false,
+			flags: 0
+		}
+	} else {
+		// DM context
+		data.user = mockUserToAPIUser(user)
+	}
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'INTERACTION_CREATE',
+		d: data
+	}
+}
+
+// ============================================================================
+// INTERACTION_CREATE Payload - Autocomplete (Phase 3F)
+// ============================================================================
+
+/**
+ * Options for building an autocomplete INTERACTION_CREATE payload
+ */
+export interface AutocompleteInteractionPayloadOptions {
+	interaction: MockInteraction
+	user: MockUser
+	sessionState: SessionState
+	sequence: number
+}
+
+/**
+ * Build an INTERACTION_CREATE payload for autocomplete interactions (op 0, t: "INTERACTION_CREATE")
+ * For APPLICATION_COMMAND_AUTOCOMPLETE (type 4)
+ */
+export function buildAutocompleteInteractionPayload(options: AutocompleteInteractionPayloadOptions): GatewayPayload {
+	const { interaction, user, sequence } = options
+
+	// Build command data - similar to slash command but type 4
+	const commandData: Record<string, unknown> = {
+		id: interaction.commandId ?? generateSnowflake(),
+		name: interaction.commandName,
+		type: ApplicationCommandType.ChatInput
+	}
+
+	// Add options - MUST include focused flag for autocomplete
+	if (interaction.options && interaction.options.length > 0) {
+		commandData.options = interaction.options.map((opt) => ({
+			name: opt.name,
+			type: opt.type,
+			value: opt.value,
+			focused: opt.focused // Critical for autocomplete
+		}))
+	}
+
+	const data: Record<string, unknown> = {
+		id: interaction.id,
+		application_id: interaction.applicationId,
+		type: InteractionType.ApplicationCommandAutocomplete, // 4
+		data: commandData,
+		channel_id: interaction.channelId,
+		token: interaction.token,
+		version: 1,
+		entitlements: [],
+		authorizing_integration_owners: {},
+		locale: 'en-US',
+		app_permissions: '562949953421311' // Full permissions
+	}
+
+	// Guild context
+	if (interaction.guildId) {
+		data.guild_id = interaction.guildId
+		data.guild_locale = 'en-US'
+		data.member = {
+			user: mockUserToAPIUser(user),
+			roles: [],
+			joined_at: new Date().toISOString(),
+			deaf: false,
+			mute: false,
+			flags: 0
+		}
+	} else {
+		// DM context
+		data.user = mockUserToAPIUser(user)
+	}
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'INTERACTION_CREATE',
+		d: data
+	}
+}
+
+// ============================================================================
+// INTERACTION_CREATE Payload - Context Menu (Phase 3G)
+// ============================================================================
+
+/**
+ * Options for building a context menu INTERACTION_CREATE payload
+ */
+export interface ContextMenuInteractionPayloadOptions {
+	interaction: MockInteraction
+	user: MockUser
+	/** Target user for USER commands */
+	targetUser?: MockUser
+	/** Target message for MESSAGE commands */
+	targetMessage?: MockMessage
+	sessionState: SessionState
+	sequence: number
+}
+
+/**
+ * Build an INTERACTION_CREATE payload for context menu commands (op 0, t: "INTERACTION_CREATE")
+ * For USER (type 2) and MESSAGE (type 3) application commands
+ */
+export function buildContextMenuInteractionPayload(options: ContextMenuInteractionPayloadOptions): GatewayPayload {
+	const { interaction, user, targetUser, targetMessage, sessionState, sequence } = options
+
+	// Determine command type (2=USER, 3=MESSAGE)
+	const commandType = interaction.contextMenuType ?? 2
+
+	// Build command data with target_id and resolved
+	const commandData: Record<string, unknown> = {
+		id: interaction.commandId ?? generateSnowflake(),
+		name: interaction.commandName,
+		type: commandType, // ApplicationCommandType.User (2) or Message (3)
+		target_id: interaction.targetId
+	}
+
+	// Build resolved data based on command type
+	const resolved: Record<string, Record<string, unknown>> = {}
+
+	if (commandType === 2 && targetUser) {
+		// USER command - resolve the target user
+		resolved.users = {
+			[interaction.targetId!]: mockUserToAPIUser(targetUser)
+		}
+		// Add member data if in guild context
+		if (interaction.guildId) {
+			resolved.members = {
+				[interaction.targetId!]: {
+					roles: [],
+					joined_at: new Date().toISOString(),
+					deaf: false,
+					mute: false,
+					flags: 0
+				}
+			}
+		}
+	} else if (commandType === 3 && targetMessage) {
+		// MESSAGE command - resolve the target message
+		const messageAuthor = sessionState.users.get(targetMessage.authorId) ?? sessionState.botUser
+		resolved.messages = {
+			[interaction.targetId!]: mockMessageToAPIMessage(targetMessage, messageAuthor)
+		}
+	}
+
+	if (Object.keys(resolved).length > 0) {
+		commandData.resolved = resolved
+	}
+
+	// Build main interaction data
+	const data: Record<string, unknown> = {
+		id: interaction.id,
+		application_id: interaction.applicationId,
+		type: InteractionType.ApplicationCommand, // Always 2 for context menus
+		data: commandData,
+		channel_id: interaction.channelId,
+		token: interaction.token,
+		version: 1,
+		entitlements: [],
+		authorizing_integration_owners: {},
+		locale: 'en-US',
+		app_permissions: '562949953421311' // Full permissions
+	}
+
+	// Guild context
+	if (interaction.guildId) {
+		data.guild_id = interaction.guildId
+		data.guild_locale = 'en-US'
+		data.member = {
+			user: mockUserToAPIUser(user),
+			roles: [],
+			joined_at: new Date().toISOString(),
+			deaf: false,
+			mute: false,
+			flags: 0
+		}
+	} else {
+		// DM context
+		data.user = mockUserToAPIUser(user)
+	}
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'INTERACTION_CREATE',
 		d: data
 	}
 }
