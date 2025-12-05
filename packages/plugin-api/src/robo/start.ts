@@ -19,7 +19,10 @@ import type { BaseEngine } from '../engines/base.js'
 import type { StartContext, HandlerRecord } from 'robo.js'
 import type { ViteDevServer } from 'vite'
 import type { TunnelConfig, TunnelInstance, TunnelProvider } from '../core/tunnel/types.js'
-import type { ApiHandler } from './routes/api.js'
+import type { ApiHandler, ApiHandlerModule, HttpMethodExport } from './routes/api.js'
+import { HTTP_METHODS } from './routes/api.js'
+import type { RoboReply, RouteHandler } from '../core/types.js'
+import type { RoboRequest } from '../core/robo-request.js'
 
 const PATH_REGEX = new RegExp(/\[(.+?)\]/g)
 
@@ -37,6 +40,73 @@ export interface PluginConfig {
 }
 
 export let pluginOptions: PluginConfig = {}
+
+/**
+ * Creates a method dispatcher that routes requests to the appropriate handler
+ * based on HTTP method. Supports both named method exports and default fallback.
+ */
+function createMethodDispatcher(record: HandlerRecord<ApiHandler>): RouteHandler | null {
+	const handler = record.handler as ApiHandlerModule | null
+	if (!handler) return null
+
+	const hasDefault = typeof handler.default === 'function'
+	const methodExports = HTTP_METHODS.filter((m) => typeof handler[m] === 'function')
+
+	// Optimization: if only default export, return it directly (current behavior)
+	if (hasDefault && methodExports.length === 0) {
+		return handler.default as RouteHandler
+	}
+
+	// Compute allowed methods for OPTIONS/405 responses
+	const getAllowedMethods = () => {
+		const allowed = [...methodExports]
+		if (hasDefault) {
+			// Default handles all methods not explicitly exported
+			for (const m of HTTP_METHODS) {
+				if (!allowed.includes(m)) {
+					allowed.push(m)
+				}
+			}
+		}
+		return allowed
+	}
+
+	// Create dispatcher for method-based routing
+	return async (req: RoboRequest, reply: RoboReply): Promise<unknown> => {
+		const method = req.method.toUpperCase() as HttpMethodExport
+
+		// Auto-handle OPTIONS if no explicit handler
+		if (method === 'OPTIONS' && !handler.OPTIONS && !hasDefault) {
+			const allowed = getAllowedMethods()
+			reply.header('Allow', allowed.join(', '))
+			return reply.code(204).send('')
+		}
+
+		// Try named method handler first
+		const methodHandler = handler[method] as RouteHandler | undefined
+		if (methodHandler) {
+			return methodHandler(req, reply)
+		}
+
+		// HEAD auto-handling: use GET if no HEAD handler
+		if (method === 'HEAD' && handler.GET) {
+			return (handler.GET as RouteHandler)(req, reply)
+		}
+
+		// Fall back to default handler
+		if (hasDefault) {
+			return (handler.default as RouteHandler)(req, reply)
+		}
+
+		// No handler for this method - return 405
+		reply.header('Allow', methodExports.join(', '))
+		return reply.code(405).json({
+			error: 'Method Not Allowed',
+			message: `${method} is not supported for this endpoint`,
+			allowedMethods: methodExports
+		})
+	}
+}
 
 /**
  * Start hook - Initializes the HTTP server and optionally starts a tunnel
@@ -120,8 +190,10 @@ export default async (context: StartContext<PluginConfig>) => {
 		const key = prefix + '/' + routeKey.replace(PATH_REGEX, ':$1')
 		paths.push(key)
 
-		if (record.handler?.default) {
-			engine.registerRoute(key, record.handler.default)
+		// Use method dispatcher to handle named HTTP method exports
+		const wrappedHandler = createMethodDispatcher(record)
+		if (wrappedHandler) {
+			engine.registerRoute(key, wrappedHandler)
 		}
 	}
 

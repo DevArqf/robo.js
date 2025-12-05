@@ -42,11 +42,42 @@ Default routes are prefixed with `/api`. You can modify this prefix in the plugi
 
 ## Usage
 
-Each route file should export a default function. This function handles HTTP requests and can return a response directly.
+Route files can export handlers in two ways:
 
-The function receives two parameters: `request` and `reply`. These objects provide methods to interact with the request and response.
+### Named HTTP Method Exports (Recommended)
 
-Example 1: Simple GET request
+Export functions named after HTTP methods for cleaner, more explicit route handling:
+
+```typescript
+// src/api/users/[id].ts
+import type { RoboRequest } from '@robojs/server'
+
+export function GET(request: RoboRequest) {
+	const userId = request.params.id
+	return { message: `User ID is ${userId}` }
+}
+
+export async function POST(request: RoboRequest) {
+	const userData = await request.json()
+	return { success: true, userData }
+}
+
+export function DELETE(request: RoboRequest) {
+	const userId = request.params.id
+	return { deleted: userId }
+}
+```
+
+Supported methods: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `OPTIONS`, `HEAD`
+
+**Automatic behaviors:**
+- `OPTIONS` requests auto-respond with allowed methods if not explicitly handled
+- `HEAD` requests automatically use your `GET` handler if no `HEAD` export exists
+- Unsupported methods return `405 Method Not Allowed` with an `Allow` header
+
+### Default Export (Legacy)
+
+You can also export a default function that handles all HTTP methods:
 
 ```javascript
 export default (request, reply) => {
@@ -55,27 +86,22 @@ export default (request, reply) => {
 	}
 
 	const userId = request.params.id
-
-	// ... perform some action with userId
-
 	return { message: `User ID is ${userId}` }
 }
 ```
 
-Example 2: POST request with body parsing
+### Mixed Usage
 
-```javascript
-export default async (request, reply) => {
-	if (request.method !== 'POST') {
-		reply.code(405).send('Method not allowed')
-		return
-	}
+Combine both patterns—named exports take priority, with the default as a fallback:
 
-	const userData = await request.json()
+```typescript
+export function GET(request) {
+	return { data: 'Handled by GET export' }
+}
 
-	// ... interact with database, e.g., Prisma
-
-	reply.code(200).send(JSON.stringify({ success: true, userData }))
+// Handles POST, PUT, DELETE, etc.
+export default (request) => {
+	return { data: 'Handled by default export' }
 }
 ```
 
@@ -84,6 +110,106 @@ Returning a value from the route function will automatically send a response wit
 If you need to manually send a response, use the `reply` object. This object provides methods to set the status code, headers, and body.
 
 Don't want to use Robo's wrappers? Access the raw request and response objects using `request.req` and `reply.res`.
+
+## Testing
+
+The `@robojs/server/testing` module provides utilities for unit testing your API endpoints without launching a server. This makes tests faster and more isolated.
+
+### Setup
+
+Import testing utilities from the dedicated subpath:
+
+```typescript
+import { createTestRequest, testRoute, testHandler, createTestClient } from '@robojs/server/testing'
+```
+
+### Testing Individual Handlers
+
+Use `createTestRequest` to create a `RoboRequest` and call your handler directly:
+
+```typescript
+import { createTestRequest } from '@robojs/server/testing'
+import { GET, POST } from '../src/api/users/[id]'
+
+// Test a GET handler
+const request = createTestRequest({
+	params: { id: '123' },
+	query: { include: 'profile' }
+})
+const response = await GET(request)
+expect(response).toEqual({ id: '123', include: 'profile' })
+
+// Test a POST handler with body
+const postRequest = createTestRequest({
+	method: 'POST',
+	params: { id: '123' },
+	body: { name: 'John' }
+})
+const postResponse = await POST(postRequest)
+```
+
+### Testing Route Modules
+
+Use `testRoute` to test a route module with automatic method dispatch:
+
+```typescript
+import { testRoute } from '@robojs/server/testing'
+import * as usersRoute from '../src/api/users/[id]'
+
+// Dispatches to the correct handler based on method
+const result = await testRoute(usersRoute, {
+	method: 'POST',
+	params: { id: '123' },
+	body: { name: 'Jane' }
+})
+
+expect(result.status).toBe(200)
+expect(await result.json()).toEqual({ id: '123', name: 'Jane' })
+
+// Convenience methods available on the result
+expect(result.ok).toBe(true)
+expect(result.header('Content-Type')).toBe('application/json')
+```
+
+### Testing Multiple Routes
+
+Use `createTestClient` for integration-style tests with multiple routes:
+
+```typescript
+import { createTestClient } from '@robojs/server/testing'
+import * as usersRoute from '../src/api/users/[id]'
+import * as postsRoute from '../src/api/posts'
+
+const client = createTestClient()
+	.route('users/[id]', usersRoute)
+	.route('posts', postsRoute)
+
+// Make requests - params are automatically extracted from the URL
+const user = await client.get('/users/123')
+expect(user.status).toBe(200)
+
+const post = await client.post('/posts', { body: { title: 'Hello' } })
+expect(post.status).toBe(201)
+
+// Supports all HTTP methods
+await client.put('/users/123', { body: { name: 'Updated' } })
+await client.delete('/users/123')
+await client.patch('/users/123', { body: { active: true } })
+```
+
+### Request Options
+
+All testing functions accept these options:
+
+| Option    | Type                               | Description                                   |
+| --------- | ---------------------------------- | --------------------------------------------- |
+| `method`  | `string`                           | HTTP method (defaults to `'GET'`)             |
+| `path`    | `string`                           | URL path (defaults to `'/test'`)              |
+| `params`  | `Record<string, string>`           | URL parameters (e.g., `{ id: '123' }`)        |
+| `query`   | `Record<string, string \| string[]>` | Query string parameters                       |
+| `headers` | `Record<string, string>`           | Request headers                               |
+| `body`    | `unknown`                          | Request body (auto-serialized to JSON)        |
+| `baseUrl` | `string`                           | Base URL (defaults to `'http://localhost:3000'`) |
 
 ### Throwable Responses
 

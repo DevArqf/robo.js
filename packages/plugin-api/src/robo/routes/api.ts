@@ -6,6 +6,12 @@ import type { RouteConfig, ScannedEntry, ProcessedEntry, PortalAPI } from 'robo.
 import type { HandlerRecord } from 'robo.js'
 
 /**
+ * Supported HTTP methods for named exports.
+ */
+export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'] as const
+export type HttpMethodExport = (typeof HTTP_METHODS)[number]
+
+/**
  * API handler function type.
  * Receives request and can return response data or use RoboResponse.
  */
@@ -13,10 +19,18 @@ export type ApiHandler = (request: Request) => Response | Promise<Response> | un
 
 /**
  * API handler module with exports.
+ * Supports both default export and named HTTP method exports.
  */
 export interface ApiHandlerModule {
-	default: ApiHandler
+	default?: ApiHandler
 	config?: ApiConfig
+	GET?: ApiHandler
+	POST?: ApiHandler
+	PUT?: ApiHandler
+	DELETE?: ApiHandler
+	PATCH?: ApiHandler
+	OPTIONS?: ApiHandler
+	HEAD?: ApiHandler
 }
 
 /**
@@ -49,13 +63,58 @@ export function controller(key: string, record: HandlerRecord, _pluginState: unk
 	return {
 		key,
 		async execute(request: Request): Promise<Response> {
-			const handler = record.handler?.default as ApiHandler | undefined
+			const method = request.method.toUpperCase() as HttpMethodExport
+			const handler = record.handler as ApiHandlerModule | null
 
 			if (!handler) {
 				return new Response('Not Found', { status: 404 })
 			}
 
-			const result = await handler(request)
+			const hasDefault = typeof handler.default === 'function'
+			const methodExports = HTTP_METHODS.filter((m) => typeof handler[m] === 'function')
+
+			// Compute allowed methods
+			const getAllowedMethods = () => {
+				const allowed = [...methodExports]
+				if (hasDefault) {
+					for (const m of HTTP_METHODS) {
+						if (!allowed.includes(m)) {
+							allowed.push(m)
+						}
+					}
+				}
+				return allowed
+			}
+
+			// Auto-handle OPTIONS if no explicit handler
+			if (method === 'OPTIONS' && !handler.OPTIONS && !hasDefault) {
+				const allowed = getAllowedMethods()
+				return new Response(null, {
+					status: 204,
+					headers: { Allow: allowed.join(', ') }
+				})
+			}
+
+			// Priority: named method export > default export
+			let targetHandler = handler[method] ?? handler.default
+
+			// HEAD auto-handling: use GET if no HEAD handler
+			if (!targetHandler && method === 'HEAD' && handler.GET) {
+				targetHandler = handler.GET
+			}
+
+			if (!targetHandler) {
+				// No handler for this method - return 405
+				return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
+					status: 405,
+					headers: {
+						'Content-Type': 'application/json',
+						Allow: methodExports.join(', ')
+					}
+				})
+			}
+
+			const result = await targetHandler(request)
 
 			if (result instanceof Response) {
 				return result
@@ -84,14 +143,14 @@ export interface ApiNamespaceController {
 export const NamespaceController = (portal: PortalAPI): ApiNamespaceController => ({
 	async get(key: string): Promise<ApiHandlerModule | null> {
 		try {
-			const handler = await portal.getHandler<ApiHandler>('server', 'api', key)
-			if (!handler?.default) {
+			// The handler module is returned with method exports at the top level
+			const handler = (await portal.getHandler<ApiHandler>('server', 'api', key)) as unknown as ApiHandlerModule | null
+			// Check if at least one handler exists (default or any method)
+			const hasHandler = handler?.default || HTTP_METHODS.some((m) => handler?.[m])
+			if (!hasHandler) {
 				return null
 			}
-			return {
-				default: handler.default,
-				config: handler.config as ApiConfig | undefined
-			}
+			return handler
 		} catch {
 			return null
 		}
@@ -120,8 +179,8 @@ export const config: RouteConfig = {
 		optionalCatchAll: /\[\[\.\.\.(\w+)\]\]/ // [[...slug]] → *?
 	},
 	exports: {
-		named: [],
-		default: 'required',
+		named: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
+		default: 'optional',
 		config: 'optional'
 	},
 	description: 'HTTP API endpoints'
