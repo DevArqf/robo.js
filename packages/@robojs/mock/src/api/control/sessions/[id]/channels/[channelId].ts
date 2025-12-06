@@ -2,6 +2,7 @@ import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../../../core/manager.js'
 import { validateMethod, notFound } from '../../../utils.js'
 import { serializeMockMessage } from '../../../../../session/state.js'
+import type { MockForumChannel, MockForumThread } from '../../../../../types/index.js'
 
 /**
  * GET /api/control/sessions/:id/channels/:channelId - Get channel details
@@ -18,7 +19,16 @@ import { serializeMockMessage } from '../../../../../session/state.js'
  *   type: number,
  *   parent_id?: string,
  *   message_count: number,
- *   messages?: SerializedMockMessage[]
+ *   messages?: SerializedMockMessage[],
+ *   // Forum channel fields (Phase 4H):
+ *   topic?: string,
+ *   available_tags?: SerializedMockForumTag[],
+ *   default_auto_archive_duration?: number,
+ *   default_sort_order?: number,
+ *   default_forum_layout?: number,
+ *   template?: string,
+ *   // Forum thread fields (Phase 4H):
+ *   applied_tags?: string[]
  * }
  */
 export default async (request: RoboRequest) => {
@@ -61,6 +71,35 @@ export default async (request: RoboRequest) => {
 		type: channel.type,
 		parent_id: channel.parentId,
 		message_count: messageCount
+	}
+
+	// Phase 4H: Include forum channel fields
+	if (channel.type === 15 || channel.type === 16) {
+		const forumChannel = channel as MockForumChannel
+		result.topic = forumChannel.topic
+		result.available_tags = forumChannel.available_tags.map((tag) => ({
+			id: tag.id,
+			name: tag.name,
+			moderated: tag.moderated,
+			emoji_id: tag.emoji_id,
+			emoji_name: tag.emoji_name
+		}))
+		result.default_auto_archive_duration = forumChannel.default_auto_archive_duration
+		result.default_thread_rate_limit_per_user = forumChannel.default_thread_rate_limit_per_user
+		result.default_sort_order = forumChannel.default_sort_order
+		result.default_forum_layout = forumChannel.default_forum_layout
+		result.default_reaction_emoji = forumChannel.default_reaction_emoji
+		result.template = forumChannel.template
+	}
+
+	// Phase 4H: Include forum thread fields
+	if (channel.type === 10 || channel.type === 11 || channel.type === 12) {
+		// Check if this thread belongs to a forum channel
+		const parentChannel = session.state.getChannel(channel.parentId!)
+		if (parentChannel && (parentChannel.type === 15 || parentChannel.type === 16)) {
+			const forumThread = channel as unknown as MockForumThread
+			result.applied_tags = forumThread.applied_tags ?? []
+		}
 	}
 
 	// Include messages if requested

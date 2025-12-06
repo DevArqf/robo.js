@@ -7,6 +7,9 @@ import { parseMockToken } from '../../../../../utils/id.js'
  * PUT /api/v10/channels/:id/thread-members/:userId - Add a user to a thread
  * DELETE /api/v10/channels/:id/thread-members/:userId - Remove a user from a thread
  *
+ * Query params (GET only):
+ * - with_member?: boolean - Include guild member object
+ *
  * Response:
  * - GET: ThreadMember object
  * - PUT/DELETE: 204 No Content on success
@@ -61,12 +64,40 @@ export default async (request: RoboRequest) => {
 			})
 		}
 
-		return {
+		// Parse query params for with_member
+		const url = new URL(request.url)
+		const withMember = url.searchParams.get('with_member') === 'true'
+
+		const result: Record<string, unknown> = {
 			id: threadId,
 			user_id: userId,
 			join_timestamp: member.join_timestamp,
 			flags: member.flags
 		}
+
+		// Include guild member if with_member=true
+		if (withMember && thread.guildId) {
+			const user = session.state.getUser(userId)
+			if (user) {
+				result.member = {
+					user: {
+						id: user.id,
+						username: user.username,
+						discriminator: user.discriminator,
+						global_name: user.globalName,
+						avatar: user.avatar,
+						bot: user.bot || undefined
+					},
+					roles: [],
+					joined_at: member.join_timestamp,
+					deaf: false,
+					mute: false,
+					flags: 0
+				}
+			}
+		}
+
+		return result
 	} else if (request.method === 'PUT') {
 		// 5b. Add member
 		const member = session.state.addThreadMember(threadId, userId)

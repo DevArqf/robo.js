@@ -10,6 +10,8 @@ import type {
 	MockInteraction,
 	MockInteractionOption,
 	MockThread,
+	MockRole,
+	MockGuildMember,
 	DispatchSlashCommandOptions,
 	DispatchButtonClickOptions,
 	DispatchSelectMenuOptions,
@@ -42,6 +44,12 @@ import {
 	buildThreadMembersUpdatePayload,
 	buildMessagePollVoteAddPayload,
 	buildMessagePollVoteRemovePayload,
+	buildGuildStickersUpdatePayload,
+	buildGuildEmojisUpdatePayload,
+	buildGuildRoleCreatePayload,
+	buildGuildRoleUpdatePayload,
+	buildGuildRoleDeletePayload,
+	buildGuildMemberUpdatePayload,
 	type GatewayPayload
 } from '../discord/payloads.js'
 
@@ -59,6 +67,7 @@ export class Session implements ISession {
 	readonly expiresAt: number
 	readonly state: MockServerState
 	readonly connections: Map<string, ConnectionState>
+	readonly config?: SessionConfig
 
 	private readonly recorder: ActionRecorder
 	private ending = false
@@ -71,6 +80,7 @@ export class Session implements ISession {
 		this.createdAt = Date.now()
 		this.expiresAt = this.createdAt + (options?.ttl ?? DEFAULT_TTL)
 		this.connections = new Map()
+		this.config = options?.config
 
 		// Initialize action recorder with optional max actions
 		this.recorder = new ActionRecorder(options?.config?.maxActions ?? 10000)
@@ -1194,6 +1204,172 @@ export class Session implements ISession {
 		mockLogger.debug(`Session ${this.id} dispatched thread list sync: ${threads.length} threads`)
 	}
 
+	// ============================================================================
+	// Sticker Events (Phase 4I)
+	// ============================================================================
+
+	/**
+	 * Dispatch GUILD_STICKERS_UPDATE event when stickers change
+	 *
+	 * @param guildId - The guild whose stickers changed
+	 */
+	async dispatchGuildStickersUpdate(guildId: string): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		// Get current guild stickers
+		const stickers = this.state.getGuildStickers(guildId)
+
+		// Build payload
+		const payload = buildGuildStickersUpdatePayload({
+			guildId,
+			stickers,
+			sequence: 0
+		})
+
+		// Dispatch to connections
+		await this.dispatch('GUILD_STICKERS_UPDATE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched guild stickers update: ${stickers.length} stickers`)
+	}
+
+	// ============================================================================
+	// Emoji Events (Phase 4K)
+	// ============================================================================
+
+	/**
+	 * Dispatch GUILD_EMOJIS_UPDATE event when emojis change
+	 *
+	 * @param guildId - The guild whose emojis changed
+	 */
+	async dispatchGuildEmojisUpdate(guildId: string): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		// Get current guild emojis
+		const emojis = this.state.getGuildEmojis(guildId)
+
+		// Build payload
+		const payload = buildGuildEmojisUpdatePayload({
+			guildId,
+			emojis,
+			sequence: 0
+		})
+
+		// Dispatch to connections
+		await this.dispatch('GUILD_EMOJIS_UPDATE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched guild emojis update: ${emojis.length} emojis`)
+	}
+
+	// ============================================================================
+	// Role Event Dispatching (Phase 4L)
+	// ============================================================================
+
+	/**
+	 * Dispatch GUILD_ROLE_CREATE event when a role is created
+	 *
+	 * @param guildId - The guild where the role was created
+	 * @param role - The created role
+	 */
+	async dispatchGuildRoleCreate(guildId: string, role: MockRole): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		// Build payload
+		const payload = buildGuildRoleCreatePayload({
+			guildId,
+			role,
+			sequence: 0
+		})
+
+		// Dispatch to connections
+		await this.dispatch('GUILD_ROLE_CREATE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched role create: ${role.name} in guild ${guildId}`)
+	}
+
+	/**
+	 * Dispatch GUILD_ROLE_UPDATE event when a role is updated
+	 *
+	 * @param guildId - The guild where the role was updated
+	 * @param role - The updated role
+	 */
+	async dispatchGuildRoleUpdate(guildId: string, role: MockRole): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		// Build payload
+		const payload = buildGuildRoleUpdatePayload({
+			guildId,
+			role,
+			sequence: 0
+		})
+
+		// Dispatch to connections
+		await this.dispatch('GUILD_ROLE_UPDATE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched role update: ${role.name} in guild ${guildId}`)
+	}
+
+	/**
+	 * Dispatch GUILD_ROLE_DELETE event when a role is deleted
+	 *
+	 * @param guildId - The guild where the role was deleted
+	 * @param roleId - The ID of the deleted role
+	 */
+	async dispatchGuildRoleDelete(guildId: string, roleId: string): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		// Build payload
+		const payload = buildGuildRoleDeletePayload({
+			guildId,
+			roleId,
+			sequence: 0
+		})
+
+		// Dispatch to connections
+		await this.dispatch('GUILD_ROLE_DELETE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched role delete: ${roleId} in guild ${guildId}`)
+	}
+
+	// ============================================================================
+	// Guild Member Event Dispatching (Phase 4L)
+	// ============================================================================
+
+	/**
+	 * Dispatch GUILD_MEMBER_UPDATE event when a member is updated
+	 *
+	 * @param guildId - The guild where the member was updated
+	 * @param member - The updated member
+	 * @param user - The user associated with the member
+	 */
+	async dispatchGuildMemberUpdate(guildId: string, member: MockGuildMember, user: MockUser): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		// Build payload
+		const payload = buildGuildMemberUpdatePayload({
+			guildId,
+			member,
+			user,
+			sequence: 0
+		})
+
+		// Dispatch to connections
+		await this.dispatch('GUILD_MEMBER_UPDATE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched member update: ${user.username} in guild ${guildId}`)
+	}
+
 	/**
 	 * Record an action from the bot (REST API call, Gateway message, etc.)
 	 */
@@ -1399,6 +1575,7 @@ export class Session implements ISession {
 			if (thread) {
 				const payload = buildThreadUpdatePayload({
 					thread,
+					sessionState: this.state,
 					sequence: this.state.nextSequence()
 				})
 				await this.dispatch('THREAD_UPDATE', payload.d)

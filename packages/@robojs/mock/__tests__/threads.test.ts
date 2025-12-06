@@ -583,12 +583,35 @@ describe('Phase 4D: Thread Support', () => {
 				expect(apiChannel.thread_metadata.locked).toBe(false)
 				expect(apiChannel.thread_metadata.auto_archive_duration).toBe(1440)
 			})
+
+			it('should include member field when currentUserMember is provided', () => {
+				const memberData = {
+					id: thread.id,
+					user_id: sessionState.botUser.id,
+					join_timestamp: new Date().toISOString(),
+					flags: 0
+				}
+				const apiChannel = mockThreadToAPIChannel(thread, memberData) as any
+
+				expect(apiChannel.member).toBeDefined()
+				expect(apiChannel.member.id).toBe(thread.id)
+				expect(apiChannel.member.user_id).toBe(sessionState.botUser.id)
+				expect(apiChannel.member.join_timestamp).toBe(memberData.join_timestamp)
+				expect(apiChannel.member.flags).toBe(0)
+			})
+
+			it('should not include member field when currentUserMember is undefined', () => {
+				const apiChannel = mockThreadToAPIChannel(thread) as any
+
+				expect(apiChannel.member).toBeUndefined()
+			})
 		})
 
 		describe('buildThreadCreatePayload', () => {
 			it('should build THREAD_CREATE payload', () => {
 				const payload = buildThreadCreatePayload({
 					thread,
+					sessionState,
 					sequence: 5,
 					newlyCreated: true
 				})
@@ -603,6 +626,7 @@ describe('Phase 4D: Thread Support', () => {
 			it('should set newly_created to false when not new', () => {
 				const payload = buildThreadCreatePayload({
 					thread,
+					sessionState,
 					sequence: 5,
 					newlyCreated: false
 				})
@@ -615,6 +639,7 @@ describe('Phase 4D: Thread Support', () => {
 			it('should build THREAD_UPDATE payload', () => {
 				const payload = buildThreadUpdatePayload({
 					thread,
+					sessionState,
 					sequence: 6
 				})
 

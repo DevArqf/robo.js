@@ -70,6 +70,8 @@ describe('Phase 4F: Components V2', () => {
 			expect(ComponentsV2Limits.MAX_TEXT_LENGTH).toBe(4000)
 			expect(ComponentsV2Limits.MAX_MEDIA_GALLERY_ITEMS).toBe(10)
 			expect(ComponentsV2Limits.MAX_SECTION_TEXT_COMPONENTS).toBe(3)
+			expect(ComponentsV2Limits.MIN_SECTION_TEXT_COMPONENTS).toBe(1)
+			expect(ComponentsV2Limits.MAX_MEDIA_DESCRIPTION_LENGTH).toBe(1024)
 		})
 	})
 
@@ -152,14 +154,15 @@ describe('Phase 4F: Components V2', () => {
 				expect(result.errors).toHaveLength(0)
 			})
 
-			it('should accept valid File component', () => {
+			it('should accept valid File component with attachment:// URL', () => {
+				const attachmentFilenames = new Set(['document.pdf'])
 				const components = [
 					{
 						type: ComponentTypeV2.File,
-						file: { url: 'https://example.com/document.pdf' }
+						file: { url: 'attachment://document.pdf' }
 					}
 				]
-				const result = validateComponentsV2(components)
+				const result = validateComponentsV2(components, attachmentFilenames)
 				expect(result.valid).toBe(true)
 				expect(result.errors).toHaveLength(0)
 			})
@@ -503,6 +506,156 @@ describe('Phase 4F: Components V2', () => {
 				// 39 + 1 section + 1 text in section + 1 accessory = 42
 				const result = validateComponentsV2([...textDisplays, section])
 				expect(result.valid).toBe(false)
+			})
+		})
+
+		describe('TextDisplay required fields', () => {
+			it('should reject TextDisplay without content', () => {
+				const components = [
+					{
+						type: ComponentTypeV2.TextDisplay
+						// Missing content
+					}
+				]
+				const result = validateComponentsV2(components)
+				expect(result.valid).toBe(false)
+				expect(result.errors.some((e) => e.includes('requires content'))).toBe(true)
+			})
+
+			it('should reject TextDisplay with empty content', () => {
+				const components = [
+					{
+						type: ComponentTypeV2.TextDisplay,
+						content: ''
+					}
+				]
+				const result = validateComponentsV2(components)
+				expect(result.valid).toBe(false)
+				expect(result.errors.some((e) => e.includes('requires content'))).toBe(true)
+			})
+		})
+
+		describe('Section required fields', () => {
+			it('should reject Section without components', () => {
+				const components = [
+					{
+						type: ComponentTypeV2.Section
+						// Missing components array
+					}
+				]
+				const result = validateComponentsV2(components)
+				expect(result.valid).toBe(false)
+				expect(result.errors.some((e) => e.includes('requires at least 1'))).toBe(true)
+			})
+
+			it('should reject Section with empty components array', () => {
+				const components = [
+					{
+						type: ComponentTypeV2.Section,
+						components: []
+					}
+				]
+				const result = validateComponentsV2(components)
+				expect(result.valid).toBe(false)
+				expect(result.errors.some((e) => e.includes('requires at least 1'))).toBe(true)
+			})
+		})
+
+		describe('File component required fields', () => {
+			it('should reject File without file field', () => {
+				const components = [
+					{
+						type: ComponentTypeV2.File
+						// Missing file field
+					}
+				]
+				const result = validateComponentsV2(components)
+				expect(result.valid).toBe(false)
+				expect(result.errors.some((e) => e.includes('requires file field'))).toBe(true)
+			})
+
+			it('should reject File without file.url', () => {
+				const components = [
+					{
+						type: ComponentTypeV2.File,
+						file: {}
+					}
+				]
+				const result = validateComponentsV2(components)
+				expect(result.valid).toBe(false)
+				expect(result.errors.some((e) => e.includes('requires file.url'))).toBe(true)
+			})
+
+			it('should reject File with https:// URL (only attachment:// allowed)', () => {
+				const components = [
+					{
+						type: ComponentTypeV2.File,
+						file: { url: 'https://example.com/file.pdf' }
+					}
+				]
+				const result = validateComponentsV2(components)
+				expect(result.valid).toBe(false)
+				expect(result.errors.some((e) => e.includes('only supports attachment://'))).toBe(true)
+			})
+		})
+
+		describe('Description length limits', () => {
+			it('should reject MediaGallery item with description > 1024 chars', () => {
+				const components = [
+					{
+						type: ComponentTypeV2.MediaGallery,
+						items: [
+							{
+								media: { url: 'https://example.com/image.png' },
+								description: 'x'.repeat(1025)
+							}
+						]
+					}
+				]
+				const result = validateComponentsV2(components)
+				expect(result.valid).toBe(false)
+				expect(result.errors.some((e) => e.includes('description exceeds 1024'))).toBe(true)
+			})
+
+			it('should accept MediaGallery item with description exactly 1024 chars', () => {
+				const components = [
+					{
+						type: ComponentTypeV2.MediaGallery,
+						items: [
+							{
+								media: { url: 'https://example.com/image.png' },
+								description: 'x'.repeat(1024)
+							}
+						]
+					}
+				]
+				const result = validateComponentsV2(components)
+				expect(result.valid).toBe(true)
+			})
+
+			it('should reject Thumbnail with description > 1024 chars', () => {
+				const components = [
+					{
+						type: ComponentTypeV2.Thumbnail,
+						media: { url: 'https://example.com/thumb.png' },
+						description: 'x'.repeat(1025)
+					}
+				]
+				const result = validateComponentsV2(components)
+				expect(result.valid).toBe(false)
+				expect(result.errors.some((e) => e.includes('description exceeds 1024'))).toBe(true)
+			})
+
+			it('should accept Thumbnail with description exactly 1024 chars', () => {
+				const components = [
+					{
+						type: ComponentTypeV2.Thumbnail,
+						media: { url: 'https://example.com/thumb.png' },
+						description: 'x'.repeat(1024)
+					}
+				]
+				const result = validateComponentsV2(components)
+				expect(result.valid).toBe(true)
 			})
 		})
 

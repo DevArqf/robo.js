@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto'
 import { ChannelType, type Snowflake } from 'discord-api-types/v10'
 import type {
 	SessionState,
@@ -26,9 +27,39 @@ import type {
 	MockPoll,
 	MockPollConfig,
 	MockPollAnswer,
-	MockPollResults
+	MockPollResults,
+	// Phase 4H: Forum & Media Channels
+	MockForumChannel,
+	MockForumChannelConfig,
+	MockForumTag,
+	MockForumThread,
+	MockForumPostConfig,
+	SerializedMockForumChannel,
+	SerializedMockForumTag,
+	SerializedMockForumThread,
+	// Phase 4I: Stickers
+	MockSticker,
+	MockStickerConfig,
+	// Phase 4J: Webhooks
+	MockWebhook,
+	MockWebhookConfig,
+	SerializedMockWebhook,
+	// Phase 4K: Emojis
+	MockEmoji,
+	MockEmojiConfig,
+	// Phase 4L: Roles & Permissions
+	MockRole,
+	MockRoleConfig,
+	MockGuildMember,
+	MockGuildMemberConfig,
+	MockChannelOverwrite,
+	SerializedMockRole,
+	SerializedMockGuildMember,
+	// Phase 4M: Application Commands
+	MockApplicationCommand,
+	MockApplicationCommandConfig
 } from '../types/index.js'
-import { ComponentsV2Limits, ComponentTypeV2, PollLayoutType } from '../types/index.js'
+import { ComponentsV2Limits, ComponentTypeV2, PollLayoutType, ForumLayoutType, ForumSortOrderType, StickerType, StickerFormatType, StickerLimits, WebhookType, WebhookLimits, EmojiLimits, RoleLimits, ApplicationCommandType, CommandLimits } from '../types/index.js'
 import { generateSnowflake } from '../utils/snowflake.js'
 import { MemoryAttachmentStorage, type AttachmentStorage, type StorageConfig, createStorage } from '../storage/attachment-storage.js'
 
@@ -61,6 +92,12 @@ export class MockServerState implements SessionState {
 	readonly interactions: Map<Snowflake, MockInteraction>
 	readonly threadMembers: Map<Snowflake, Map<Snowflake, MockThreadMember>> // threadId -> userId -> member
 	readonly pollVotes: Map<Snowflake, Map<Snowflake, number[]>> // Phase 4G: messageId -> userId -> answerIds[]
+	readonly stickers: Map<Snowflake, MockSticker> // Phase 4I: stickerId -> sticker
+	readonly webhooks: Map<Snowflake, MockWebhook> // Phase 4J: webhookId -> webhook
+	readonly emojis: Map<Snowflake, MockEmoji> // Phase 4K: emojiId -> emoji
+	readonly roles: Map<Snowflake, MockRole> // Phase 4L: roleId -> role
+	readonly guildMembers: Map<string, MockGuildMember> // Phase 4L: `${guildId}:${userId}` -> member
+	readonly commands: Map<Snowflake, MockApplicationCommand> // Phase 4M: commandId -> command
 	readonly botUser: MockUser
 	readonly applicationId: Snowflake
 
@@ -84,6 +121,7 @@ export class MockServerState implements SessionState {
 	private readonly maxMessages: number
 	private readonly maxInteractions: number
 	private readonly interactionsByToken: Map<string, Snowflake>
+	private readonly webhooksByToken: Map<string, Snowflake> // Phase 4J: token -> webhookId
 
 	constructor(options?: StateOptions) {
 		this.guilds = new Map()
@@ -94,7 +132,14 @@ export class MockServerState implements SessionState {
 		this.interactions = new Map()
 		this.threadMembers = new Map()
 		this.pollVotes = new Map()
+		this.stickers = new Map()
+		this.webhooks = new Map()
+		this.emojis = new Map()
+		this.roles = new Map()
+		this.guildMembers = new Map()
+		this.commands = new Map()
 		this.interactionsByToken = new Map()
+		this.webhooksByToken = new Map()
 		this.maxMessages = options?.maxMessages ?? DEFAULT_MAX_MESSAGES
 		this.maxInteractions = DEFAULT_MAX_INTERACTIONS
 
@@ -341,6 +386,19 @@ export class MockServerState implements SessionState {
 		}
 
 		const message = createMockMessage(config)
+
+		// Phase 4I: Resolve sticker_ids to sticker_items
+		if (config.sticker_ids?.length) {
+			message.sticker_items = config.sticker_ids
+				.map((id) => this.stickers.get(id))
+				.filter((s): s is MockSticker => s !== undefined)
+				.map((s) => ({
+					id: s.id,
+					name: s.name,
+					format_type: s.format_type
+				}))
+		}
+
 		this.messages.set(message.id, message)
 		return message
 	}
@@ -812,6 +870,312 @@ export class MockServerState implements SessionState {
 	}
 
 	// ============================================================================
+	// Forum & Media Channel Operations (Phase 4H)
+	// ============================================================================
+
+	/**
+	 * Check if a channel is a forum or media channel (type 15 or 16)
+	 */
+	isForumChannel(channelId: Snowflake): boolean {
+		const channel = this.channels.get(channelId)
+		return channel?.type === 15 || channel?.type === 16
+	}
+
+	/**
+	 * Get a forum channel by ID (returns undefined if not a forum/media channel)
+	 */
+	getForumChannel(id: Snowflake): MockForumChannel | undefined {
+		const channel = this.channels.get(id)
+		if (channel && (channel.type === 15 || channel.type === 16)) {
+			return channel as MockForumChannel
+		}
+		return undefined
+	}
+
+	/**
+	 * Get all forum/media channels in a guild
+	 */
+	getForumChannelsForGuild(guildId: Snowflake): MockForumChannel[] {
+		const forumChannels: MockForumChannel[] = []
+		for (const channel of this.channels.values()) {
+			if ((channel.type === 15 || channel.type === 16) && channel.guildId === guildId) {
+				forumChannels.push(channel as MockForumChannel)
+			}
+		}
+		return forumChannels
+	}
+
+	/**
+	 * Create a forum or media channel
+	 */
+	createForumChannel(config: MockForumChannelConfig): MockForumChannel {
+		const channel = createMockForumChannel(config)
+
+		// Set guild ID if provided
+		if (config.guildId) {
+			channel.guildId = config.guildId
+
+			// Add to guild's channel list
+			const guild = this.guilds.get(config.guildId)
+			if (guild && !guild.channels.includes(channel.id)) {
+				guild.channels.push(channel.id)
+			}
+		}
+
+		// Store in channels map
+		this.channels.set(channel.id, channel)
+
+		return channel
+	}
+
+	/**
+	 * Add a tag to a forum channel
+	 */
+	addForumTag(
+		channelId: Snowflake,
+		tag: Omit<MockForumTag, 'id'>
+	): MockForumTag | undefined {
+		const channel = this.getForumChannel(channelId)
+		if (!channel) {
+			return undefined
+		}
+
+		// Max 20 tags per forum channel
+		if (channel.available_tags.length >= 20) {
+			return undefined
+		}
+
+		// Validate tag name length
+		if (tag.name.length > 20) {
+			return undefined
+		}
+
+		const newTag: MockForumTag = {
+			id: generateSnowflake(),
+			...tag
+		}
+
+		channel.available_tags.push(newTag)
+		return newTag
+	}
+
+	/**
+	 * Remove a tag from a forum channel
+	 */
+	removeForumTag(channelId: Snowflake, tagId: Snowflake): boolean {
+		const channel = this.getForumChannel(channelId)
+		if (!channel) {
+			return false
+		}
+
+		const index = channel.available_tags.findIndex((t) => t.id === tagId)
+		if (index === -1) {
+			return false
+		}
+
+		channel.available_tags.splice(index, 1)
+		return true
+	}
+
+	/**
+	 * Update a tag in a forum channel
+	 */
+	updateForumTag(
+		channelId: Snowflake,
+		tagId: Snowflake,
+		updates: Partial<Omit<MockForumTag, 'id'>>
+	): MockForumTag | undefined {
+		const channel = this.getForumChannel(channelId)
+		if (!channel) {
+			return undefined
+		}
+
+		const tag = channel.available_tags.find((t) => t.id === tagId)
+		if (!tag) {
+			return undefined
+		}
+
+		// Validate name length if being updated
+		if (updates.name !== undefined && updates.name.length > 20) {
+			return undefined
+		}
+
+		// Apply updates
+		if (updates.name !== undefined) tag.name = updates.name
+		if (updates.moderated !== undefined) tag.moderated = updates.moderated
+		if (updates.emoji_id !== undefined) tag.emoji_id = updates.emoji_id
+		if (updates.emoji_name !== undefined) tag.emoji_name = updates.emoji_name
+
+		return tag
+	}
+
+	/**
+	 * Check if a thread is a forum thread (has applied_tags)
+	 */
+	isForumThread(threadId: Snowflake): boolean {
+		const thread = this.getThread(threadId)
+		if (!thread) return false
+
+		const parent = this.channels.get(thread.parentId)
+		return parent?.type === 15 || parent?.type === 16
+	}
+
+	/**
+	 * Get a forum thread by ID (returns undefined if not a forum thread)
+	 */
+	getForumThread(id: Snowflake): MockForumThread | undefined {
+		const thread = this.getThread(id)
+		if (!thread) return undefined
+
+		const parent = this.channels.get(thread.parentId)
+		if (parent?.type !== 15 && parent?.type !== 16) {
+			return undefined
+		}
+
+		// Cast to forum thread - it should have applied_tags
+		return thread as unknown as MockForumThread
+	}
+
+	/**
+	 * Create a forum post (thread with initial message)
+	 */
+	createForumPost(config: MockForumPostConfig): { thread: MockForumThread; message: MockMessage } {
+		const forumChannel = this.getForumChannel(config.parentId)
+		if (!forumChannel) {
+			throw new Error(`Forum channel not found: ${config.parentId}`)
+		}
+
+		// Validate applied_tags (max 5, must exist in forum's available_tags)
+		const appliedTags = config.applied_tags ?? []
+		if (appliedTags.length > 5) {
+			throw new Error('Forum posts can have at most 5 tags')
+		}
+
+		const validTagIds = new Set(forumChannel.available_tags.map((t) => t.id))
+		for (const tagId of appliedTags) {
+			if (!validTagIds.has(tagId)) {
+				throw new Error(`Invalid tag ID: ${tagId}`)
+			}
+		}
+
+		// Create the thread using the existing thread creation
+		const ownerId = config.ownerId ?? this.botUser.id
+		const threadType = 11 as const // Forum posts are always public threads
+
+		const baseThread = createMockThread({
+			name: config.name,
+			type: threadType,
+			parentId: config.parentId,
+			ownerId,
+			autoArchiveDuration: config.autoArchiveDuration ?? forumChannel.default_auto_archive_duration ?? 1440
+		})
+
+		// Convert to forum thread with applied_tags
+		const thread: MockForumThread = {
+			...baseThread,
+			applied_tags: appliedTags
+		}
+
+		// Set guild ID from forum channel
+		if (forumChannel.guildId) {
+			thread.guildId = forumChannel.guildId
+
+			// Add to guild's channel list
+			const guild = this.guilds.get(forumChannel.guildId)
+			if (guild && !guild.channels.includes(thread.id)) {
+				guild.channels.push(thread.id)
+			}
+		}
+
+		// Store in channels map
+		this.channels.set(thread.id, thread)
+
+		// Initialize thread members
+		const membersMap = new Map<Snowflake, MockThreadMember>()
+		const ownerMember: MockThreadMember = {
+			id: thread.id,
+			user_id: ownerId,
+			join_timestamp: new Date().toISOString(),
+			flags: 0
+		}
+		membersMap.set(ownerId, ownerMember)
+		this.threadMembers.set(thread.id, membersMap)
+
+		// Create the initial message
+		const message = this.createMessage({
+			channelId: thread.id,
+			guildId: thread.guildId,
+			authorId: ownerId,
+			content: config.message.content,
+			embeds: config.message.embeds,
+			components: config.message.components,
+			attachments: config.message.attachments as MockAttachment[]
+		})
+
+		// Update thread message counts
+		thread.messageCount = 1
+		thread.totalMessageSent = 1
+		thread.lastMessageId = message.id
+
+		return { thread, message }
+	}
+
+	/**
+	 * Update applied tags on a forum thread
+	 */
+	updateForumThreadTags(threadId: Snowflake, appliedTags: Snowflake[]): MockForumThread | undefined {
+		const thread = this.getForumThread(threadId)
+		if (!thread) {
+			return undefined
+		}
+
+		const forumChannel = this.getForumChannel(thread.parentId)
+		if (!forumChannel) {
+			return undefined
+		}
+
+		// Validate tags
+		if (appliedTags.length > 5) {
+			return undefined
+		}
+
+		const validTagIds = new Set(forumChannel.available_tags.map((t) => t.id))
+		for (const tagId of appliedTags) {
+			if (!validTagIds.has(tagId)) {
+				return undefined
+			}
+		}
+
+		thread.applied_tags = appliedTags
+		return thread
+	}
+
+	/**
+	 * Get posts (threads) in a forum channel
+	 */
+	getForumPosts(forumChannelId: Snowflake, options?: { archived?: boolean }): MockForumThread[] {
+		const forumChannel = this.getForumChannel(forumChannelId)
+		if (!forumChannel) {
+			return []
+		}
+
+		const posts: MockForumThread[] = []
+		for (const channel of this.channels.values()) {
+			if (
+				(channel.type === 10 || channel.type === 11 || channel.type === 12) &&
+				channel.parentId === forumChannelId
+			) {
+				const thread = channel as MockThread
+				if (options?.archived === undefined || thread.threadMetadata.archived === options.archived) {
+					// Cast to forum thread
+					posts.push(thread as unknown as MockForumThread)
+				}
+			}
+		}
+		return posts
+	}
+
+	// ============================================================================
 	// Poll Operations (Phase 4G)
 	// ============================================================================
 
@@ -1009,6 +1373,1127 @@ export class MockServerState implements SessionState {
 	}
 
 	// ============================================================================
+	// Sticker Operations (Phase 4I)
+	// ============================================================================
+
+	/**
+	 * Get a sticker by ID
+	 */
+	getSticker(stickerId: Snowflake): MockSticker | undefined {
+		return this.stickers.get(stickerId)
+	}
+
+	/**
+	 * Get all stickers for a guild
+	 */
+	getGuildStickers(guildId: Snowflake): MockSticker[] {
+		const guild = this.guilds.get(guildId)
+		if (!guild) {
+			return []
+		}
+		return guild.stickers
+			.map((id) => this.stickers.get(id))
+			.filter((s): s is MockSticker => s !== undefined)
+	}
+
+	/**
+	 * Create a guild sticker
+	 * @returns The created sticker, or null if guild doesn't exist or limit reached
+	 */
+	createGuildSticker(guildId: Snowflake, config: MockStickerConfig, uploaderId: Snowflake): MockSticker | null {
+		const guild = this.guilds.get(guildId)
+		if (!guild) {
+			return null
+		}
+
+		// Check guild sticker limit
+		if (guild.stickers.length >= StickerLimits.MAX_GUILD_STICKERS) {
+			return null
+		}
+
+		// Validate name length (2-30 characters)
+		if (config.name.length < StickerLimits.MIN_NAME_LENGTH || config.name.length > StickerLimits.MAX_NAME_LENGTH) {
+			return null
+		}
+
+		// Validate description length (empty or 2-100 characters)
+		if (config.description && config.description.length > 0 && config.description.length < StickerLimits.MIN_DESCRIPTION_LENGTH) {
+			return null
+		}
+		if (config.description && config.description.length > StickerLimits.MAX_DESCRIPTION_LENGTH) {
+			return null
+		}
+
+		// Validate tags length (2-200 characters)
+		if (config.tags.length < StickerLimits.MIN_TAGS_LENGTH || config.tags.length > StickerLimits.MAX_TAGS_LENGTH) {
+			return null
+		}
+
+		const uploader = this.users.get(uploaderId)
+		const sticker: MockSticker = {
+			id: config.id ?? generateSnowflake(),
+			name: config.name,
+			description: config.description ?? null,
+			tags: config.tags,
+			type: StickerType.Guild,
+			format_type: config.format_type ?? StickerFormatType.PNG,
+			available: true,
+			guild_id: guildId,
+			user: uploader
+		}
+
+		this.stickers.set(sticker.id, sticker)
+		guild.stickers.push(sticker.id)
+
+		return sticker
+	}
+
+	/**
+	 * Update a guild sticker
+	 * @returns The updated sticker, or null if not found
+	 */
+	updateGuildSticker(
+		stickerId: Snowflake,
+		updates: { name?: string; description?: string; tags?: string }
+	): MockSticker | null {
+		const sticker = this.stickers.get(stickerId)
+		if (!sticker || sticker.type !== StickerType.Guild) {
+			return null
+		}
+
+		// Validate name length (2-30 characters)
+		if (updates.name !== undefined) {
+			if (updates.name.length < StickerLimits.MIN_NAME_LENGTH || updates.name.length > StickerLimits.MAX_NAME_LENGTH) {
+				return null
+			}
+			sticker.name = updates.name
+		}
+
+		// Validate description length (empty or 2-100 characters)
+		if (updates.description !== undefined) {
+			if (updates.description.length > 0 && updates.description.length < StickerLimits.MIN_DESCRIPTION_LENGTH) {
+				return null
+			}
+			if (updates.description.length > StickerLimits.MAX_DESCRIPTION_LENGTH) {
+				return null
+			}
+			sticker.description = updates.description
+		}
+
+		// Validate tags length (2-200 characters)
+		if (updates.tags !== undefined) {
+			if (updates.tags.length < StickerLimits.MIN_TAGS_LENGTH || updates.tags.length > StickerLimits.MAX_TAGS_LENGTH) {
+				return null
+			}
+			sticker.tags = updates.tags
+		}
+
+		return sticker
+	}
+
+	/**
+	 * Delete a guild sticker
+	 * @returns true if deleted, false if not found
+	 */
+	deleteGuildSticker(stickerId: Snowflake): boolean {
+		const sticker = this.stickers.get(stickerId)
+		if (!sticker || sticker.type !== StickerType.Guild || !sticker.guild_id) {
+			return false
+		}
+
+		// Remove from guild's sticker list
+		const guild = this.guilds.get(sticker.guild_id)
+		if (guild) {
+			const index = guild.stickers.indexOf(stickerId)
+			if (index !== -1) {
+				guild.stickers.splice(index, 1)
+			}
+		}
+
+		// Remove from stickers map
+		this.stickers.delete(stickerId)
+		return true
+	}
+
+	// ============================================================================
+	// Webhook Operations (Phase 4J)
+	// ============================================================================
+
+	/**
+	 * Generate a secure webhook token (68 characters like Discord's format)
+	 */
+	private generateWebhookToken(): string {
+		// Discord webhook tokens are approximately 68 characters, base64-like
+		return randomBytes(51).toString('base64url')
+	}
+
+	/**
+	 * Get a webhook by ID
+	 */
+	getWebhook(webhookId: Snowflake): MockWebhook | undefined {
+		return this.webhooks.get(webhookId)
+	}
+
+	/**
+	 * Get a webhook by its token
+	 */
+	getWebhookByToken(token: string): MockWebhook | undefined {
+		const webhookId = this.webhooksByToken.get(token)
+		if (!webhookId) {
+			return undefined
+		}
+		return this.webhooks.get(webhookId)
+	}
+
+	/**
+	 * Get all webhooks for a channel
+	 */
+	getWebhooksForChannel(channelId: Snowflake): MockWebhook[] {
+		return Array.from(this.webhooks.values()).filter((w) => w.channel_id === channelId)
+	}
+
+	/**
+	 * Get all webhooks for a guild
+	 */
+	getWebhooksForGuild(guildId: Snowflake): MockWebhook[] {
+		return Array.from(this.webhooks.values()).filter((w) => w.guild_id === guildId)
+	}
+
+	/**
+	 * Create a webhook
+	 * @returns The created webhook, or null if channel doesn't exist or limit reached
+	 */
+	createWebhook(channelId: Snowflake, config: MockWebhookConfig, creatorId: Snowflake): MockWebhook | null {
+		const channel = this.channels.get(channelId)
+		if (!channel) {
+			return null
+		}
+
+		// Check channel webhook limit
+		const channelWebhooks = this.getWebhooksForChannel(channelId)
+		if (channelWebhooks.length >= WebhookLimits.MAX_WEBHOOKS_PER_CHANNEL) {
+			return null
+		}
+
+		// Validate name
+		if (!config.name || config.name.length < WebhookLimits.MIN_NAME_LENGTH || config.name.length > WebhookLimits.MAX_NAME_LENGTH) {
+			return null
+		}
+
+		const creator = this.users.get(creatorId)
+		const webhookId = config.id ?? generateSnowflake()
+		const token = this.generateWebhookToken()
+
+		const webhook: MockWebhook = {
+			id: webhookId,
+			type: WebhookType.Incoming,
+			guild_id: channel.guildId,
+			channel_id: channelId,
+			user: creator,
+			name: config.name,
+			avatar: config.avatar ?? null,
+			token,
+			application_id: null
+		}
+
+		this.webhooks.set(webhookId, webhook)
+		this.webhooksByToken.set(token, webhookId)
+
+		return webhook
+	}
+
+	/**
+	 * Update a webhook
+	 * @returns The updated webhook, or null if not found
+	 */
+	updateWebhook(
+		webhookId: Snowflake,
+		updates: { name?: string; avatar?: string | null; channel_id?: Snowflake }
+	): MockWebhook | null {
+		const webhook = this.webhooks.get(webhookId)
+		if (!webhook) {
+			return null
+		}
+
+		// Validate name length
+		if (updates.name !== undefined) {
+			if (updates.name.length < WebhookLimits.MIN_NAME_LENGTH || updates.name.length > WebhookLimits.MAX_NAME_LENGTH) {
+				return null
+			}
+			webhook.name = updates.name
+		}
+
+		// Update avatar
+		if (updates.avatar !== undefined) {
+			webhook.avatar = updates.avatar
+		}
+
+		// Move to different channel
+		if (updates.channel_id !== undefined) {
+			const newChannel = this.channels.get(updates.channel_id)
+			if (!newChannel) {
+				return null // Target channel doesn't exist
+			}
+
+			// Check target channel webhook limit
+			const targetWebhooks = this.getWebhooksForChannel(updates.channel_id)
+			if (targetWebhooks.length >= WebhookLimits.MAX_WEBHOOKS_PER_CHANNEL) {
+				return null
+			}
+
+			webhook.channel_id = updates.channel_id
+			webhook.guild_id = newChannel.guildId
+		}
+
+		return webhook
+	}
+
+	/**
+	 * Delete a webhook
+	 * @returns true if deleted, false if not found
+	 */
+	deleteWebhook(webhookId: Snowflake): boolean {
+		const webhook = this.webhooks.get(webhookId)
+		if (!webhook) {
+			return false
+		}
+
+		// Remove from token lookup
+		if (webhook.token) {
+			this.webhooksByToken.delete(webhook.token)
+		}
+
+		// Remove from webhooks map
+		this.webhooks.delete(webhookId)
+		return true
+	}
+
+	// ============================================================================
+	// Emoji Operations (Phase 4K)
+	// ============================================================================
+
+	/**
+	 * Get an emoji by ID
+	 */
+	getEmoji(emojiId: Snowflake): MockEmoji | undefined {
+		return this.emojis.get(emojiId)
+	}
+
+	/**
+	 * Get all emojis for a guild
+	 */
+	getGuildEmojis(guildId: Snowflake): MockEmoji[] {
+		const guild = this.guilds.get(guildId)
+		if (!guild) {
+			return []
+		}
+		return guild.emojis
+			.map((id) => this.emojis.get(id))
+			.filter((e): e is MockEmoji => e !== undefined)
+	}
+
+	/**
+	 * Create a guild emoji
+	 * @returns The created emoji, or null if guild doesn't exist or limit reached
+	 */
+	createGuildEmoji(guildId: Snowflake, config: MockEmojiConfig, uploaderId: Snowflake): MockEmoji | null {
+		const guild = this.guilds.get(guildId)
+		if (!guild) {
+			return null
+		}
+
+		// Check guild emoji limit
+		if (guild.emojis.length >= EmojiLimits.MAX_GUILD_EMOJIS) {
+			return null
+		}
+
+		// Validate name length
+		if (config.name.length < EmojiLimits.MIN_NAME_LENGTH || config.name.length > EmojiLimits.MAX_NAME_LENGTH) {
+			return null
+		}
+
+		// Validate name pattern (alphanumeric and underscores only)
+		if (!EmojiLimits.NAME_PATTERN.test(config.name)) {
+			return null
+		}
+
+		const uploader = this.users.get(uploaderId)
+		const emojiId = config.id ?? generateSnowflake()
+		const emoji: MockEmoji = {
+			id: emojiId,
+			name: config.name,
+			roles: config.roles ?? [],
+			user: uploader,
+			require_colons: true,
+			managed: false,
+			animated: config.animated ?? false,
+			available: true
+		}
+
+		this.emojis.set(emojiId, emoji)
+		guild.emojis.push(emojiId)
+
+		return emoji
+	}
+
+	/**
+	 * Update a guild emoji
+	 * @returns The updated emoji, or null if not found
+	 */
+	updateGuildEmoji(emojiId: Snowflake, updates: { name?: string; roles?: Snowflake[] }): MockEmoji | null {
+		const emoji = this.emojis.get(emojiId)
+		if (!emoji || !emoji.id) {
+			return null
+		}
+
+		// Validate name if provided
+		if (updates.name !== undefined) {
+			// Validate length
+			if (updates.name.length < EmojiLimits.MIN_NAME_LENGTH || updates.name.length > EmojiLimits.MAX_NAME_LENGTH) {
+				return null
+			}
+			// Validate pattern (alphanumeric and underscores only)
+			if (!EmojiLimits.NAME_PATTERN.test(updates.name)) {
+				return null
+			}
+			emoji.name = updates.name
+		}
+
+		// Update roles if provided
+		if (updates.roles !== undefined) {
+			emoji.roles = updates.roles
+		}
+
+		return emoji
+	}
+
+	/**
+	 * Delete a guild emoji
+	 * @returns true if deleted, false if not found
+	 */
+	deleteGuildEmoji(emojiId: Snowflake): boolean {
+		const emoji = this.emojis.get(emojiId)
+		if (!emoji || !emoji.id) {
+			return false
+		}
+
+		// Find the guild that owns this emoji and remove from its list
+		for (const guild of this.guilds.values()) {
+			const index = guild.emojis.indexOf(emojiId)
+			if (index !== -1) {
+				guild.emojis.splice(index, 1)
+				break
+			}
+		}
+
+		// Remove from emojis map
+		this.emojis.delete(emojiId)
+		return true
+	}
+
+	// ============================================================================
+	// Role Operations (Phase 4L)
+	// ============================================================================
+
+	/**
+	 * Default permissions for @everyone role
+	 * Includes: ViewChannel, SendMessages, ReadMessageHistory, AddReactions, etc.
+	 */
+	private static readonly DEFAULT_EVERYONE_PERMISSIONS = '1071698660929'
+
+	/**
+	 * Default permissions for new roles (none)
+	 */
+	private static readonly DEFAULT_ROLE_PERMISSIONS = '0'
+
+	/**
+	 * Get all roles for a guild
+	 */
+	getGuildRoles(guildId: Snowflake): MockRole[] {
+		const guild = this.guilds.get(guildId)
+		if (!guild) {
+			return []
+		}
+		return guild.roles.map((roleId) => this.roles.get(roleId)).filter((r): r is MockRole => r !== undefined)
+	}
+
+	/**
+	 * Get a role by ID
+	 */
+	getRole(roleId: Snowflake): MockRole | undefined {
+		return this.roles.get(roleId)
+	}
+
+	/**
+	 * Get a role by ID within a guild
+	 */
+	getGuildRole(guildId: Snowflake, roleId: Snowflake): MockRole | undefined {
+		const guild = this.guilds.get(guildId)
+		if (!guild || !guild.roles.includes(roleId)) {
+			return undefined
+		}
+		return this.roles.get(roleId)
+	}
+
+	/**
+	 * Create the @everyone role for a guild
+	 * Called automatically when a guild is created
+	 */
+	createEveryoneRole(guildId: Snowflake): MockRole {
+		const role: MockRole = {
+			id: guildId, // @everyone role has same ID as guild
+			guildId,
+			name: '@everyone',
+			color: 0,
+			hoist: false,
+			position: 0,
+			permissions: MockServerState.DEFAULT_EVERYONE_PERMISSIONS,
+			managed: false,
+			mentionable: false,
+			flags: 0
+		}
+		this.roles.set(role.id, role)
+		return role
+	}
+
+	/**
+	 * Create a new role in a guild
+	 * @returns The created role, or null if guild doesn't exist or limit reached
+	 */
+	createGuildRole(guildId: Snowflake, config?: MockRoleConfig): MockRole | null {
+		const guild = this.guilds.get(guildId)
+		if (!guild) {
+			return null
+		}
+
+		// Check role limit (excluding @everyone)
+		if (guild.roles.length >= RoleLimits.MAX_ROLES_PER_GUILD) {
+			return null
+		}
+
+		// Validate name length
+		const name = config?.name ?? 'new role'
+		if (name.length < RoleLimits.MIN_NAME_LENGTH || name.length > RoleLimits.MAX_NAME_LENGTH) {
+			return null
+		}
+
+		// Validate color
+		const color = config?.color ?? 0
+		if (color < 0 || color > RoleLimits.MAX_COLOR_VALUE) {
+			return null
+		}
+
+		// Calculate position (new roles go above @everyone, below all others by default)
+		const position = config?.position ?? 1
+
+		const role: MockRole = {
+			id: config?.id ?? generateSnowflake(),
+			guildId,
+			name,
+			color,
+			hoist: config?.hoist ?? false,
+			icon: config?.icon ?? null,
+			unicodeEmoji: config?.unicodeEmoji ?? null,
+			position,
+			permissions: config?.permissions ?? MockServerState.DEFAULT_ROLE_PERMISSIONS,
+			managed: config?.managed ?? false,
+			mentionable: config?.mentionable ?? false,
+			tags: config?.tags,
+			flags: 0
+		}
+
+		this.roles.set(role.id, role)
+		guild.roles.push(role.id)
+
+		return role
+	}
+
+	/**
+	 * Update a role
+	 * @returns The updated role, or null if not found
+	 */
+	updateGuildRole(guildId: Snowflake, roleId: Snowflake, updates: Partial<MockRoleConfig>): MockRole | null {
+		const role = this.getGuildRole(guildId, roleId)
+		if (!role) {
+			return null
+		}
+
+		// Cannot modify @everyone's name or hoist
+		if (role.id === guildId) {
+			if (updates.name !== undefined || updates.hoist !== undefined) {
+				return null
+			}
+		}
+
+		// Validate name length
+		if (updates.name !== undefined) {
+			if (updates.name.length < RoleLimits.MIN_NAME_LENGTH || updates.name.length > RoleLimits.MAX_NAME_LENGTH) {
+				return null
+			}
+			role.name = updates.name
+		}
+
+		// Validate and update color
+		if (updates.color !== undefined) {
+			if (updates.color < 0 || updates.color > RoleLimits.MAX_COLOR_VALUE) {
+				return null
+			}
+			role.color = updates.color
+		}
+
+		// Update other fields
+		if (updates.hoist !== undefined) role.hoist = updates.hoist
+		if (updates.icon !== undefined) role.icon = updates.icon
+		if (updates.unicodeEmoji !== undefined) role.unicodeEmoji = updates.unicodeEmoji
+		if (updates.permissions !== undefined) role.permissions = updates.permissions
+		if (updates.mentionable !== undefined) role.mentionable = updates.mentionable
+
+		return role
+	}
+
+	/**
+	 * Update role positions in batch
+	 * @returns The updated roles
+	 */
+	updateGuildRolePositions(guildId: Snowflake, positions: Array<{ id: Snowflake; position: number }>): MockRole[] {
+		const guild = this.guilds.get(guildId)
+		if (!guild) {
+			return []
+		}
+
+		const updatedRoles: MockRole[] = []
+		for (const { id, position } of positions) {
+			// Cannot change @everyone's position (always 0)
+			if (id === guildId) {
+				continue
+			}
+
+			const role = this.roles.get(id)
+			if (role && role.guildId === guildId) {
+				role.position = position
+				updatedRoles.push(role)
+			}
+		}
+
+		return updatedRoles
+	}
+
+	/**
+	 * Delete a role from a guild
+	 * @returns true if deleted, false if not found or cannot delete @everyone
+	 */
+	deleteGuildRole(guildId: Snowflake, roleId: Snowflake): boolean {
+		const guild = this.guilds.get(guildId)
+		if (!guild) {
+			return false
+		}
+
+		// Cannot delete @everyone role
+		if (roleId === guildId) {
+			return false
+		}
+
+		const role = this.roles.get(roleId)
+		if (!role || role.guildId !== guildId) {
+			return false
+		}
+
+		// Remove from guild's role list
+		const index = guild.roles.indexOf(roleId)
+		if (index !== -1) {
+			guild.roles.splice(index, 1)
+		}
+
+		// Remove from all members
+		for (const member of this.guildMembers.values()) {
+			if (member.guildId === guildId) {
+				const roleIndex = member.roles.indexOf(roleId)
+				if (roleIndex !== -1) {
+					member.roles.splice(roleIndex, 1)
+				}
+			}
+		}
+
+		// Remove from roles map
+		this.roles.delete(roleId)
+		return true
+	}
+
+	// ============================================================================
+	// Guild Member Operations (Phase 4L)
+	// ============================================================================
+
+	/**
+	 * Get a guild member
+	 */
+	getGuildMember(guildId: Snowflake, userId: Snowflake): MockGuildMember | undefined {
+		return this.guildMembers.get(`${guildId}:${userId}`)
+	}
+
+	/**
+	 * Get all members of a guild
+	 */
+	getGuildMembers(guildId: Snowflake): MockGuildMember[] {
+		const members: MockGuildMember[] = []
+		for (const member of this.guildMembers.values()) {
+			if (member.guildId === guildId) {
+				members.push(member)
+			}
+		}
+		return members
+	}
+
+	/**
+	 * Create or add a member to a guild
+	 * @returns The created/existing member, or null if guild doesn't exist
+	 */
+	createGuildMember(guildId: Snowflake, userId: Snowflake, config?: MockGuildMemberConfig): MockGuildMember | null {
+		const guild = this.guilds.get(guildId)
+		if (!guild) {
+			return null
+		}
+
+		const key = `${guildId}:${userId}`
+		const existingMember = this.guildMembers.get(key)
+		if (existingMember) {
+			return existingMember
+		}
+
+		const member: MockGuildMember = {
+			userId,
+			guildId,
+			roles: config?.roles ?? [],
+			nick: config?.nick ?? null,
+			joinedAt: new Date().toISOString(),
+			premiumSince: null,
+			deaf: config?.deaf ?? false,
+			mute: config?.mute ?? false,
+			pending: false,
+			communicationDisabledUntil: config?.communicationDisabledUntil ?? null,
+			flags: 0
+		}
+
+		this.guildMembers.set(key, member)
+
+		// Add user ID to guild's member list if not already there
+		if (!guild.members.includes(userId)) {
+			guild.members.push(userId)
+		}
+
+		return member
+	}
+
+	/**
+	 * Update a guild member
+	 * @returns The updated member, or null if not found
+	 */
+	updateGuildMember(guildId: Snowflake, userId: Snowflake, updates: Partial<MockGuildMemberConfig>): MockGuildMember | null {
+		const member = this.getGuildMember(guildId, userId)
+		if (!member) {
+			return null
+		}
+
+		if (updates.nick !== undefined) member.nick = updates.nick
+		if (updates.roles !== undefined) member.roles = updates.roles
+		if (updates.deaf !== undefined) member.deaf = updates.deaf
+		if (updates.mute !== undefined) member.mute = updates.mute
+		if (updates.communicationDisabledUntil !== undefined) {
+			member.communicationDisabledUntil = updates.communicationDisabledUntil
+		}
+
+		return member
+	}
+
+	/**
+	 * Remove a member from a guild
+	 * @returns true if removed, false if not found
+	 */
+	removeGuildMember(guildId: Snowflake, userId: Snowflake): boolean {
+		const guild = this.guilds.get(guildId)
+		if (!guild) {
+			return false
+		}
+
+		const key = `${guildId}:${userId}`
+		if (!this.guildMembers.has(key)) {
+			return false
+		}
+
+		this.guildMembers.delete(key)
+
+		// Remove from guild's member list
+		const index = guild.members.indexOf(userId)
+		if (index !== -1) {
+			guild.members.splice(index, 1)
+		}
+
+		return true
+	}
+
+	/**
+	 * Add a role to a member
+	 * @returns true if added, false if member/role not found or already has role
+	 */
+	addMemberRole(guildId: Snowflake, userId: Snowflake, roleId: Snowflake): boolean {
+		const member = this.getGuildMember(guildId, userId)
+		if (!member) {
+			return false
+		}
+
+		// Verify role exists and belongs to the guild
+		const role = this.roles.get(roleId)
+		if (!role || role.guildId !== guildId) {
+			return false
+		}
+
+		// Cannot add @everyone (implicit)
+		if (roleId === guildId) {
+			return false
+		}
+
+		// Check if already has role
+		if (member.roles.includes(roleId)) {
+			return false
+		}
+
+		member.roles.push(roleId)
+		return true
+	}
+
+	/**
+	 * Remove a role from a member
+	 * @returns true if removed, false if member not found or doesn't have role
+	 */
+	removeMemberRole(guildId: Snowflake, userId: Snowflake, roleId: Snowflake): boolean {
+		const member = this.getGuildMember(guildId, userId)
+		if (!member) {
+			return false
+		}
+
+		// Cannot remove @everyone (implicit)
+		if (roleId === guildId) {
+			return false
+		}
+
+		const index = member.roles.indexOf(roleId)
+		if (index === -1) {
+			return false
+		}
+
+		member.roles.splice(index, 1)
+		return true
+	}
+
+	// ============================================================================
+	// Channel Permission Overwrite Operations (Phase 4L)
+	// ============================================================================
+
+	/**
+	 * Get permission overwrites for a channel
+	 */
+	getChannelOverwrites(channelId: Snowflake): MockChannelOverwrite[] {
+		const channel = this.channels.get(channelId)
+		return channel?.permissionOverwrites ?? []
+	}
+
+	/**
+	 * Set a permission overwrite on a channel
+	 * Creates or updates the overwrite for the given role/member ID
+	 */
+	setChannelOverwrite(channelId: Snowflake, overwrite: MockChannelOverwrite): boolean {
+		const channel = this.channels.get(channelId)
+		if (!channel) {
+			return false
+		}
+
+		if (!channel.permissionOverwrites) {
+			channel.permissionOverwrites = []
+		}
+
+		// Find existing overwrite
+		const existingIndex = channel.permissionOverwrites.findIndex((o) => o.id === overwrite.id)
+		if (existingIndex !== -1) {
+			channel.permissionOverwrites[existingIndex] = overwrite
+		} else {
+			channel.permissionOverwrites.push(overwrite)
+		}
+
+		return true
+	}
+
+	/**
+	 * Delete a permission overwrite from a channel
+	 * @returns true if deleted, false if not found
+	 */
+	deleteChannelOverwrite(channelId: Snowflake, overwriteId: Snowflake): boolean {
+		const channel = this.channels.get(channelId)
+		if (!channel || !channel.permissionOverwrites) {
+			return false
+		}
+
+		const index = channel.permissionOverwrites.findIndex((o) => o.id === overwriteId)
+		if (index === -1) {
+			return false
+		}
+
+		channel.permissionOverwrites.splice(index, 1)
+		return true
+	}
+
+	// ============================================================================
+	// Application Command Operations (Phase 4M)
+	// ============================================================================
+
+	/**
+	 * Get a command by ID
+	 */
+	getCommand(commandId: Snowflake): MockApplicationCommand | undefined {
+		return this.commands.get(commandId)
+	}
+
+	/**
+	 * Get all global commands (no guild_id)
+	 */
+	getGlobalCommands(): MockApplicationCommand[] {
+		return Array.from(this.commands.values()).filter((c) => !c.guild_id)
+	}
+
+	/**
+	 * Get all commands for a specific guild
+	 */
+	getGuildCommands(guildId: Snowflake): MockApplicationCommand[] {
+		return Array.from(this.commands.values()).filter((c) => c.guild_id === guildId)
+	}
+
+	/**
+	 * Find a command by name within a scope (global or guild)
+	 */
+	findCommandByName(name: string, guildId?: Snowflake): MockApplicationCommand | undefined {
+		return Array.from(this.commands.values()).find(
+			(c) => c.name === name && c.guild_id === guildId
+		)
+	}
+
+	/**
+	 * Create a new application command
+	 * @returns The created command, or null if validation fails
+	 */
+	createCommand(config: MockApplicationCommandConfig, guildId?: Snowflake): MockApplicationCommand | null {
+		const type = config.type ?? ApplicationCommandType.ChatInput
+
+		// Validate name
+		if (!config.name || config.name.length < CommandLimits.MIN_NAME_LENGTH || config.name.length > CommandLimits.MAX_NAME_LENGTH) {
+			return null
+		}
+
+		// For CHAT_INPUT commands, validate name pattern (lowercase, no spaces)
+		if (type === ApplicationCommandType.ChatInput) {
+			if (!CommandLimits.CHAT_INPUT_NAME_PATTERN.test(config.name.toLowerCase())) {
+				return null
+			}
+		}
+
+		// Validate description for CHAT_INPUT
+		if (type === ApplicationCommandType.ChatInput) {
+			if (!config.description || config.description.length < CommandLimits.MIN_DESCRIPTION_LENGTH || config.description.length > CommandLimits.MAX_DESCRIPTION_LENGTH) {
+				return null
+			}
+		}
+
+		// Validate options count
+		if (config.options && config.options.length > CommandLimits.MAX_OPTIONS) {
+			return null
+		}
+
+		// Check command limit for scope
+		const existingCommands = guildId ? this.getGuildCommands(guildId) : this.getGlobalCommands()
+		const maxCommands = guildId ? CommandLimits.MAX_GUILD_COMMANDS : CommandLimits.MAX_GLOBAL_COMMANDS
+		if (existingCommands.length >= maxCommands) {
+			return null
+		}
+
+		// Check for duplicate name within scope
+		if (this.findCommandByName(config.name, guildId)) {
+			return null
+		}
+
+		const command: MockApplicationCommand = {
+			id: config.id ?? generateSnowflake(),
+			type,
+			application_id: this.applicationId,
+			guild_id: guildId,
+			name: type === ApplicationCommandType.ChatInput ? config.name.toLowerCase() : config.name,
+			name_localizations: config.name_localizations ?? null,
+			description: config.description ?? '',
+			description_localizations: config.description_localizations ?? null,
+			options: config.options,
+			default_member_permissions: config.default_member_permissions ?? null,
+			dm_permission: config.dm_permission,
+			nsfw: config.nsfw,
+			integration_types: config.integration_types,
+			contexts: config.contexts,
+			version: generateSnowflake()
+		}
+
+		this.commands.set(command.id, command)
+		return command
+	}
+
+	/**
+	 * Update an existing command
+	 * @returns The updated command, or null if not found
+	 */
+	updateCommand(commandId: Snowflake, updates: Partial<MockApplicationCommandConfig>): MockApplicationCommand | null {
+		const command = this.commands.get(commandId)
+		if (!command) {
+			return null
+		}
+
+		// Validate name if provided
+		if (updates.name !== undefined) {
+			if (updates.name.length < CommandLimits.MIN_NAME_LENGTH || updates.name.length > CommandLimits.MAX_NAME_LENGTH) {
+				return null
+			}
+
+			// Check for CHAT_INPUT name pattern
+			if (command.type === ApplicationCommandType.ChatInput) {
+				if (!CommandLimits.CHAT_INPUT_NAME_PATTERN.test(updates.name.toLowerCase())) {
+					return null
+				}
+			}
+
+			// Check for duplicate name (excluding self)
+			const existingCommand = this.findCommandByName(updates.name, command.guild_id)
+			if (existingCommand && existingCommand.id !== commandId) {
+				return null
+			}
+		}
+
+		// Validate description if provided
+		if (updates.description !== undefined && command.type === ApplicationCommandType.ChatInput) {
+			if (updates.description.length < CommandLimits.MIN_DESCRIPTION_LENGTH || updates.description.length > CommandLimits.MAX_DESCRIPTION_LENGTH) {
+				return null
+			}
+		}
+
+		// Validate options if provided
+		if (updates.options !== undefined && updates.options.length > CommandLimits.MAX_OPTIONS) {
+			return null
+		}
+
+		// Apply updates
+		if (updates.name !== undefined) {
+			command.name = command.type === ApplicationCommandType.ChatInput ? updates.name.toLowerCase() : updates.name
+		}
+		if (updates.name_localizations !== undefined) command.name_localizations = updates.name_localizations
+		if (updates.description !== undefined) command.description = updates.description
+		if (updates.description_localizations !== undefined) command.description_localizations = updates.description_localizations
+		if (updates.options !== undefined) command.options = updates.options
+		if (updates.default_member_permissions !== undefined) command.default_member_permissions = updates.default_member_permissions
+		if (updates.dm_permission !== undefined) command.dm_permission = updates.dm_permission
+		if (updates.nsfw !== undefined) command.nsfw = updates.nsfw
+		if (updates.integration_types !== undefined) command.integration_types = updates.integration_types
+		if (updates.contexts !== undefined) command.contexts = updates.contexts
+
+		// Update version on any change
+		command.version = generateSnowflake()
+
+		return command
+	}
+
+	/**
+	 * Delete a command by ID
+	 * @returns true if deleted, false if not found
+	 */
+	deleteCommand(commandId: Snowflake): boolean {
+		return this.commands.delete(commandId)
+	}
+
+	/**
+	 * Bulk overwrite commands for a scope (global or guild)
+	 * Replaces all existing commands with the provided ones
+	 * @returns Array of created commands, or null if validation fails
+	 */
+	bulkOverwriteCommands(configs: MockApplicationCommandConfig[], guildId?: Snowflake): MockApplicationCommand[] | null {
+		// Validate count
+		const maxCommands = guildId ? CommandLimits.MAX_GUILD_COMMANDS : CommandLimits.MAX_GLOBAL_COMMANDS
+		if (configs.length > maxCommands) {
+			return null
+		}
+
+		// Check for duplicate names
+		const names = new Set<string>()
+		for (const config of configs) {
+			const name = config.name.toLowerCase()
+			if (names.has(name)) {
+				return null // Duplicate name
+			}
+			names.add(name)
+		}
+
+		// Validate all configs first
+		for (const config of configs) {
+			const type = config.type ?? ApplicationCommandType.ChatInput
+
+			// Validate name
+			if (!config.name || config.name.length < CommandLimits.MIN_NAME_LENGTH || config.name.length > CommandLimits.MAX_NAME_LENGTH) {
+				return null
+			}
+
+			// For CHAT_INPUT commands, validate name pattern
+			if (type === ApplicationCommandType.ChatInput) {
+				if (!CommandLimits.CHAT_INPUT_NAME_PATTERN.test(config.name.toLowerCase())) {
+					return null
+				}
+				// Validate description
+				if (!config.description || config.description.length < CommandLimits.MIN_DESCRIPTION_LENGTH || config.description.length > CommandLimits.MAX_DESCRIPTION_LENGTH) {
+					return null
+				}
+			}
+
+			// Validate options count
+			if (config.options && config.options.length > CommandLimits.MAX_OPTIONS) {
+				return null
+			}
+		}
+
+		// Delete all existing commands in this scope
+		for (const command of this.commands.values()) {
+			if (command.guild_id === guildId) {
+				this.commands.delete(command.id)
+			}
+		}
+
+		// Create all new commands
+		const createdCommands: MockApplicationCommand[] = []
+		for (const config of configs) {
+			const type = config.type ?? ApplicationCommandType.ChatInput
+			const command: MockApplicationCommand = {
+				id: config.id ?? generateSnowflake(),
+				type,
+				application_id: this.applicationId,
+				guild_id: guildId,
+				name: type === ApplicationCommandType.ChatInput ? config.name.toLowerCase() : config.name,
+				name_localizations: config.name_localizations ?? null,
+				description: config.description ?? '',
+				description_localizations: config.description_localizations ?? null,
+				options: config.options,
+				default_member_permissions: config.default_member_permissions ?? null,
+				dm_permission: config.dm_permission,
+				nsfw: config.nsfw,
+				integration_types: config.integration_types,
+				contexts: config.contexts,
+				version: generateSnowflake()
+			}
+
+			this.commands.set(command.id, command)
+			createdCommands.push(command)
+		}
+
+		return createdCommands
+	}
+
+	// ============================================================================
 	// State Management
 	// ============================================================================
 
@@ -1023,7 +2508,13 @@ export class MockServerState implements SessionState {
 		this.interactions.clear()
 		this.threadMembers.clear()
 		this.pollVotes.clear()
+		this.stickers.clear()
+		this.webhooks.clear()
+		this.emojis.clear()
+		this.roles.clear()
+		this.guildMembers.clear()
 		this.interactionsByToken.clear()
+		this.webhooksByToken.clear()
 		this.users.clear()
 
 		// Re-add bot user
@@ -1045,6 +2536,7 @@ export class MockServerState implements SessionState {
 			messages: Array.from(this.messages.values()).map(serializeMockMessage),
 			interactions: Array.from(this.interactions.values()).map(serializeMockInteraction),
 			attachments: Array.from(this.attachments.values()).map(serializeStoredAttachment),
+			webhooks: Array.from(this.webhooks.values()).map(serializeMockWebhook),
 			botUser: serializeMockUser(this.botUser),
 			applicationId: this.applicationId,
 			sequence: this._sequence
@@ -1088,7 +2580,9 @@ export function createMockGuild(config?: { id?: Snowflake; name?: string; ownerI
 		ownerId: config?.ownerId ?? generateSnowflake(),
 		channels: [],
 		members: [],
-		roles: [id] // @everyone role has same ID as guild
+		roles: [id], // @everyone role has same ID as guild
+		stickers: [], // Phase 4I
+		emojis: [] // Phase 4K
 	}
 }
 
@@ -1136,6 +2630,38 @@ export function createMockThread(config: MockThreadConfig): MockThread {
 		messageCount: 0,
 		totalMessageSent: 0,
 		lastMessageId: null
+	}
+}
+
+/**
+ * Create a mock forum/media channel from config (Phase 4H)
+ */
+export function createMockForumChannel(config?: MockForumChannelConfig): MockForumChannel {
+	const type = config?.type ?? 15 // Default to GUILD_FORUM
+
+	// Generate IDs for available_tags if provided without IDs
+	const availableTags: MockForumTag[] = (config?.available_tags ?? []).map((tag) => ({
+		id: generateSnowflake(),
+		name: tag.name,
+		moderated: tag.moderated,
+		emoji_id: tag.emoji_id,
+		emoji_name: tag.emoji_name
+	}))
+
+	return {
+		id: config?.id ?? generateSnowflake(),
+		guildId: config?.guildId,
+		name: config?.name ?? (type === 15 ? 'forum' : 'media'),
+		type,
+		parentId: config?.parentId ?? null,
+		topic: config?.topic,
+		default_auto_archive_duration: config?.default_auto_archive_duration ?? 1440,
+		default_thread_rate_limit_per_user: config?.default_thread_rate_limit_per_user,
+		default_sort_order: config?.default_sort_order ?? ForumSortOrderType.LatestActivity,
+		default_forum_layout: config?.default_forum_layout ?? ForumLayoutType.NotSet,
+		default_reaction_emoji: config?.default_reaction_emoji ?? null,
+		available_tags: availableTags,
+		template: config?.template
 	}
 }
 
@@ -1333,6 +2859,46 @@ export function createDefaultGuildWithChannel(
 	state.guilds.set(guild.id, guild)
 	state.channels.set(channel.id, channel)
 
+	// Create @everyone role and add bot as member (Phase 4L)
+	if (state instanceof MockServerState) {
+		// Create the @everyone role
+		state.createEveryoneRole(guild.id)
+
+		// Create bot member with no extra roles
+		state.createGuildMember(guild.id, state.botUser.id, { roles: [] })
+	} else {
+		// Fallback for plain SessionState: create role directly
+		const everyoneRole: MockRole = {
+			id: guild.id,
+			guildId: guild.id,
+			name: '@everyone',
+			color: 0,
+			hoist: false,
+			position: 0,
+			permissions: '1071698660929',
+			managed: false,
+			mentionable: false,
+			flags: 0
+		}
+		state.roles.set(everyoneRole.id, everyoneRole)
+
+		// Create bot member
+		const botMember: MockGuildMember = {
+			userId: state.botUser.id,
+			guildId: guild.id,
+			roles: [],
+			nick: null,
+			joinedAt: new Date().toISOString(),
+			premiumSince: null,
+			deaf: false,
+			mute: false,
+			pending: false,
+			communicationDisabledUntil: null,
+			flags: 0
+		}
+		state.guildMembers.set(`${guild.id}:${state.botUser.id}`, botMember)
+	}
+
 	return guild
 }
 
@@ -1351,6 +2917,8 @@ export function serializeSessionState(state: SessionState): SerializedSessionSta
 		users: Array.from(state.users.values()).map(serializeMockUser),
 		messages: Array.from(state.messages.values()).map(serializeMockMessage),
 		interactions: Array.from(state.interactions.values()).map(serializeMockInteraction),
+		attachments: Array.from(state.attachments.values()).map(serializeStoredAttachment),
+		webhooks: Array.from(state.webhooks.values()).map(serializeMockWebhook),
 		botUser: serializeMockUser(state.botUser),
 		applicationId: state.applicationId,
 		sequence: state.sequence
@@ -1540,6 +3108,114 @@ export function deserializeStoredAttachment(serialized: SerializedStoredAttachme
 	}
 }
 
+/**
+ * Serialize a mock webhook (Phase 4J)
+ */
+export function serializeMockWebhook(webhook: MockWebhook): SerializedMockWebhook {
+	return {
+		id: webhook.id,
+		type: webhook.type,
+		guild_id: webhook.guild_id,
+		channel_id: webhook.channel_id,
+		user: webhook.user ? serializeMockUser(webhook.user) : undefined,
+		name: webhook.name,
+		avatar: webhook.avatar,
+		token: webhook.token,
+		application_id: webhook.application_id,
+		source_guild: webhook.source_guild,
+		source_channel: webhook.source_channel
+	}
+}
+
+/**
+ * Serialize a mock role (Phase 4L)
+ */
+export function serializeMockRole(role: MockRole): SerializedMockRole {
+	return {
+		id: role.id,
+		guildId: role.guildId,
+		name: role.name,
+		color: role.color,
+		hoist: role.hoist,
+		icon: role.icon,
+		unicode_emoji: role.unicodeEmoji,
+		position: role.position,
+		permissions: role.permissions,
+		managed: role.managed,
+		mentionable: role.mentionable,
+		tags: role.tags
+			? {
+					bot_id: role.tags.bot_id,
+					integration_id: role.tags.integration_id,
+					premium_subscriber: role.tags.premium_subscriber,
+					subscription_listing_id: role.tags.subscription_listing_id,
+					available_for_purchase: role.tags.available_for_purchase,
+					guild_connections: role.tags.guild_connections
+				}
+			: undefined,
+		flags: role.flags
+	}
+}
+
+/**
+ * Serialize a mock guild member (Phase 4L)
+ */
+export function serializeMockGuildMember(member: MockGuildMember, user: MockUser): SerializedMockGuildMember {
+	return {
+		user: serializeMockUser(user),
+		nick: member.nick,
+		avatar: member.avatar,
+		roles: [...member.roles],
+		joined_at: member.joinedAt,
+		premium_since: member.premiumSince,
+		deaf: member.deaf,
+		mute: member.mute,
+		pending: member.pending,
+		communication_disabled_until: member.communicationDisabledUntil,
+		flags: member.flags
+	}
+}
+
+/**
+ * Create a mock role from config (Phase 4L)
+ */
+export function createMockRole(guildId: Snowflake, config?: MockRoleConfig): MockRole {
+	return {
+		id: config?.id ?? generateSnowflake(),
+		guildId,
+		name: config?.name ?? 'new role',
+		color: config?.color ?? 0,
+		hoist: config?.hoist ?? false,
+		icon: config?.icon ?? null,
+		unicodeEmoji: config?.unicodeEmoji ?? null,
+		position: config?.position ?? 1,
+		permissions: config?.permissions ?? '0',
+		managed: config?.managed ?? false,
+		mentionable: config?.mentionable ?? false,
+		tags: config?.tags,
+		flags: 0
+	}
+}
+
+/**
+ * Create a mock guild member from config (Phase 4L)
+ */
+export function createMockGuildMember(guildId: Snowflake, userId: Snowflake, config?: MockGuildMemberConfig): MockGuildMember {
+	return {
+		userId,
+		guildId,
+		roles: config?.roles ?? [],
+		nick: config?.nick ?? null,
+		joinedAt: new Date().toISOString(),
+		premiumSince: null,
+		deaf: config?.deaf ?? false,
+		mute: config?.mute ?? false,
+		pending: false,
+		communicationDisabledUntil: config?.communicationDisabledUntil ?? null,
+		flags: 0
+	}
+}
+
 // ============================================================================
 // Phase 4F: Components V2 Validation
 // ============================================================================
@@ -1550,8 +3226,11 @@ export function deserializeStoredAttachment(serialized: SerializedStoredAttachme
  * - Max 4000 chars total across all TextDisplay components
  * - Component IDs must be unique
  * - attachment:// URLs must reference valid attachments
- * - MediaGallery: 1-10 items
- * - Section: 1-3 TextDisplay components
+ * - TextDisplay: content is required
+ * - Section: 1-3 TextDisplay components required
+ * - MediaGallery: 1-10 items, description max 1024 chars
+ * - Thumbnail: description max 1024 chars
+ * - File: requires file field with attachment:// URL
  *
  * @param components - Array of V2 components to validate
  * @param attachmentFilenames - Set of valid attachment filenames for attachment:// URLs
@@ -1598,7 +3277,10 @@ export function validateComponentsV2(
 
 		// TextDisplay validation (type 10)
 		if (compType === ComponentTypeV2.TextDisplay) {
-			if (typeof comp.content === 'string') {
+			// Content is required for TextDisplay
+			if (typeof comp.content !== 'string' || comp.content.length === 0) {
+				errors.push('TextDisplay component requires content')
+			} else {
 				totalTextLength += comp.content.length
 				if (totalTextLength > ComponentsV2Limits.MAX_TEXT_LENGTH) {
 					// Only add error once when we exceed
@@ -1614,13 +3296,17 @@ export function validateComponentsV2(
 
 		// Section validation (type 9)
 		if (compType === ComponentTypeV2.Section) {
+			if (!Array.isArray(comp.components) || comp.components.length < ComponentsV2Limits.MIN_SECTION_TEXT_COMPONENTS) {
+				errors.push(
+					`Section requires at least ${ComponentsV2Limits.MIN_SECTION_TEXT_COMPONENTS} TextDisplay component`
+				)
+			} else if (comp.components.length > ComponentsV2Limits.MAX_SECTION_TEXT_COMPONENTS) {
+				errors.push(
+					`Section has too many text components: ${comp.components.length} (max ${ComponentsV2Limits.MAX_SECTION_TEXT_COMPONENTS})`
+				)
+			}
+			// Validate nested components
 			if (Array.isArray(comp.components)) {
-				if (comp.components.length > ComponentsV2Limits.MAX_SECTION_TEXT_COMPONENTS) {
-					errors.push(
-						`Section has too many text components: ${comp.components.length} (max ${ComponentsV2Limits.MAX_SECTION_TEXT_COMPONENTS})`
-					)
-				}
-				// Validate nested components
 				for (const nested of comp.components) {
 					if (nested && typeof nested === 'object') {
 						validateComponent(nested as Record<string, unknown>, depth + 1)
@@ -1643,11 +3329,21 @@ export function validateComponentsV2(
 						`MediaGallery has too many items: ${comp.items.length} (max ${ComponentsV2Limits.MAX_MEDIA_GALLERY_ITEMS})`
 					)
 				}
-				// Validate attachment:// URLs in items
-				for (const item of comp.items) {
+				// Validate attachment:// URLs and description length in items
+				for (let i = 0; i < comp.items.length; i++) {
+					const item = comp.items[i]
 					if (item && typeof item === 'object') {
-						const galleryItem = item as { media?: { url?: string } }
+						const galleryItem = item as { media?: { url?: string }; description?: string }
 						validateAttachmentUrl(galleryItem.media?.url)
+						// Validate description length
+						if (
+							galleryItem.description &&
+							galleryItem.description.length > ComponentsV2Limits.MAX_MEDIA_DESCRIPTION_LENGTH
+						) {
+							errors.push(
+								`MediaGallery item ${i + 1} description exceeds ${ComponentsV2Limits.MAX_MEDIA_DESCRIPTION_LENGTH} chars`
+							)
+						}
 					}
 				}
 			}
@@ -1670,13 +3366,28 @@ export function validateComponentsV2(
 				const media = comp.media as { url?: string }
 				validateAttachmentUrl(media.url)
 			}
+			// Validate description length
+			if (
+				typeof comp.description === 'string' &&
+				comp.description.length > ComponentsV2Limits.MAX_MEDIA_DESCRIPTION_LENGTH
+			) {
+				errors.push(`Thumbnail description exceeds ${ComponentsV2Limits.MAX_MEDIA_DESCRIPTION_LENGTH} chars`)
+			}
 		}
 
 		// File validation (type 13)
 		if (compType === ComponentTypeV2.File) {
-			if (comp.file && typeof comp.file === 'object') {
+			if (!comp.file || typeof comp.file !== 'object') {
+				errors.push('File component requires file field')
+			} else {
 				const file = comp.file as { url?: string }
-				validateAttachmentUrl(file.url)
+				if (!file.url) {
+					errors.push('File component requires file.url')
+				} else if (!file.url.startsWith('attachment://')) {
+					errors.push('File component only supports attachment:// URLs')
+				} else {
+					validateAttachmentUrl(file.url)
+				}
 			}
 		}
 	}

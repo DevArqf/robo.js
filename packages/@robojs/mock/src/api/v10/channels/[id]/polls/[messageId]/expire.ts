@@ -1,5 +1,6 @@
 import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../../../../core/manager.js'
+import { getGatewayServer } from '../../../../../../core/gateway.js'
 import { parseMockToken } from '../../../../../../utils/id.js'
 import { mockMessageToAPIMessage } from '../../../../../../discord/payloads.js'
 
@@ -89,7 +90,15 @@ export default async (request: RoboRequest) => {
 	// 8. Get author for response
 	const author = session.state.users.get(message.authorId) ?? session.state.botUser
 
-	// 9. Record action
+	// 9. Dispatch MESSAGE_UPDATE event via Gateway
+	const apiMessage = mockMessageToAPIMessage(message, author)
+	const dispatchData: Record<string, unknown> = { ...apiMessage }
+	if (message.guildId) {
+		dispatchData.guild_id = message.guildId
+	}
+	getGatewayServer().dispatchToSession(session.id, 'MESSAGE_UPDATE', dispatchData, channel.guildId)
+
+	// 10. Record action
 	session.recorder.record(
 		'poll_expired',
 		{
@@ -104,6 +113,6 @@ export default async (request: RoboRequest) => {
 		}
 	)
 
-	// 10. Return updated message with finalized poll
+	// 11. Return updated message with finalized poll
 	return mockMessageToAPIMessage(message, author)
 }

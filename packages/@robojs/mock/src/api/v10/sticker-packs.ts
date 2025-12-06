@@ -1,0 +1,44 @@
+import type { RoboRequest } from '@robojs/server'
+import { sessionManager } from '../../core/manager.js'
+import { parseMockToken } from '../../utils/id.js'
+
+/**
+ * GET /api/v10/sticker-packs - List standard sticker packs
+ *
+ * Returns empty array for mock server (no Discord standard stickers available)
+ *
+ * @see https://discord.com/developers/docs/resources/sticker#list-sticker-packs
+ */
+export default async (request: RoboRequest) => {
+	// 1. Validate GET method
+	if (request.method !== 'GET') {
+		return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+			status: 405,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// 2. Parse Authorization header → get session
+	const authHeader = request.headers.get('Authorization') || ''
+	const sessionId = parseMockToken(authHeader)
+
+	if (!sessionId) {
+		return new Response(JSON.stringify({ error: 'Unauthorized', code: 0 }), {
+			status: 401,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	const session = sessionManager.get(sessionId)
+	if (!session) {
+		return new Response(JSON.stringify({ error: 'Unauthorized', code: 0 }), {
+			status: 401,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// Return empty sticker packs (mock server doesn't have Discord's standard stickers)
+	return {
+		sticker_packs: []
+	}
+}

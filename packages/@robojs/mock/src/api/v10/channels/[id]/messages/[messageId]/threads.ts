@@ -145,6 +145,7 @@ export default async (request: RoboRequest) => {
 		}
 	)
 
-	// 13. Return thread as APIChannel
-	return mockThreadToAPIChannel(thread)
+	// 13. Return thread as APIChannel (include member since creator is automatically added)
+	const botMember = session.state.getThreadMember(thread.id, session.state.botUser.id)
+	return mockThreadToAPIChannel(thread, botMember ?? undefined)
 }

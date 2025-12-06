@@ -56,6 +56,7 @@ export default async (request: RoboRequest) => {
 	const url = new URL(request.url)
 	const after = url.searchParams.get('after')
 	const limit = Math.min(parseInt(url.searchParams.get('limit') || '100', 10), 100)
+	const withMember = url.searchParams.get('with_member') === 'true'
 
 	// 6. Get all thread members
 	let members = session.state.getThreadMembers(threadId)
@@ -72,10 +73,36 @@ export default async (request: RoboRequest) => {
 	members = members.slice(0, limit)
 
 	// 9. Return members as API format
-	return members.map((member) => ({
-		id: threadId,
-		user_id: member.user_id,
-		join_timestamp: member.join_timestamp,
-		flags: member.flags
-	}))
+	return members.map((member) => {
+		const result: Record<string, unknown> = {
+			id: threadId,
+			user_id: member.user_id,
+			join_timestamp: member.join_timestamp,
+			flags: member.flags
+		}
+
+		// Include guild member if with_member=true
+		if (withMember && member.user_id && thread.guildId) {
+			const user = session.state.getUser(member.user_id)
+			if (user) {
+				result.member = {
+					user: {
+						id: user.id,
+						username: user.username,
+						discriminator: user.discriminator,
+						global_name: user.globalName,
+						avatar: user.avatar,
+						bot: user.bot || undefined
+					},
+					roles: [],
+					joined_at: member.join_timestamp,
+					deaf: false,
+					mute: false,
+					flags: 0
+				}
+			}
+		}
+
+		return result
+	})
 }

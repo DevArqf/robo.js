@@ -8,6 +8,7 @@ import { getImageDimensions, isImageContentType } from '../../../../utils/image.
 import type { MockAttachment, AttachmentPayload, StoredAttachment } from '../../../../types/index.js'
 import { MessageFlags, createComponentValidationError, createV2ConflictError } from '../../../../types/index.js'
 import { validateComponentsV2 } from '../../../../session/state.js'
+import { enforcePermissions } from '../../../../utils/permission-check.js'
 
 // Default port for CDN URLs (can be overridden via environment)
 const CDN_BASE_URL = process.env.MOCK_CDN_URL || 'http://localhost:53596'
@@ -65,6 +66,15 @@ export default async (request: RoboRequest) => {
 		})
 	}
 
+	// 4b. Check permissions (Phase 4L-Extended)
+	const permError = enforcePermissions(
+		session,
+		'POST',
+		`/channels/${channelId}/messages`,
+		channelId
+	)
+	if (permError) return permError
+
 	// 5. Parse message payload (JSON or multipart)
 	let body: {
 		content?: string
@@ -82,6 +92,8 @@ export default async (request: RoboRequest) => {
 			allow_multiselect?: boolean
 			layout_type?: number
 		}
+		// Phase 4I: Sticker support
+		sticker_ids?: string[]
 	}
 
 	const attachments: MockAttachment[] = []
@@ -217,6 +229,25 @@ export default async (request: RoboRequest) => {
 		}
 	}
 
+	// 5d. Validate sticker_ids if present
+	if (body.sticker_ids?.length) {
+		if (body.sticker_ids.length > 3) {
+			return new Response(JSON.stringify({ error: 'Cannot send more than 3 stickers', code: 50035 }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+		// Validate all stickers exist
+		for (const stickerId of body.sticker_ids) {
+			if (!session.state.getSticker(stickerId)) {
+				return new Response(JSON.stringify({ error: `Unknown sticker: ${stickerId}`, code: 50035 }), {
+					status: 400,
+					headers: { 'Content-Type': 'application/json' }
+				})
+			}
+		}
+	}
+
 	// 6. Create message in state (author is bot user)
 	const message = session.state.createMessage({
 		id: messageId,
@@ -229,7 +260,8 @@ export default async (request: RoboRequest) => {
 		tts: body.tts ?? false,
 		flags: body.flags,
 		components: body.components,
-		poll: body.poll
+		poll: body.poll,
+		sticker_ids: body.sticker_ids
 	})
 
 	// 7. Record as 'message_sent' action

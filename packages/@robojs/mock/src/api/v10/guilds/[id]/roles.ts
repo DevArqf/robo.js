@@ -1,0 +1,237 @@
+import type { RoboRequest } from '@robojs/server'
+import { sessionManager } from '../../../../core/manager.js'
+import { parseMockToken } from '../../../../utils/id.js'
+import { mockRoleToAPIRole } from '../../../../discord/payloads.js'
+import { RoleLimits } from '../../../../types/index.js'
+import { enforcePermissions } from '../../../../utils/permission-check.js'
+
+/**
+ * GET /api/v10/guilds/:id/roles - List all roles for a guild
+ * POST /api/v10/guilds/:id/roles - Create a guild role
+ * PATCH /api/v10/guilds/:id/roles - Modify role positions (batch)
+ *
+ * @see https://discord.com/developers/docs/resources/guild#get-guild-roles
+ * @see https://discord.com/developers/docs/resources/guild#create-guild-role
+ * @see https://discord.com/developers/docs/resources/guild#modify-guild-role-positions
+ */
+export default async (request: RoboRequest) => {
+	// 1. Parse Authorization header → get session
+	const authHeader = request.headers.get('Authorization') || ''
+	const sessionId = parseMockToken(authHeader)
+
+	if (!sessionId) {
+		return new Response(JSON.stringify({ error: 'Unauthorized', code: 0 }), {
+			status: 401,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	const session = sessionManager.get(sessionId)
+	if (!session) {
+		return new Response(JSON.stringify({ error: 'Unauthorized', code: 0 }), {
+			status: 401,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// 2. Extract guild ID from params
+	const { id: guildId } = request.params as { id: string }
+
+	// 3. Validate guild exists
+	const guild = session.state.guilds.get(guildId)
+	if (!guild) {
+		return new Response(JSON.stringify({ error: 'Unknown Guild', code: 10004 }), {
+			status: 404,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// 3b. Check permissions for POST/PATCH (Phase 4L-Extended)
+	if (request.method === 'POST' || request.method === 'PATCH') {
+		const permError = enforcePermissions(
+			session,
+			request.method,
+			`/guilds/${guildId}/roles`,
+			undefined,
+			guildId
+		)
+		if (permError) return permError
+	}
+
+	// Handle GET - List guild roles
+	if (request.method === 'GET') {
+		const roles = session.state.getGuildRoles(guildId)
+		return roles.map(mockRoleToAPIRole)
+	}
+
+	// Handle POST - Create guild role
+	if (request.method === 'POST') {
+		let body: {
+			name?: string
+			permissions?: string
+			color?: number
+			hoist?: boolean
+			icon?: string | null
+			unicode_emoji?: string | null
+			mentionable?: boolean
+		} = {}
+
+		// Body is optional for POST
+		try {
+			const text = await request.text()
+			if (text) {
+				body = JSON.parse(text)
+			}
+		} catch {
+			return new Response(JSON.stringify({ error: 'Invalid request body', code: 50035 }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// Validate name length if provided
+		if (body.name !== undefined) {
+			if (body.name.length < RoleLimits.MIN_NAME_LENGTH) {
+				return new Response(
+					JSON.stringify({ error: `Role name must be at least ${RoleLimits.MIN_NAME_LENGTH} character`, code: 50035 }),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' }
+					}
+				)
+			}
+
+			if (body.name.length > RoleLimits.MAX_NAME_LENGTH) {
+				return new Response(
+					JSON.stringify({ error: `Role name cannot exceed ${RoleLimits.MAX_NAME_LENGTH} characters`, code: 50035 }),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' }
+					}
+				)
+			}
+		}
+
+		// Validate color if provided
+		if (body.color !== undefined) {
+			if (body.color < 0 || body.color > RoleLimits.MAX_COLOR_VALUE) {
+				return new Response(
+					JSON.stringify({ error: 'Invalid color value', code: 50035 }),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' }
+					}
+				)
+			}
+		}
+
+		// Check guild role limit
+		if (guild.roles.length >= RoleLimits.MAX_ROLES_PER_GUILD) {
+			return new Response(
+				JSON.stringify({
+					error: `Guild has reached maximum role limit of ${RoleLimits.MAX_ROLES_PER_GUILD}`,
+					code: 30005
+				}),
+				{
+					status: 400,
+					headers: { 'Content-Type': 'application/json' }
+				}
+			)
+		}
+
+		// Create the role
+		const role = session.state.createGuildRole(guildId, {
+			name: body.name,
+			permissions: body.permissions,
+			color: body.color,
+			hoist: body.hoist,
+			icon: body.icon,
+			unicodeEmoji: body.unicode_emoji,
+			mentionable: body.mentionable
+		})
+
+		if (!role) {
+			return new Response(JSON.stringify({ error: 'Failed to create role', code: 50035 }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// Record action
+		session.recordAction(
+			'role_created',
+			{
+				role_id: role.id,
+				guild_id: guildId,
+				name: role.name
+			},
+			{
+				endpoint: `POST /guilds/${guildId}/roles`,
+				method: 'POST'
+			}
+		)
+
+		// Dispatch GUILD_ROLE_CREATE event
+		await session.dispatchGuildRoleCreate(guildId, role)
+
+		return new Response(JSON.stringify(mockRoleToAPIRole(role)), {
+			status: 200, // Discord returns 200, not 201
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// Handle PATCH - Modify role positions
+	if (request.method === 'PATCH') {
+		let body: Array<{ id: string; position?: number }>
+
+		try {
+			body = await request.json()
+		} catch {
+			return new Response(JSON.stringify({ error: 'Invalid request body', code: 50035 }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		if (!Array.isArray(body)) {
+			return new Response(JSON.stringify({ error: 'Expected array of role positions', code: 50035 }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// Build positions array
+		const positions = body
+			.filter((item) => item.position !== undefined)
+			.map((item) => ({
+				id: item.id,
+				position: item.position!
+			}))
+
+		// Update positions
+		session.state.updateGuildRolePositions(guildId, positions)
+
+		// Record action
+		session.recordAction(
+			'role_positions_updated',
+			{
+				guild_id: guildId,
+				positions
+			},
+			{
+				endpoint: `PATCH /guilds/${guildId}/roles`,
+				method: 'PATCH'
+			}
+		)
+
+		// Return all roles with updated positions
+		const roles = session.state.getGuildRoles(guildId)
+		return roles.map(mockRoleToAPIRole)
+	}
+
+	// Method not allowed
+	return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+		status: 405,
+		headers: { 'Content-Type': 'application/json' }
+	})
+}

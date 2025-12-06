@@ -1,18 +1,34 @@
 import type { RoboRequest } from '@robojs/server'
+import type { Snowflake } from 'discord-api-types/v10'
 import { sessionManager } from '../../../../core/manager.js'
 import { parseMockToken } from '../../../../utils/id.js'
-import { mockThreadToAPIChannel } from '../../../../discord/payloads.js'
+import { mockThreadToAPIChannel, mockForumThreadToAPIChannel } from '../../../../discord/payloads.js'
+import type { MockForumChannel } from '../../../../types/index.js'
 
 /**
  * POST /api/v10/channels/:id/threads - Create a thread in a channel
  *
- * Request body:
+ * Request body (regular threads):
  * {
  *   name: string,                          // Thread name (1-100 chars)
  *   auto_archive_duration?: 60|1440|4320|10080,  // Minutes until auto-archive
  *   type?: 10|11|12,                       // Thread type (default 11 for public)
  *   invitable?: boolean,                   // For private threads only
  *   rate_limit_per_user?: number           // Slowmode in seconds
+ * }
+ *
+ * Request body (forum/media channel posts - Phase 4H):
+ * {
+ *   name: string,                          // Post title (1-100 chars)
+ *   auto_archive_duration?: 60|1440|4320|10080,
+ *   rate_limit_per_user?: number,
+ *   message: {                             // Required for forum/media channels
+ *     content?: string,
+ *     embeds?: object[],
+ *     components?: object[],
+ *     attachments?: object[]
+ *   },
+ *   applied_tags?: Snowflake[]             // Tags to apply (max 5)
  * }
  *
  * Response: APIChannel (thread) object
@@ -57,8 +73,9 @@ export default async (request: RoboRequest) => {
 		})
 	}
 
-	// 5. Validate channel type (must be text or announcement)
-	if (channel.type !== 0 && channel.type !== 5) {
+	// 5. Validate channel type (must be text, announcement, forum, or media)
+	const allowedTypes = [0, 5, 15, 16] // GUILD_TEXT, GUILD_ANNOUNCEMENT, GUILD_FORUM, GUILD_MEDIA
+	if (!allowedTypes.includes(channel.type)) {
 		return new Response(
 			JSON.stringify({
 				error: 'Cannot create thread in this channel type',
@@ -71,6 +88,9 @@ export default async (request: RoboRequest) => {
 		)
 	}
 
+	// Check if this is a forum/media channel (Phase 4H)
+	const isForumChannel = channel.type === 15 || channel.type === 16
+
 	// 6. Parse thread creation payload
 	let body: {
 		name: string
@@ -78,6 +98,14 @@ export default async (request: RoboRequest) => {
 		type?: 10 | 11 | 12
 		invitable?: boolean
 		rate_limit_per_user?: number
+		// Forum/media channel specific fields (Phase 4H)
+		message?: {
+			content?: string
+			embeds?: unknown[]
+			components?: unknown[]
+			attachments?: unknown[]
+		}
+		applied_tags?: Snowflake[]
 	}
 
 	try {
@@ -103,10 +131,91 @@ export default async (request: RoboRequest) => {
 		)
 	}
 
-	// 8. Determine thread type (default to public thread, or announcement thread if parent is announcement)
+	// 7b. For forum/media channels, message is required (Phase 4H)
+	if (isForumChannel && !body.message) {
+		return new Response(
+			JSON.stringify({
+				error: 'Message is required for forum posts',
+				code: 50035
+			}),
+			{
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			}
+		)
+	}
+
+	// 7c. Validate applied_tags for forum channels (Phase 4H)
+	if (isForumChannel && body.applied_tags) {
+		if (body.applied_tags.length > 5) {
+			return new Response(
+				JSON.stringify({
+					error: 'Cannot apply more than 5 tags to a forum post',
+					code: 50035
+				}),
+				{
+					status: 400,
+					headers: { 'Content-Type': 'application/json' }
+				}
+			)
+		}
+
+		// Validate tags exist in forum channel
+		const forumChannel = channel as MockForumChannel
+		const validTagIds = new Set(forumChannel.available_tags.map((t) => t.id))
+		for (const tagId of body.applied_tags) {
+			if (!validTagIds.has(tagId)) {
+				return new Response(
+					JSON.stringify({
+						error: `Invalid tag ID: ${tagId}`,
+						code: 50035
+					}),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' }
+					}
+				)
+			}
+		}
+	}
+
+	// 8. Handle forum/media channel posts differently (Phase 4H)
+	if (isForumChannel) {
+		// Create forum post with initial message
+		const { thread, message } = session.state.createForumPost({
+			name: body.name,
+			parentId: channelId,
+			ownerId: session.state.botUser.id,
+			autoArchiveDuration: body.auto_archive_duration,
+			rateLimitPerUser: body.rate_limit_per_user,
+			applied_tags: body.applied_tags,
+			message: body.message!
+		})
+
+		// Record as 'thread_created' action
+		session.recordAction(
+			'thread_created',
+			{
+				thread_id: thread.id,
+				parent_id: channelId,
+				name: thread.name,
+				type: thread.type,
+				applied_tags: thread.applied_tags,
+				initial_message_id: message.id
+			},
+			{
+				endpoint: `POST /channels/${channelId}/threads`,
+				method: 'POST'
+			}
+		)
+
+		// Return forum thread as APIChannel with applied_tags
+		return mockForumThreadToAPIChannel(thread, message, session.state.botUser)
+	}
+
+	// 9. Regular thread creation (text/announcement channels)
 	const threadType = body.type ?? (channel.type === 5 ? 10 : 11)
 
-	// 9. Create thread in state
 	const thread = session.state.createThread({
 		name: body.name,
 		type: threadType,
@@ -132,6 +241,7 @@ export default async (request: RoboRequest) => {
 		}
 	)
 
-	// 11. Return thread as APIChannel
-	return mockThreadToAPIChannel(thread)
+	// 11. Return thread as APIChannel (include member since creator is automatically added)
+	const botMember = session.state.getThreadMember(thread.id, session.state.botUser.id)
+	return mockThreadToAPIChannel(thread, botMember ?? undefined)
 }

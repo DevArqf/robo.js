@@ -48,7 +48,24 @@ export {
 	buildThreadDeletePayload,
 	buildThreadListSyncPayload,
 	buildThreadMemberUpdatePayload,
-	buildThreadMembersUpdatePayload
+	buildThreadMembersUpdatePayload,
+	// Forum payload builders (Phase 4H)
+	mockForumChannelToAPIChannel,
+	mockForumThreadToAPIChannel,
+	mockForumTagToAPIForumTag,
+	// Webhook payload builders (Phase 4J)
+	mockWebhookToAPIWebhook,
+	buildWebhooksUpdatePayload,
+	// Role & Member payload builders (Phase 4L)
+	mockRoleToAPIRole,
+	mockGuildMemberToAPIMember,
+	mockOverwriteToAPIOverwrite,
+	buildGuildRoleCreatePayload,
+	buildGuildRoleUpdatePayload,
+	buildGuildRoleDeletePayload,
+	buildGuildMemberAddPayload,
+	buildGuildMemberUpdatePayload,
+	buildGuildMemberRemovePayload
 } from './discord/payloads.js'
 export type {
 	GatewayPayload,
@@ -66,7 +83,16 @@ export type {
 	ThreadDeletePayloadOptions,
 	ThreadListSyncPayloadOptions,
 	ThreadMemberUpdatePayloadOptions,
-	ThreadMembersUpdatePayloadOptions
+	ThreadMembersUpdatePayloadOptions,
+	// Webhook payload types (Phase 4J)
+	WebhooksUpdatePayloadOptions,
+	// Role & Member payload types (Phase 4L)
+	GuildRoleCreatePayloadOptions,
+	GuildRoleUpdatePayloadOptions,
+	GuildRoleDeletePayloadOptions,
+	GuildMemberAddPayloadOptions,
+	GuildMemberUpdatePayloadOptions,
+	GuildMemberRemovePayloadOptions
 } from './discord/payloads.js'
 
 // Utility exports
@@ -98,7 +124,16 @@ export {
 	serializeMockInteraction,
 	// Thread helpers (Phase 4D)
 	createMockThread,
-	serializeMockThread
+	serializeMockThread,
+	// Forum helpers (Phase 4H)
+	createMockForumChannel,
+	// Webhook helpers (Phase 4J)
+	serializeMockWebhook,
+	// Role & Member helpers (Phase 4L)
+	createMockRole,
+	createMockGuildMember,
+	serializeMockRole,
+	serializeMockGuildMember
 } from './session/state.js'
 
 // Auth exports
@@ -169,8 +204,83 @@ export type {
 	// Attachment types (Phase 4E)
 	MockAttachment,
 	StoredAttachment,
-	AttachmentPayload
+	AttachmentPayload,
+	// Forum types (Phase 4H)
+	MockForumChannel,
+	MockForumChannelConfig,
+	MockForumTag,
+	MockForumThread,
+	MockForumPostConfig,
+	MockDefaultReaction,
+	SerializedMockForumChannel,
+	SerializedMockForumTag,
+	SerializedMockForumThread,
+	// Webhook types (Phase 4J)
+	MockWebhook,
+	MockWebhookConfig,
+	SerializedMockWebhook,
+	// Role & Member types (Phase 4L)
+	MockRole,
+	MockRoleConfig,
+	MockRoleTags,
+	MockGuildMember,
+	MockGuildMemberConfig,
+	MockChannelOverwrite,
+	SerializedMockRole,
+	SerializedMockGuildMember,
+	DispatchRoleCreateOptions,
+	DispatchRoleUpdateOptions,
+	DispatchRoleDeleteOptions,
+	DispatchGuildMemberAddOptions,
+	DispatchGuildMemberUpdateOptions,
+	DispatchGuildMemberRemoveOptions
 } from './types/index.js'
 
 // Attachment constants (Phase 4E)
 export { AttachmentFlags, AttachmentLimits } from './types/index.js'
+
+// Forum constants (Phase 4H)
+export { ForumSortOrderType, ForumLayoutType } from './types/index.js'
+
+// Webhook constants (Phase 4J)
+export { WebhookType, WebhookLimits } from './types/index.js'
+
+// Role & Permission constants (Phase 4L)
+export { RoleLimits, OverwriteType } from './types/index.js'
+
+// Permission utilities (Phase 4L)
+export {
+	computePermissions,
+	computeBasePermissions,
+	hasPermission,
+	hasAnyPermission,
+	hasAllPermissions,
+	getPermissionNames,
+	parsePermissions,
+	permissionAllowed,
+	permissionDenied,
+	DiscordErrorCodes,
+	PermissionFlagsBits,
+	// Permission enforcement (Phase 4L)
+	checkEndpointPermission,
+	createPermissionErrorResponse,
+	// Role hierarchy helpers (Phase 4L-Extended)
+	isServerOwner,
+	getHighestRolePosition,
+	canActOnMember,
+	canManageRole,
+	// Enforcement middleware (Phase 4L-Extended)
+	checkEndpointPermissionWithEnforcement
+} from './core/permissions.js'
+export type {
+	PermissionCheckResult,
+	PermissionContext,
+	// Enforcement types (Phase 4L-Extended)
+	PermissionEnforcementLevel,
+	EnforcementOptions,
+	EnforcementContext
+} from './core/permissions.js'
+
+// Permission enforcement helper (Phase 4L-Extended)
+export { enforcePermissions, getEnforcementLevel } from './utils/permission-check.js'
+export type { EnforcePermissionsOptions } from './utils/permission-check.js'

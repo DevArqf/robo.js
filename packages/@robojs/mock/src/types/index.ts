@@ -15,6 +15,7 @@ export interface Session {
 	expiresAt: number
 	state: SessionState
 	connections: Map<string, ConnectionState>
+	config?: SessionConfig
 	readonly isExpired: boolean
 	readonly isEnding: boolean
 }
@@ -31,6 +32,12 @@ export interface SessionState {
 	interactions: Map<Snowflake, MockInteraction>
 	attachments: Map<Snowflake, StoredAttachment> // Phase 4E: File storage
 	pollVotes: Map<Snowflake, Map<Snowflake, number[]>> // Phase 4G: messageId -> userId -> answerIds[]
+	stickers: Map<Snowflake, MockSticker> // Phase 4I: Sticker storage
+	webhooks: Map<Snowflake, MockWebhook> // Phase 4J: Webhook storage
+	emojis: Map<Snowflake, MockEmoji> // Phase 4K: Emoji storage
+	roles: Map<Snowflake, MockRole> // Phase 4L: Role storage
+	guildMembers: Map<string, MockGuildMember> // Phase 4L: key = `${guildId}:${userId}`
+	commands: Map<Snowflake, MockApplicationCommand> // Phase 4M: Application commands
 	botUser: MockUser
 	applicationId: Snowflake
 	sequence: number
@@ -75,6 +82,34 @@ export interface SessionConfig {
 	applicationId?: Snowflake
 	/** Maximum number of recorded actions before LRU eviction (default: 10000) */
 	maxActions?: number
+	/**
+	 * Whether to filter events based on declared intents.
+	 * - false (default): All events sent regardless of intents
+	 * - true: Events filtered by declared intents, MESSAGE_CONTENT stripped
+	 *
+	 * Useful for testing that your bot declares correct intents.
+	 */
+	enforceIntents?: boolean
+	/**
+	 * Privileged intents that are "approved" for this session.
+	 * Only relevant when enforceIntents is true.
+	 * Default: All privileged intents approved (for ease of testing)
+	 *
+	 * Use bigint values from GatewayIntentBits:
+	 * - GuildMembers (1 << 1)
+	 * - GuildPresences (1 << 8)
+	 * - MessageContent (1 << 15)
+	 */
+	approvedPrivilegedIntents?: bigint
+	/**
+	 * Permission enforcement level for REST API calls.
+	 * - 'none' (default): All actions succeed regardless of permissions
+	 * - 'basic': Simple permission checks (requires the permission)
+	 * - 'strict': Full Discord-accurate logic with hierarchy, context, owner bypass
+	 *
+	 * Useful for testing permission error handling in your bot.
+	 */
+	permissionEnforcement?: 'none' | 'basic' | 'strict'
 }
 
 /**
@@ -100,6 +135,8 @@ export interface MockGuild {
 	channels: Snowflake[]
 	members: Snowflake[]
 	roles: Snowflake[]
+	stickers: Snowflake[] // Phase 4I: Guild sticker IDs
+	emojis: Snowflake[] // Phase 4K: Guild emoji IDs
 }
 
 /**
@@ -110,6 +147,8 @@ export interface MockGuildConfig {
 	name?: string
 	ownerId?: Snowflake
 	channels?: MockChannelConfig[]
+	stickers?: MockStickerConfig[] // Phase 4I
+	emojis?: MockEmojiConfig[] // Phase 4K
 }
 
 /**
@@ -121,6 +160,7 @@ export interface MockChannel {
 	name: string
 	type: number
 	parentId?: Snowflake | null
+	permissionOverwrites?: MockChannelOverwrite[] // Phase 4L
 }
 
 // ============================================================================
@@ -205,6 +245,107 @@ export interface DispatchThreadUpdateOptions {
 	rateLimitPerUser?: number
 }
 
+// ============================================================================
+// Forum & Media Channel Types (Phase 4H)
+// ============================================================================
+
+/**
+ * Forum tag definition (available_tags on forum channels)
+ * @see https://discord.com/developers/docs/resources/channel#forum-tag-object
+ */
+export interface MockForumTag {
+	id: Snowflake
+	name: string // Max 20 characters
+	moderated: boolean // Only mods can apply this tag
+	emoji_id: Snowflake | null // Custom emoji ID
+	emoji_name: string | null // Unicode emoji name
+}
+
+/**
+ * Default reaction emoji for forum posts
+ */
+export interface MockDefaultReaction {
+	emoji_id: Snowflake | null
+	emoji_name: string | null
+}
+
+/**
+ * Forum sort order types
+ */
+export enum ForumSortOrderType {
+	LatestActivity = 0,
+	CreationDate = 1
+}
+
+/**
+ * Forum layout types
+ */
+export enum ForumLayoutType {
+	NotSet = 0,
+	ListView = 1,
+	GalleryView = 2
+}
+
+/**
+ * Forum channel data (type 15) or Media channel data (type 16)
+ * @see https://discord.com/developers/docs/resources/channel#channel-object-channel-structure
+ */
+export interface MockForumChannel extends MockChannel {
+	type: 15 | 16 // GUILD_FORUM or GUILD_MEDIA
+	topic?: string // Channel description/guidelines
+	default_auto_archive_duration?: 60 | 1440 | 4320 | 10080
+	default_thread_rate_limit_per_user?: number
+	default_sort_order?: ForumSortOrderType | null
+	default_forum_layout?: ForumLayoutType
+	default_reaction_emoji?: MockDefaultReaction | null
+	available_tags: MockForumTag[] // Max 20 tags
+	template?: string // Post template/guidelines
+}
+
+/**
+ * Forum thread (post) - extends thread with applied_tags
+ */
+export interface MockForumThread extends MockThread {
+	applied_tags: Snowflake[] // Max 5 tag IDs from parent's available_tags
+}
+
+/**
+ * Configuration for creating a mock forum channel
+ */
+export interface MockForumChannelConfig {
+	id?: Snowflake
+	guildId?: Snowflake
+	name?: string
+	type?: 15 | 16
+	parentId?: Snowflake | null
+	topic?: string
+	available_tags?: Omit<MockForumTag, 'id'>[]
+	default_auto_archive_duration?: 60 | 1440 | 4320 | 10080
+	default_thread_rate_limit_per_user?: number
+	default_sort_order?: ForumSortOrderType | null
+	default_forum_layout?: ForumLayoutType
+	default_reaction_emoji?: MockDefaultReaction | null
+	template?: string
+}
+
+/**
+ * Configuration for creating a forum post (thread with initial message)
+ */
+export interface MockForumPostConfig {
+	name: string
+	parentId: Snowflake // Forum/media channel ID
+	ownerId?: Snowflake // Defaults to bot user
+	autoArchiveDuration?: 60 | 1440 | 4320 | 10080
+	rateLimitPerUser?: number
+	applied_tags?: Snowflake[] // Max 5 tags
+	message: {
+		content?: string
+		embeds?: unknown[]
+		components?: unknown[]
+		attachments?: unknown[]
+	}
+}
+
 /**
  * Mock message data
  */
@@ -235,6 +376,8 @@ export interface MockMessage {
 	components?: unknown[]
 	// Phase 4G: Polls
 	poll?: MockPoll
+	// Phase 4I: Stickers
+	sticker_items?: MockStickerItem[]
 }
 
 // ============================================================================
@@ -313,6 +456,472 @@ export interface MockPollConfig {
 	duration?: number // Hours until expiry (1, 4, 8, 24, 72, 168)
 	allow_multiselect?: boolean
 	layout_type?: PollLayoutType
+}
+
+// ============================================================================
+// Phase 4I: Sticker Types
+// ============================================================================
+
+/**
+ * Sticker type enum
+ * @see https://discord.com/developers/docs/resources/sticker#sticker-object-sticker-types
+ */
+export enum StickerType {
+	Standard = 1, // Official Discord sticker
+	Guild = 2 // Server sticker
+}
+
+/**
+ * Sticker format type enum
+ * @see https://discord.com/developers/docs/resources/sticker#sticker-object-sticker-format-types
+ */
+export enum StickerFormatType {
+	PNG = 1,
+	APNG = 2,
+	Lottie = 3,
+	GIF = 4
+}
+
+/**
+ * Full sticker object
+ * @see https://discord.com/developers/docs/resources/sticker#sticker-object
+ */
+export interface MockSticker {
+	id: Snowflake
+	pack_id?: Snowflake // For standard stickers
+	name: string
+	description: string | null
+	tags: string // Comma-separated autocomplete tags
+	type: StickerType
+	format_type: StickerFormatType
+	available: boolean
+	guild_id?: Snowflake // For guild stickers
+	user?: MockUser // Uploader (guild stickers only)
+	sort_value?: number // Sort order in pack (standard stickers)
+}
+
+/**
+ * Partial sticker object in messages (sticker_items)
+ * @see https://discord.com/developers/docs/resources/sticker#sticker-item-object
+ */
+export interface MockStickerItem {
+	id: Snowflake
+	name: string
+	format_type: StickerFormatType
+}
+
+/**
+ * Configuration for creating a guild sticker
+ */
+export interface MockStickerConfig {
+	id?: Snowflake
+	name: string
+	description?: string
+	tags: string
+	format_type?: StickerFormatType
+}
+
+/**
+ * Sticker pack object (for standard stickers)
+ * @see https://discord.com/developers/docs/resources/sticker#sticker-pack-object
+ */
+export interface MockStickerPack {
+	id: Snowflake
+	stickers: MockSticker[]
+	name: string
+	sku_id: Snowflake
+	cover_sticker_id?: Snowflake
+	description: string
+	banner_asset_id?: Snowflake
+}
+
+/**
+ * Validation constants for stickers
+ * @see https://discord.com/developers/docs/resources/sticker
+ */
+export const StickerLimits = {
+	/** Maximum stickers per guild (Nitro boost level 3) */
+	MAX_GUILD_STICKERS: 60,
+	/** Minimum sticker name length */
+	MIN_NAME_LENGTH: 2,
+	/** Maximum sticker name length */
+	MAX_NAME_LENGTH: 30,
+	/** Minimum sticker description length (when not empty) */
+	MIN_DESCRIPTION_LENGTH: 2,
+	/** Maximum sticker description length */
+	MAX_DESCRIPTION_LENGTH: 100,
+	/** Minimum sticker tags length */
+	MIN_TAGS_LENGTH: 2,
+	/** Maximum sticker tags length */
+	MAX_TAGS_LENGTH: 200,
+	/** Maximum stickers per message */
+	MAX_STICKERS_PER_MESSAGE: 3
+} as const
+
+// ============================================================================
+// Phase 4K: Emoji Types
+// ============================================================================
+
+/**
+ * Full emoji object
+ * @see https://discord.com/developers/docs/resources/emoji#emoji-object
+ */
+export interface MockEmoji {
+	id: Snowflake | null // null for standard Unicode emoji
+	name: string | null
+	roles?: Snowflake[] // Roles allowed to use this emoji
+	user?: MockUser // User that created this emoji
+	require_colons?: boolean
+	managed?: boolean // Whether this emoji is managed by an integration
+	animated?: boolean
+	available?: boolean // Whether this emoji can be used
+}
+
+/**
+ * Configuration for creating a guild emoji
+ */
+export interface MockEmojiConfig {
+	id?: Snowflake
+	name: string
+	image?: string // Base64 image data (for creation)
+	roles?: Snowflake[]
+	animated?: boolean
+}
+
+/**
+ * Validation constants for emojis
+ * @see https://discord.com/developers/docs/resources/emoji
+ */
+export const EmojiLimits = {
+	/** Maximum emojis per guild (base level, increases with Nitro boosts) */
+	MAX_GUILD_EMOJIS: 50,
+	/** Maximum emoji name length */
+	MAX_NAME_LENGTH: 32,
+	/** Minimum emoji name length */
+	MIN_NAME_LENGTH: 2,
+	/** Regex pattern for valid emoji names (alphanumeric and underscores only) */
+	NAME_PATTERN: /^[a-zA-Z0-9_]+$/
+} as const
+
+// ============================================================================
+// Phase 4J: Webhook Types
+// ============================================================================
+
+/**
+ * Webhook type enum
+ * @see https://discord.com/developers/docs/resources/webhook#webhook-object-webhook-types
+ */
+export enum WebhookType {
+	/** Incoming webhook - can post messages with custom name/avatar */
+	Incoming = 1,
+	/**
+	 * Channel Follower webhook - automatically created when following an announcement channel.
+	 *
+	 * NOT YET IMPLEMENTED: ChannelFollower webhooks require:
+	 * - POST /channels/:id/followers endpoint to create them
+	 * - Announcement channel type (ChannelType.GuildAnnouncement = 5)
+	 * - Cross-server message forwarding when announcements are published
+	 * - source_guild and source_channel fields in the webhook object
+	 *
+	 * These webhooks are auto-created and managed by Discord, not user-created.
+	 * The endpoint GET /webhooks/:id will return them, but creation is via following.
+	 *
+	 * @see https://discord.com/developers/docs/resources/channel#follow-announcement-channel
+	 */
+	ChannelFollower = 2,
+	/** Application webhook - used by applications for interactions */
+	Application = 3
+}
+
+/**
+ * Full webhook object
+ * @see https://discord.com/developers/docs/resources/webhook#webhook-object
+ */
+export interface MockWebhook {
+	id: Snowflake
+	type: WebhookType
+	guild_id?: Snowflake
+	channel_id: Snowflake
+	user?: MockUser // Creator (not returned if fetching with token by non-owner)
+	name: string | null
+	avatar: string | null
+	token?: string // Only returned to webhook creator or when fetching by token
+	application_id: Snowflake | null
+	// For ChannelFollower webhooks
+	source_guild?: {
+		id: Snowflake
+		name: string
+		icon: string | null
+	}
+	source_channel?: {
+		id: Snowflake
+		name: string
+	}
+	url?: string // Full webhook URL
+}
+
+/**
+ * Configuration for creating a webhook
+ */
+export interface MockWebhookConfig {
+	id?: Snowflake
+	name: string
+	avatar?: string | null
+	channel_id?: Snowflake // For moving webhook to different channel
+}
+
+/**
+ * Validation constants for webhooks
+ * @see https://discord.com/developers/docs/resources/webhook
+ */
+export const WebhookLimits = {
+	/** Maximum webhooks per channel */
+	MAX_WEBHOOKS_PER_CHANNEL: 15,
+	/** Maximum webhook name length */
+	MAX_NAME_LENGTH: 80,
+	/** Minimum webhook name length */
+	MIN_NAME_LENGTH: 1
+} as const
+
+/**
+ * Serialized webhook for API responses
+ */
+export interface SerializedMockWebhook {
+	id: string
+	type: WebhookType
+	guild_id?: string
+	channel_id: string
+	user?: SerializedMockUser
+	name: string | null
+	avatar: string | null
+	token?: string
+	application_id: string | null
+	source_guild?: {
+		id: string
+		name: string
+		icon: string | null
+	}
+	source_channel?: {
+		id: string
+		name: string
+	}
+	url?: string
+}
+
+// ============================================================================
+// Phase 4L: Role & Permission Types
+// ============================================================================
+
+/**
+ * Overwrite type enum
+ * @see https://discord.com/developers/docs/resources/channel#overwrite-object
+ */
+export enum OverwriteType {
+	/** Role permission overwrite */
+	Role = 0,
+	/** Member permission overwrite */
+	Member = 1
+}
+
+/**
+ * Channel permission overwrite
+ * @see https://discord.com/developers/docs/resources/channel#overwrite-object
+ */
+export interface MockChannelOverwrite {
+	id: Snowflake // Role or user ID
+	type: OverwriteType // 0=Role, 1=Member
+	allow: string // Allowed permissions (bitfield as string)
+	deny: string // Denied permissions (bitfield as string)
+}
+
+/**
+ * Role tags for special roles
+ * @see https://discord.com/developers/docs/topics/permissions#role-object-role-tags-structure
+ */
+export interface MockRoleTags {
+	bot_id?: Snowflake // Bot this role belongs to
+	integration_id?: Snowflake // Integration this role belongs to
+	premium_subscriber?: null // Is boost role (null = yes, presence indicates true)
+	subscription_listing_id?: Snowflake
+	available_for_purchase?: null // Can be purchased (null = yes)
+	guild_connections?: null // Guild connections role (null = yes)
+}
+
+/**
+ * Full role object
+ * @see https://discord.com/developers/docs/topics/permissions#role-object
+ */
+export interface MockRole {
+	id: Snowflake
+	guildId: Snowflake
+	name: string
+	color: number // RGB color (0 = no color)
+	hoist: boolean // Show separately in member list
+	icon?: string | null // Role icon hash
+	unicodeEmoji?: string | null // Unicode emoji icon
+	position: number // Position in hierarchy (0 = @everyone)
+	permissions: string // Permission bitfield as string
+	managed: boolean // Managed by integration
+	mentionable: boolean // Can be mentioned
+	tags?: MockRoleTags // Special role tags
+	flags: number // Role flags bitfield
+}
+
+/**
+ * Configuration for creating a role
+ */
+export interface MockRoleConfig {
+	id?: Snowflake
+	name?: string
+	color?: number
+	hoist?: boolean
+	icon?: string | null
+	unicodeEmoji?: string | null
+	permissions?: string
+	mentionable?: boolean
+	position?: number
+	managed?: boolean
+	tags?: MockRoleTags
+}
+
+/**
+ * Guild member data
+ * @see https://discord.com/developers/docs/resources/guild#guild-member-object
+ */
+export interface MockGuildMember {
+	userId: Snowflake
+	guildId: Snowflake
+	roles: Snowflake[] // Role IDs (excludes @everyone)
+	nick?: string | null
+	avatar?: string | null // Guild-specific avatar
+	joinedAt: string // ISO 8601 timestamp
+	premiumSince?: string | null // When user started boosting
+	deaf: boolean
+	mute: boolean
+	pending: boolean // Has not passed membership screening
+	communicationDisabledUntil?: string | null // Timeout expiry
+	flags: number // Guild member flags
+}
+
+/**
+ * Configuration for creating/updating a guild member
+ */
+export interface MockGuildMemberConfig {
+	nick?: string | null
+	roles?: Snowflake[]
+	deaf?: boolean
+	mute?: boolean
+	communicationDisabledUntil?: string | null
+}
+
+/**
+ * Validation constants for roles
+ * @see https://discord.com/developers/docs/topics/permissions#role-object
+ */
+export const RoleLimits = {
+	/** Maximum roles per guild */
+	MAX_ROLES_PER_GUILD: 250,
+	/** Minimum role name length */
+	MIN_NAME_LENGTH: 1,
+	/** Maximum role name length */
+	MAX_NAME_LENGTH: 100,
+	/** Maximum color value (0xFFFFFF) */
+	MAX_COLOR_VALUE: 16777215
+} as const
+
+/**
+ * Options for dispatching role create event
+ */
+export interface DispatchRoleCreateOptions {
+	guildId: Snowflake
+	role?: MockRoleConfig
+}
+
+/**
+ * Options for dispatching role update event
+ */
+export interface DispatchRoleUpdateOptions {
+	guildId: Snowflake
+	roleId: Snowflake
+	updates: Partial<MockRoleConfig>
+}
+
+/**
+ * Options for dispatching role delete event
+ */
+export interface DispatchRoleDeleteOptions {
+	guildId: Snowflake
+	roleId: Snowflake
+}
+
+/**
+ * Options for dispatching guild member add event
+ */
+export interface DispatchGuildMemberAddOptions {
+	guildId: Snowflake
+	userId?: Snowflake
+	user?: MockUserConfig
+	roles?: Snowflake[]
+}
+
+/**
+ * Options for dispatching guild member update event
+ */
+export interface DispatchGuildMemberUpdateOptions {
+	guildId: Snowflake
+	userId: Snowflake
+	updates: Partial<MockGuildMemberConfig>
+}
+
+/**
+ * Options for dispatching guild member remove event
+ */
+export interface DispatchGuildMemberRemoveOptions {
+	guildId: Snowflake
+	userId: Snowflake
+}
+
+/**
+ * Serialized role for API responses
+ */
+export interface SerializedMockRole {
+	id: string
+	guildId: string
+	name: string
+	color: number
+	hoist: boolean
+	icon?: string | null
+	unicode_emoji?: string | null
+	position: number
+	permissions: string
+	managed: boolean
+	mentionable: boolean
+	tags?: {
+		bot_id?: string
+		integration_id?: string
+		premium_subscriber?: null
+		subscription_listing_id?: string
+		available_for_purchase?: null
+		guild_connections?: null
+	}
+	flags: number
+}
+
+/**
+ * Serialized guild member for API responses
+ */
+export interface SerializedMockGuildMember {
+	user: SerializedMockUser
+	nick?: string | null
+	avatar?: string | null
+	roles: string[]
+	joined_at: string
+	premium_since?: string | null
+	deaf: boolean
+	mute: boolean
+	pending: boolean
+	communication_disabled_until?: string | null
+	flags: number
 }
 
 // ============================================================================
@@ -445,7 +1054,7 @@ export interface MockMessageSnapshotContent {
 	flags?: number
 	mentions: MockUser[]
 	mention_roles: Snowflake[]
-	sticker_items?: unknown[]
+	sticker_items?: MockStickerItem[] // Phase 4I
 	components?: unknown[]
 }
 
@@ -631,6 +1240,8 @@ export interface MockMessageConfig {
 	components?: unknown[]
 	// Phase 4G: Polls
 	poll?: MockPollConfig
+	// Phase 4I: Stickers
+	sticker_ids?: Snowflake[]
 }
 
 /**
@@ -732,6 +1343,33 @@ export type ActionType =
 	| 'thread_deleted'
 	| 'thread_member_added'
 	| 'thread_member_removed'
+	// Poll actions (Phase 4G)
+	| 'poll_voters_fetched'
+	| 'poll_expired'
+	// Sticker actions (Phase 4I)
+	| 'sticker_created'
+	| 'sticker_updated'
+	| 'sticker_deleted'
+	// Webhook actions (Phase 4J)
+	| 'webhook_created'
+	| 'webhook_updated'
+	| 'webhook_deleted'
+	| 'webhook_executed'
+	// Emoji actions (Phase 4K)
+	| 'emoji_created'
+	| 'emoji_updated'
+	| 'emoji_deleted'
+	// Role actions (Phase 4L)
+	| 'role_created'
+	| 'role_updated'
+	| 'role_deleted'
+	| 'role_positions_updated'
+	// Guild member actions (Phase 4L)
+	| 'guild_member_added'
+	| 'guild_member_updated'
+	| 'guild_member_removed'
+	| 'member_role_added'
+	| 'member_role_removed'
 	// Gateway WebSocket actions (client → server)
 	| 'gateway_message'
 	| 'gateway_identify'
@@ -838,6 +1476,7 @@ export interface SerializedSessionState {
 	messages: SerializedMockMessage[]
 	interactions: SerializedMockInteraction[]
 	attachments: SerializedStoredAttachment[] // Phase 4E
+	webhooks: SerializedMockWebhook[] // Phase 4J
 	botUser: SerializedMockUser
 	applicationId: string
 	sequence: number
@@ -877,6 +1516,42 @@ export interface SerializedMockThread extends SerializedMockChannel {
 	messageCount: number
 	totalMessageSent?: number
 	lastMessageId?: string | null
+}
+
+/**
+ * Serialized forum tag (Phase 4H)
+ */
+export interface SerializedMockForumTag {
+	id: string
+	name: string
+	moderated: boolean
+	emoji_id: string | null
+	emoji_name: string | null
+}
+
+/**
+ * Serialized forum/media channel (Phase 4H)
+ */
+export interface SerializedMockForumChannel extends SerializedMockChannel {
+	type: 15 | 16
+	topic?: string
+	default_auto_archive_duration?: number
+	default_thread_rate_limit_per_user?: number
+	default_sort_order?: number | null
+	default_forum_layout?: number
+	default_reaction_emoji?: {
+		emoji_id: string | null
+		emoji_name: string | null
+	} | null
+	available_tags: SerializedMockForumTag[]
+	template?: string
+}
+
+/**
+ * Serialized forum thread/post (Phase 4H)
+ */
+export interface SerializedMockForumThread extends SerializedMockThread {
+	applied_tags: string[]
 }
 
 export interface SerializedMockUser {
@@ -1136,7 +1811,11 @@ export const ComponentsV2Limits = {
 	/** Maximum items in a MediaGallery */
 	MAX_MEDIA_GALLERY_ITEMS: 10,
 	/** Maximum TextDisplay components in a Section */
-	MAX_SECTION_TEXT_COMPONENTS: 3
+	MAX_SECTION_TEXT_COMPONENTS: 3,
+	/** Minimum TextDisplay components in a Section */
+	MIN_SECTION_TEXT_COMPONENTS: 1,
+	/** Maximum description length for MediaGallery items and Thumbnails */
+	MAX_MEDIA_DESCRIPTION_LENGTH: 1024
 } as const
 
 /**
@@ -1329,4 +2008,167 @@ export function createV2ConflictError(): DiscordAPIError {
 			}
 		}
 	}
+}
+
+// ============================================================================
+// Phase 4M: Application Command Types
+// ============================================================================
+
+/**
+ * Application command type enum
+ * @see https://discord.com/developers/docs/interactions/application-commands#application-command-object-application-command-types
+ */
+export enum ApplicationCommandType {
+	/** Slash command - appears in command menu */
+	ChatInput = 1,
+	/** User context menu command */
+	User = 2,
+	/** Message context menu command */
+	Message = 3
+}
+
+/**
+ * Application command option type enum
+ * @see https://discord.com/developers/docs/interactions/application-commands#application-command-object-application-command-option-type
+ */
+export enum ApplicationCommandOptionType {
+	SubCommand = 1,
+	SubCommandGroup = 2,
+	String = 3,
+	Integer = 4,
+	Boolean = 5,
+	User = 6,
+	Channel = 7,
+	Role = 8,
+	Mentionable = 9,
+	Number = 10,
+	Attachment = 11
+}
+
+/**
+ * Predefined choice for string/integer/number options
+ * @see https://discord.com/developers/docs/interactions/application-commands#application-command-object-application-command-option-choice-structure
+ */
+export interface MockApplicationCommandOptionChoice {
+	name: string // 1-100 chars
+	name_localizations?: Record<string, string>
+	value: string | number // String: 1-100 chars, Number: Discord number limits
+}
+
+/**
+ * Application command option
+ * @see https://discord.com/developers/docs/interactions/application-commands#application-command-object-application-command-option-structure
+ */
+export interface MockApplicationCommandOption {
+	type: ApplicationCommandOptionType
+	name: string // 1-32 chars, lowercase
+	name_localizations?: Record<string, string>
+	description: string // 1-100 chars
+	description_localizations?: Record<string, string>
+	required?: boolean // Default false
+	choices?: MockApplicationCommandOptionChoice[] // Max 25
+	options?: MockApplicationCommandOption[] // For subcommand/subcommand_group
+	channel_types?: number[] // For channel type option
+	min_value?: number // For integer/number
+	max_value?: number // For integer/number
+	min_length?: number // For string (0-6000)
+	max_length?: number // For string (1-6000)
+	autocomplete?: boolean // For string/integer/number (mutually exclusive with choices)
+}
+
+/**
+ * Full application command object
+ * @see https://discord.com/developers/docs/interactions/application-commands#application-command-object
+ */
+export interface MockApplicationCommand {
+	id: Snowflake
+	type: ApplicationCommandType
+	application_id: Snowflake
+	guild_id?: Snowflake // undefined = global command
+	name: string // 1-32 chars, lowercase for CHAT_INPUT
+	name_localizations?: Record<string, string> | null
+	description: string // 1-100 chars for CHAT_INPUT, empty for USER/MESSAGE
+	description_localizations?: Record<string, string> | null
+	options?: MockApplicationCommandOption[] // Max 25
+	default_member_permissions: string | null // Permission bitfield as string
+	dm_permission?: boolean // Deprecated but still supported
+	default_permission?: boolean // Deprecated - use default_member_permissions
+	nsfw?: boolean
+	integration_types?: number[] // Installation contexts
+	contexts?: number[] // Interaction contexts
+	version: Snowflake // Autoincrement snowflake for change tracking
+}
+
+/**
+ * Configuration for creating an application command
+ */
+export interface MockApplicationCommandConfig {
+	id?: Snowflake
+	type?: ApplicationCommandType // Default: ChatInput
+	name: string
+	name_localizations?: Record<string, string> | null
+	description?: string // Required for CHAT_INPUT
+	description_localizations?: Record<string, string> | null
+	options?: MockApplicationCommandOption[]
+	default_member_permissions?: string | null
+	dm_permission?: boolean
+	nsfw?: boolean
+	integration_types?: number[]
+	contexts?: number[]
+}
+
+/**
+ * Validation constants for application commands
+ * @see https://discord.com/developers/docs/interactions/application-commands
+ */
+export const CommandLimits = {
+	/** Maximum global commands per application */
+	MAX_GLOBAL_COMMANDS: 100,
+	/** Maximum guild commands per application per guild */
+	MAX_GUILD_COMMANDS: 100,
+	/** Minimum command name length */
+	MIN_NAME_LENGTH: 1,
+	/** Maximum command name length */
+	MAX_NAME_LENGTH: 32,
+	/** Minimum description length for CHAT_INPUT */
+	MIN_DESCRIPTION_LENGTH: 1,
+	/** Maximum description length */
+	MAX_DESCRIPTION_LENGTH: 100,
+	/** Maximum options per command */
+	MAX_OPTIONS: 25,
+	/** Maximum choices per option */
+	MAX_CHOICES: 25,
+	/** Maximum choice name length */
+	MAX_CHOICE_NAME_LENGTH: 100,
+	/** Maximum string choice value length */
+	MAX_CHOICE_STRING_VALUE_LENGTH: 100,
+	/** Maximum option description length */
+	MAX_OPTION_DESCRIPTION_LENGTH: 100,
+	/** Regex pattern for valid command names (CHAT_INPUT) - lowercase, alphanumeric, dashes, underscores */
+	CHAT_INPUT_NAME_PATTERN: /^[-_\p{L}\p{N}\p{sc=Deva}\p{sc=Thai}]{1,32}$/u,
+	/** Maximum string option min_length */
+	MAX_STRING_MIN_LENGTH: 6000,
+	/** Maximum string option max_length */
+	MAX_STRING_MAX_LENGTH: 6000
+} as const
+
+/**
+ * Serialized application command for API responses
+ */
+export interface SerializedMockApplicationCommand {
+	id: string
+	type: ApplicationCommandType
+	application_id: string
+	guild_id?: string
+	name: string
+	name_localizations?: Record<string, string> | null
+	description: string
+	description_localizations?: Record<string, string> | null
+	options?: MockApplicationCommandOption[]
+	default_member_permissions: string | null
+	dm_permission?: boolean
+	nsfw?: boolean
+	integration_types?: number[]
+	contexts?: number[]
+	version: string
 }

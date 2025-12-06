@@ -1,0 +1,162 @@
+import type { RoboRequest } from '@robojs/server'
+import { sessionManager } from '../../../../../core/manager.js'
+import { parseMockToken } from '../../../../../utils/id.js'
+import { OverwriteType } from '../../../../../types/index.js'
+
+/**
+ * PUT /api/v10/channels/:id/permissions/:overwriteId - Edit channel permissions
+ * DELETE /api/v10/channels/:id/permissions/:overwriteId - Delete channel permission overwrite
+ *
+ * @see https://discord.com/developers/docs/resources/channel#edit-channel-permissions
+ * @see https://discord.com/developers/docs/resources/channel#delete-channel-permission
+ */
+export default async (request: RoboRequest) => {
+	// 1. Parse Authorization header → get session
+	const authHeader = request.headers.get('Authorization') || ''
+	const sessionId = parseMockToken(authHeader)
+
+	if (!sessionId) {
+		return new Response(JSON.stringify({ error: 'Unauthorized', code: 0 }), {
+			status: 401,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	const session = sessionManager.get(sessionId)
+	if (!session) {
+		return new Response(JSON.stringify({ error: 'Unauthorized', code: 0 }), {
+			status: 401,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// 2. Extract IDs from params
+	const { id: channelId, overwriteId } = request.params as { id: string; overwriteId: string }
+
+	// 3. Validate channel exists
+	const channel = session.state.channels.get(channelId)
+	if (!channel) {
+		return new Response(JSON.stringify({ error: 'Unknown Channel', code: 10003 }), {
+			status: 404,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// Channel must be in a guild
+	if (!channel.guildId) {
+		return new Response(JSON.stringify({ error: 'Cannot set permissions on DM channel', code: 50035 }), {
+			status: 400,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// Handle PUT - Edit channel permissions
+	if (request.method === 'PUT') {
+		let body: {
+			allow?: string
+			deny?: string
+			type: number // 0 = Role, 1 = Member
+		}
+
+		try {
+			body = await request.json()
+		} catch {
+			return new Response(JSON.stringify({ error: 'Invalid request body', code: 50035 }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// Validate type
+		if (body.type !== OverwriteType.Role && body.type !== OverwriteType.Member) {
+			return new Response(JSON.stringify({ error: 'Invalid overwrite type', code: 50035 }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// If type is Role, validate role exists
+		if (body.type === OverwriteType.Role) {
+			const role = session.state.getGuildRole(channel.guildId, overwriteId)
+			if (!role) {
+				return new Response(JSON.stringify({ error: 'Unknown Role', code: 10011 }), {
+					status: 404,
+					headers: { 'Content-Type': 'application/json' }
+				})
+			}
+		}
+
+		// If type is Member, validate user exists
+		if (body.type === OverwriteType.Member) {
+			const user = session.state.users.get(overwriteId)
+			if (!user) {
+				return new Response(JSON.stringify({ error: 'Unknown User', code: 10013 }), {
+					status: 404,
+					headers: { 'Content-Type': 'application/json' }
+				})
+			}
+		}
+
+		// Set the permission overwrite
+		const success = session.state.setChannelOverwrite(channelId, {
+			id: overwriteId,
+			type: body.type,
+			allow: body.allow ?? '0',
+			deny: body.deny ?? '0'
+		})
+
+		if (!success) {
+			return new Response(JSON.stringify({ error: 'Failed to set permission overwrite', code: 50035 }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// Record action
+		session.recordAction(
+			'channel_overwrite_updated',
+			{
+				channel_id: channelId,
+				overwrite_id: overwriteId,
+				type: body.type,
+				allow: body.allow ?? '0',
+				deny: body.deny ?? '0'
+			},
+			{
+				endpoint: `PUT /channels/${channelId}/permissions/${overwriteId}`,
+				method: 'PUT'
+			}
+		)
+
+		// Discord returns 204 No Content on success
+		return new Response(null, { status: 204 })
+	}
+
+	// Handle DELETE - Delete channel permission overwrite
+	if (request.method === 'DELETE') {
+		const deleted = session.state.deleteChannelOverwrite(channelId, overwriteId)
+
+		// Record action (even if overwrite didn't exist)
+		session.recordAction(
+			'channel_overwrite_deleted',
+			{
+				channel_id: channelId,
+				overwrite_id: overwriteId,
+				was_present: deleted
+			},
+			{
+				endpoint: `DELETE /channels/${channelId}/permissions/${overwriteId}`,
+				method: 'DELETE'
+			}
+		)
+
+		// Discord returns 204 No Content on success
+		return new Response(null, { status: 204 })
+	}
+
+	// Method not allowed
+	return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+		status: 405,
+		headers: { 'Content-Type': 'application/json' }
+	})
+}

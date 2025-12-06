@@ -72,9 +72,12 @@ export default async (request: RoboRequest) => {
 		})
 		.filter((m) => m !== null)
 
-	// 7. Return response
+	// 7. Return response (include member field in each thread if bot is a member)
 	return {
-		threads: threads.map(mockThreadToAPIChannel),
+		threads: threads.map((thread) => {
+			const botMember = session.state.getThreadMember(thread.id, session.state.botUser.id)
+			return mockThreadToAPIChannel(thread, botMember ?? undefined)
+		}),
 		members,
 		has_more: false // We return all threads at once in mock
 	}

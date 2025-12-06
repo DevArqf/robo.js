@@ -1,7 +1,8 @@
 import { GatewayOpcodes, ChannelType, GuildDefaultMessageNotifications, GuildExplicitContentFilter, GuildMFALevel, GuildNSFWLevel, GuildPremiumTier, GuildVerificationLevel, MessageType, InteractionType, ApplicationCommandType, ComponentType } from 'discord-api-types/v10'
-import type { APIUser, APIUnavailableGuild, APIChannel, APIDMChannel, APIRole, APIGuildMember, Snowflake, APIMessage, APIEmbed, APIAttachment, APIMessageInteractionMetadata, APIMessageSnapshot } from 'discord-api-types/v10'
+import type { APIUser, APIUnavailableGuild, APIChannel, APIDMChannel, APIRole, APIGuildMember, Snowflake, APIMessage, APIEmbed, APIAttachment, APIMessageInteractionMetadata, APIMessageSnapshot, APIOverwrite, APIRoleTags } from 'discord-api-types/v10'
 import { DEFAULT_HEARTBEAT_INTERVAL, GATEWAY_VERSION } from './opcodes.js'
-import type { MockUser, MockGuild, MockChannel, MockMessage, MockInteraction, SessionState, MockMessageSnapshot, MockThread, MockThreadMember } from '../types/index.js'
+import type { MockUser, MockGuild, MockChannel, MockMessage, MockInteraction, SessionState, MockMessageSnapshot, MockThread, MockThreadMember, MockForumChannel, MockForumThread, MockForumTag, MockSticker, MockWebhook, MockEmoji, MockRole, MockGuildMember, MockChannelOverwrite, MockApplicationCommand } from '../types/index.js'
+import { OverwriteType } from '../types/index.js'
 import { generateSnowflake } from '../utils/snowflake.js'
 
 /**
@@ -115,6 +116,149 @@ export function mockUserToAPIUser(user: MockUser): APIUser {
 }
 
 /**
+ * Convert MockRole to Discord APIRole format
+ */
+export function mockRoleToAPIRole(role: MockRole): APIRole {
+	const apiRole: APIRole = {
+		id: role.id,
+		name: role.name,
+		color: role.color,
+		hoist: role.hoist,
+		position: role.position,
+		permissions: role.permissions,
+		managed: role.managed,
+		mentionable: role.mentionable,
+		flags: role.flags as APIRole['flags']
+	}
+
+	// Add optional fields
+	if (role.icon !== undefined) {
+		apiRole.icon = role.icon
+	}
+	if (role.unicodeEmoji !== undefined) {
+		apiRole.unicode_emoji = role.unicodeEmoji
+	}
+	if (role.tags) {
+		const tags: APIRoleTags = {}
+		if (role.tags.bot_id !== undefined) tags.bot_id = role.tags.bot_id
+		if (role.tags.integration_id !== undefined) tags.integration_id = role.tags.integration_id
+		if (role.tags.premium_subscriber !== undefined) tags.premium_subscriber = role.tags.premium_subscriber
+		if (role.tags.subscription_listing_id !== undefined) tags.subscription_listing_id = role.tags.subscription_listing_id
+		if (role.tags.available_for_purchase !== undefined) tags.available_for_purchase = role.tags.available_for_purchase
+		if (role.tags.guild_connections !== undefined) tags.guild_connections = role.tags.guild_connections
+		apiRole.tags = tags
+	}
+
+	return apiRole
+}
+
+/**
+ * Convert MockGuildMember to Discord APIGuildMember format
+ */
+export function mockGuildMemberToAPIMember(member: MockGuildMember, user: MockUser): APIGuildMember {
+	const apiMember: APIGuildMember = {
+		user: mockUserToAPIUser(user),
+		roles: [...member.roles],
+		joined_at: member.joinedAt,
+		deaf: member.deaf,
+		mute: member.mute,
+		flags: member.flags as APIGuildMember['flags']
+	}
+
+	// Add optional fields
+	if (member.nick !== undefined && member.nick !== null) {
+		apiMember.nick = member.nick
+	}
+	if (member.avatar !== undefined && member.avatar !== null) {
+		apiMember.avatar = member.avatar
+	}
+	if (member.premiumSince !== undefined && member.premiumSince !== null) {
+		apiMember.premium_since = member.premiumSince
+	}
+	if (member.pending !== undefined) {
+		apiMember.pending = member.pending
+	}
+	if (member.communicationDisabledUntil !== undefined && member.communicationDisabledUntil !== null) {
+		apiMember.communication_disabled_until = member.communicationDisabledUntil
+	}
+
+	return apiMember
+}
+
+/**
+ * Convert MockChannelOverwrite to Discord APIOverwrite format
+ */
+export function mockOverwriteToAPIOverwrite(overwrite: MockChannelOverwrite): APIOverwrite {
+	return {
+		id: overwrite.id,
+		type: overwrite.type,
+		allow: overwrite.allow,
+		deny: overwrite.deny
+	}
+}
+
+/**
+ * Options for converting commands to API format
+ */
+export interface CommandToAPIOptions {
+	/** Include full localization dictionaries (default: true for backwards compatibility) */
+	withLocalizations?: boolean
+}
+
+/**
+ * Convert MockApplicationCommand to Discord API format
+ * @see https://discord.com/developers/docs/interactions/application-commands#application-command-object
+ */
+export function mockCommandToAPICommand(command: MockApplicationCommand, options?: CommandToAPIOptions): Record<string, unknown> {
+	const withLocalizations = options?.withLocalizations ?? true
+
+	const apiCommand: Record<string, unknown> = {
+		id: command.id,
+		type: command.type,
+		application_id: command.application_id,
+		name: command.name,
+		description: command.description,
+		default_member_permissions: command.default_member_permissions,
+		version: command.version
+	}
+
+	// Add optional fields only if defined
+	if (command.guild_id !== undefined) {
+		apiCommand.guild_id = command.guild_id
+	}
+
+	// Include localizations based on withLocalizations parameter
+	// When false, Discord returns name_localized/description_localized instead
+	// Since we don't track request locale, we just omit localizations when false
+	if (withLocalizations) {
+		if (command.name_localizations !== undefined) {
+			apiCommand.name_localizations = command.name_localizations
+		}
+		if (command.description_localizations !== undefined) {
+			apiCommand.description_localizations = command.description_localizations
+		}
+	}
+
+	if (command.options !== undefined && command.options.length > 0) {
+		apiCommand.options = command.options
+	}
+	if (command.dm_permission !== undefined) {
+		apiCommand.dm_permission = command.dm_permission
+	}
+	if (command.nsfw !== undefined) {
+		apiCommand.nsfw = command.nsfw
+	}
+	if (command.integration_types !== undefined) {
+		apiCommand.integration_types = command.integration_types
+	}
+	if (command.contexts !== undefined) {
+		apiCommand.contexts = command.contexts
+	}
+
+	return apiCommand
+}
+
+/**
  * Convert guild ID to APIUnavailableGuild format
  * Guilds are sent as unavailable in READY, then become available via GUILD_CREATE
  */
@@ -123,6 +267,162 @@ export function mockGuildToUnavailable(guildId: Snowflake): APIUnavailableGuild 
 		id: guildId,
 		unavailable: true
 	}
+}
+
+/**
+ * Convert MockSticker to Discord API sticker format
+ */
+export function mockStickerToAPISticker(sticker: MockSticker): {
+	id: Snowflake
+	pack_id?: Snowflake
+	name: string
+	description: string | null
+	tags: string
+	type: number
+	format_type: number
+	available: boolean
+	guild_id?: Snowflake
+	user?: APIUser
+	sort_value?: number
+} {
+	return {
+		id: sticker.id,
+		pack_id: sticker.pack_id,
+		name: sticker.name,
+		description: sticker.description,
+		tags: sticker.tags,
+		type: sticker.type,
+		format_type: sticker.format_type,
+		available: sticker.available,
+		guild_id: sticker.guild_id,
+		user: sticker.user ? mockUserToAPIUser(sticker.user) : undefined,
+		sort_value: sticker.sort_value
+	}
+}
+
+/**
+ * Convert MockEmoji to Discord API emoji format
+ * @see https://discord.com/developers/docs/resources/emoji#emoji-object
+ */
+export function mockEmojiToAPIEmoji(emoji: MockEmoji): {
+	id: Snowflake | null
+	name: string | null
+	roles?: Snowflake[]
+	user?: APIUser
+	require_colons?: boolean
+	managed?: boolean
+	animated?: boolean
+	available?: boolean
+} {
+	// Build the result object, only including defined optional fields
+	const result: {
+		id: Snowflake | null
+		name: string | null
+		roles?: Snowflake[]
+		user?: APIUser
+		require_colons?: boolean
+		managed?: boolean
+		animated?: boolean
+		available?: boolean
+	} = {
+		id: emoji.id,
+		name: emoji.name
+	}
+
+	// Include roles if present (for guild emojis, always include as array)
+	if (emoji.roles !== undefined) {
+		result.roles = emoji.roles
+	}
+
+	// Include user if present (only returned with MANAGE_EXPRESSIONS permission)
+	if (emoji.user) {
+		result.user = mockUserToAPIUser(emoji.user)
+	}
+
+	// Include optional boolean fields if defined
+	if (emoji.require_colons !== undefined) {
+		result.require_colons = emoji.require_colons
+	}
+	if (emoji.managed !== undefined) {
+		result.managed = emoji.managed
+	}
+	if (emoji.animated !== undefined) {
+		result.animated = emoji.animated
+	}
+	if (emoji.available !== undefined) {
+		result.available = emoji.available
+	}
+
+	return result
+}
+
+/**
+ * Convert MockWebhook to Discord API webhook format
+ * @param webhook The webhook to convert
+ * @param includeToken Whether to include the token in the response (only for creator or token-based access)
+ */
+export function mockWebhookToAPIWebhook(
+	webhook: MockWebhook,
+	includeToken: boolean = false
+): {
+	id: Snowflake
+	type: number
+	guild_id?: Snowflake
+	channel_id: Snowflake
+	user?: APIUser
+	name: string | null
+	avatar: string | null
+	token?: string
+	application_id: Snowflake | null
+	source_guild?: { id: Snowflake; name: string; icon: string | null }
+	source_channel?: { id: Snowflake; name: string }
+	url?: string
+} {
+	const result: {
+		id: Snowflake
+		type: number
+		guild_id?: Snowflake
+		channel_id: Snowflake
+		user?: APIUser
+		name: string | null
+		avatar: string | null
+		token?: string
+		application_id: Snowflake | null
+		source_guild?: { id: Snowflake; name: string; icon: string | null }
+		source_channel?: { id: Snowflake; name: string }
+		url?: string
+	} = {
+		id: webhook.id,
+		type: webhook.type,
+		channel_id: webhook.channel_id,
+		name: webhook.name,
+		avatar: webhook.avatar,
+		application_id: webhook.application_id
+	}
+
+	if (webhook.guild_id) {
+		result.guild_id = webhook.guild_id
+	}
+
+	if (webhook.user) {
+		result.user = mockUserToAPIUser(webhook.user)
+	}
+
+	if (includeToken && webhook.token) {
+		result.token = webhook.token
+		// Include URL when token is present
+		result.url = `https://discord.com/api/webhooks/${webhook.id}/${webhook.token}`
+	}
+
+	if (webhook.source_guild) {
+		result.source_guild = webhook.source_guild
+	}
+
+	if (webhook.source_channel) {
+		result.source_channel = webhook.source_channel
+	}
+
+	return result
 }
 
 // ============================================================================
@@ -203,6 +503,11 @@ export interface GuildCreatePayloadOptions {
  * Convert MockChannel to Discord APIChannel format
  */
 export function mockChannelToAPIChannel(channel: MockChannel): APIChannel {
+	// Handle forum/media channels (Phase 4H)
+	if (channel.type === 15 || channel.type === 16) {
+		return mockForumChannelToAPIChannel(channel as MockForumChannel)
+	}
+
 	return {
 		id: channel.id,
 		type: channel.type as ChannelType,
@@ -216,6 +521,101 @@ export function mockChannelToAPIChannel(channel: MockChannel): APIChannel {
 		rate_limit_per_user: 0,
 		parent_id: channel.parentId ?? null
 	} as APIChannel
+}
+
+/**
+ * Convert MockForumChannel to Discord APIChannel format (Phase 4H)
+ */
+export function mockForumChannelToAPIChannel(channel: MockForumChannel): APIChannel {
+	return {
+		id: channel.id,
+		type: channel.type as ChannelType,
+		guild_id: channel.guildId,
+		name: channel.name,
+		position: 0,
+		permission_overwrites: [],
+		nsfw: false,
+		topic: channel.topic ?? null,
+		last_message_id: null,
+		rate_limit_per_user: 0,
+		parent_id: channel.parentId ?? null,
+		// Forum-specific fields
+		default_auto_archive_duration: channel.default_auto_archive_duration,
+		default_thread_rate_limit_per_user: channel.default_thread_rate_limit_per_user,
+		default_sort_order: channel.default_sort_order,
+		default_forum_layout: channel.default_forum_layout,
+		default_reaction_emoji: channel.default_reaction_emoji,
+		available_tags: channel.available_tags.map(mockForumTagToAPIForumTag),
+		template: channel.template
+	} as APIChannel
+}
+
+/**
+ * Convert MockForumTag to Discord API forum tag format (Phase 4H)
+ */
+export function mockForumTagToAPIForumTag(tag: MockForumTag): {
+	id: Snowflake
+	name: string
+	moderated: boolean
+	emoji_id: Snowflake | null
+	emoji_name: string | null
+} {
+	return {
+		id: tag.id,
+		name: tag.name,
+		moderated: tag.moderated,
+		emoji_id: tag.emoji_id,
+		emoji_name: tag.emoji_name
+	}
+}
+
+/**
+ * Convert MockForumThread to Discord API channel format with applied_tags (Phase 4H)
+ * @param thread The forum thread
+ * @param message Optional initial message to include in response
+ * @param author Optional author for the message (required if message is provided)
+ */
+export function mockForumThreadToAPIChannel(
+	thread: MockForumThread,
+	message?: MockMessage,
+	author?: MockUser
+): APIChannel {
+	const baseChannel = {
+		id: thread.id,
+		type: thread.type as ChannelType,
+		guild_id: thread.guildId,
+		name: thread.name,
+		parent_id: thread.parentId,
+		owner_id: thread.ownerId,
+		message_count: thread.messageCount,
+		member_count: thread.memberCount,
+		total_message_sent: thread.totalMessageSent,
+		last_message_id: thread.lastMessageId ?? null,
+		thread_metadata: {
+			archived: thread.threadMetadata.archived,
+			auto_archive_duration: thread.threadMetadata.auto_archive_duration,
+			archive_timestamp: thread.threadMetadata.archive_timestamp,
+			locked: thread.threadMetadata.locked,
+			invitable: thread.threadMetadata.invitable,
+			create_timestamp: thread.threadMetadata.create_timestamp
+		},
+		rate_limit_per_user: 0,
+		position: 0,
+		permission_overwrites: [],
+		nsfw: false,
+		// Forum thread specific
+		applied_tags: thread.applied_tags ?? []
+	}
+
+	// If message is provided, include it in the response (for forum post creation)
+	if (message && author) {
+		return {
+			...baseChannel,
+			message: mockMessageToAPIMessage(message, author)
+		} as APIChannel
+	}
+
+	return baseChannel as APIChannel
 }
 
 /**
@@ -276,28 +676,49 @@ export function buildGuildCreatePayload(options: GuildCreatePayloadOptions): Gat
 		.filter((channel) => channel.type !== 10 && channel.type !== 11 && channel.type !== 12) // Exclude threads
 		.map(mockChannelToAPIChannel)
 
-	// Get active threads for this guild
+	// Get active threads for this guild (include member field if bot is a member)
 	const threads: APIChannel[] = guild.channels
 		.map((channelId) => sessionState.channels.get(channelId))
 		.filter((channel): channel is MockThread => {
 			return channel !== undefined && (channel.type === 10 || channel.type === 11 || channel.type === 12)
 		})
 		.filter((thread) => !thread.threadMetadata?.archived) // Only active threads
-		.map(mockThreadToAPIChannel)
+		.map((thread) => {
+			// Check if bot is a member of this thread
+			const botMember = sessionState.getThreadMember(thread.id, sessionState.botUser.id)
+			return mockThreadToAPIChannel(thread, botMember ?? undefined)
+		})
 
-	// Build roles (at minimum @everyone)
-	const roles: APIRole[] = [buildEveryoneRole(guild.id)]
+	// Build roles from state (Phase 4L)
+	// If roles exist in the state's roles Map, use them; otherwise fall back to @everyone only
+	const roles: APIRole[] = guild.roles
+		.map((roleId) => sessionState.roles.get(roleId))
+		.filter((role): role is MockRole => role !== undefined)
+		.map(mockRoleToAPIRole)
+	// Ensure at least @everyone exists
+	if (roles.length === 0) {
+		roles.push(buildEveryoneRole(guild.id))
+	}
 
-	// Build members (at minimum the bot user)
-	const members: APIGuildMember[] = [buildGuildMember(sessionState.botUser, joinedAt)]
-
-	// Add any additional members from the guild
+	// Build members from state (Phase 4L)
+	// If guildMembers exist in state, use them; otherwise fall back to simple members
+	const members: APIGuildMember[] = []
 	for (const memberId of guild.members) {
-		if (memberId === sessionState.botUser.id) continue // Already added
 		const user = sessionState.users.get(memberId)
-		if (user) {
+		if (!user) continue
+
+		// Try to get detailed member data from guildMembers Map
+		const guildMember = sessionState.guildMembers.get(`${guild.id}:${memberId}`)
+		if (guildMember) {
+			members.push(mockGuildMemberToAPIMember(guildMember, user))
+		} else {
+			// Fallback for backward compatibility
 			members.push(buildGuildMember(user, joinedAt))
 		}
+	}
+	// Ensure bot is in the member list
+	if (!members.some((m) => m.user?.id === sessionState.botUser.id)) {
+		members.push(buildGuildMember(sessionState.botUser, joinedAt))
 	}
 
 	const data = {
@@ -317,7 +738,10 @@ export function buildGuildCreatePayload(options: GuildCreatePayloadOptions): Gat
 		default_message_notifications: GuildDefaultMessageNotifications.AllMessages,
 		explicit_content_filter: GuildExplicitContentFilter.Disabled,
 		roles,
-		emojis: [],
+		emojis: guild.emojis
+			.map((id) => sessionState.emojis.get(id))
+			.filter((e): e is MockEmoji => e !== undefined)
+			.map(mockEmojiToAPIEmoji),
 		features: [],
 		mfa_level: GuildMFALevel.None,
 		application_id: null,
@@ -336,7 +760,10 @@ export function buildGuildCreatePayload(options: GuildCreatePayloadOptions): Gat
 		max_video_channel_users: 25,
 		max_stage_video_channel_users: 50,
 		nsfw_level: GuildNSFWLevel.Default,
-		stickers: [],
+		stickers: guild.stickers
+			.map((id) => sessionState.stickers.get(id))
+			.filter((s): s is MockSticker => s !== undefined)
+			.map(mockStickerToAPISticker),
 		premium_progress_bar_enabled: false,
 		safety_alerts_channel_id: null,
 
@@ -359,6 +786,289 @@ export function buildGuildCreatePayload(options: GuildCreatePayloadOptions): Gat
 		s: sequence,
 		t: 'GUILD_CREATE',
 		d: data
+	}
+}
+
+// ============================================================================
+// GUILD_STICKERS_UPDATE Payload (Phase 4I)
+// ============================================================================
+
+/**
+ * Options for building a GUILD_STICKERS_UPDATE payload
+ */
+export interface GuildStickersUpdatePayloadOptions {
+	guildId: Snowflake
+	stickers: MockSticker[]
+	sequence: number
+}
+
+/**
+ * Build a GUILD_STICKERS_UPDATE payload (op 0, t: "GUILD_STICKERS_UPDATE")
+ * Sent when guild stickers are updated (create, modify, delete)
+ */
+export function buildGuildStickersUpdatePayload(options: GuildStickersUpdatePayloadOptions): GatewayPayload {
+	const { guildId, stickers, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'GUILD_STICKERS_UPDATE',
+		d: {
+			guild_id: guildId,
+			stickers: stickers.map(mockStickerToAPISticker)
+		}
+	}
+}
+
+// ============================================================================
+// GUILD_EMOJIS_UPDATE Payload (Phase 4K)
+// ============================================================================
+
+/**
+ * Options for building a GUILD_EMOJIS_UPDATE payload
+ */
+export interface GuildEmojisUpdatePayloadOptions {
+	guildId: Snowflake
+	emojis: MockEmoji[]
+	sequence: number
+}
+
+/**
+ * Build a GUILD_EMOJIS_UPDATE payload (op 0, t: "GUILD_EMOJIS_UPDATE")
+ * Sent when guild emojis are updated (create, modify, delete)
+ * @see https://discord.com/developers/docs/events/gateway-events#guild-emojis-update
+ */
+export function buildGuildEmojisUpdatePayload(options: GuildEmojisUpdatePayloadOptions): GatewayPayload {
+	const { guildId, emojis, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'GUILD_EMOJIS_UPDATE',
+		d: {
+			guild_id: guildId,
+			emojis: emojis.map(mockEmojiToAPIEmoji)
+		}
+	}
+}
+
+// ============================================================================
+// WEBHOOKS_UPDATE Payload (Phase 4J)
+// ============================================================================
+
+/**
+ * Options for building a WEBHOOKS_UPDATE payload
+ */
+export interface WebhooksUpdatePayloadOptions {
+	guildId: Snowflake
+	channelId: Snowflake
+	sequence: number
+}
+
+/**
+ * Build a WEBHOOKS_UPDATE payload (op 0, t: "WEBHOOKS_UPDATE")
+ * Sent when a channel's webhooks are updated (create, modify, delete)
+ *
+ * @see https://discord.com/developers/docs/events/gateway-events#webhooks-update
+ */
+export function buildWebhooksUpdatePayload(options: WebhooksUpdatePayloadOptions): GatewayPayload {
+	const { guildId, channelId, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'WEBHOOKS_UPDATE',
+		d: {
+			guild_id: guildId,
+			channel_id: channelId
+		}
+	}
+}
+
+// ============================================================================
+// Role Event Payloads (Phase 4L)
+// ============================================================================
+
+/**
+ * Options for building a GUILD_ROLE_CREATE payload
+ */
+export interface GuildRoleCreatePayloadOptions {
+	guildId: Snowflake
+	role: MockRole
+	sequence: number
+}
+
+/**
+ * Build a GUILD_ROLE_CREATE payload (op 0, t: "GUILD_ROLE_CREATE")
+ * Sent when a new role is created in a guild
+ * @see https://discord.com/developers/docs/events/gateway-events#guild-role-create
+ */
+export function buildGuildRoleCreatePayload(options: GuildRoleCreatePayloadOptions): GatewayPayload {
+	const { guildId, role, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'GUILD_ROLE_CREATE',
+		d: {
+			guild_id: guildId,
+			role: mockRoleToAPIRole(role)
+		}
+	}
+}
+
+/**
+ * Options for building a GUILD_ROLE_UPDATE payload
+ */
+export interface GuildRoleUpdatePayloadOptions {
+	guildId: Snowflake
+	role: MockRole
+	sequence: number
+}
+
+/**
+ * Build a GUILD_ROLE_UPDATE payload (op 0, t: "GUILD_ROLE_UPDATE")
+ * Sent when a role is updated
+ * @see https://discord.com/developers/docs/events/gateway-events#guild-role-update
+ */
+export function buildGuildRoleUpdatePayload(options: GuildRoleUpdatePayloadOptions): GatewayPayload {
+	const { guildId, role, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'GUILD_ROLE_UPDATE',
+		d: {
+			guild_id: guildId,
+			role: mockRoleToAPIRole(role)
+		}
+	}
+}
+
+/**
+ * Options for building a GUILD_ROLE_DELETE payload
+ */
+export interface GuildRoleDeletePayloadOptions {
+	guildId: Snowflake
+	roleId: Snowflake
+	sequence: number
+}
+
+/**
+ * Build a GUILD_ROLE_DELETE payload (op 0, t: "GUILD_ROLE_DELETE")
+ * Sent when a role is deleted
+ * @see https://discord.com/developers/docs/events/gateway-events#guild-role-delete
+ */
+export function buildGuildRoleDeletePayload(options: GuildRoleDeletePayloadOptions): GatewayPayload {
+	const { guildId, roleId, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'GUILD_ROLE_DELETE',
+		d: {
+			guild_id: guildId,
+			role_id: roleId
+		}
+	}
+}
+
+// ============================================================================
+// Guild Member Event Payloads (Phase 4L)
+// ============================================================================
+
+/**
+ * Options for building a GUILD_MEMBER_ADD payload
+ */
+export interface GuildMemberAddPayloadOptions {
+	guildId: Snowflake
+	member: MockGuildMember
+	user: MockUser
+	sequence: number
+}
+
+/**
+ * Build a GUILD_MEMBER_ADD payload (op 0, t: "GUILD_MEMBER_ADD")
+ * Sent when a member joins a guild
+ * @see https://discord.com/developers/docs/events/gateway-events#guild-member-add
+ */
+export function buildGuildMemberAddPayload(options: GuildMemberAddPayloadOptions): GatewayPayload {
+	const { guildId, member, user, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'GUILD_MEMBER_ADD',
+		d: {
+			...mockGuildMemberToAPIMember(member, user),
+			guild_id: guildId
+		}
+	}
+}
+
+/**
+ * Options for building a GUILD_MEMBER_UPDATE payload
+ */
+export interface GuildMemberUpdatePayloadOptions {
+	guildId: Snowflake
+	member: MockGuildMember
+	user: MockUser
+	sequence: number
+}
+
+/**
+ * Build a GUILD_MEMBER_UPDATE payload (op 0, t: "GUILD_MEMBER_UPDATE")
+ * Sent when a member is updated (roles, nickname, etc)
+ * @see https://discord.com/developers/docs/events/gateway-events#guild-member-update
+ */
+export function buildGuildMemberUpdatePayload(options: GuildMemberUpdatePayloadOptions): GatewayPayload {
+	const { guildId, member, user, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'GUILD_MEMBER_UPDATE',
+		d: {
+			guild_id: guildId,
+			roles: member.roles,
+			user: mockUserToAPIUser(user),
+			nick: member.nick,
+			avatar: member.avatar,
+			joined_at: member.joinedAt,
+			premium_since: member.premiumSince,
+			deaf: member.deaf,
+			mute: member.mute,
+			pending: member.pending,
+			communication_disabled_until: member.communicationDisabledUntil
+		}
+	}
+}
+
+/**
+ * Options for building a GUILD_MEMBER_REMOVE payload
+ */
+export interface GuildMemberRemovePayloadOptions {
+	guildId: Snowflake
+	user: MockUser
+	sequence: number
+}
+
+/**
+ * Build a GUILD_MEMBER_REMOVE payload (op 0, t: "GUILD_MEMBER_REMOVE")
+ * Sent when a member leaves or is removed from a guild
+ * @see https://discord.com/developers/docs/events/gateway-events#guild-member-remove
+ */
+export function buildGuildMemberRemovePayload(options: GuildMemberRemovePayloadOptions): GatewayPayload {
+	const { guildId, user, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'GUILD_MEMBER_REMOVE',
+		d: {
+			guild_id: guildId,
+			user: mockUserToAPIUser(user)
+		}
 	}
 }
 
@@ -486,6 +1196,11 @@ export function mockMessageToAPIMessage(message: MockMessage, author: MockUser):
 	// Phase 4G: Polls
 	if (message.poll) {
 		;(apiMessage as unknown as { poll: unknown }).poll = message.poll
+	}
+
+	// Phase 4I: Stickers
+	if (message.sticker_items?.length) {
+		;(apiMessage as unknown as { sticker_items: unknown[] }).sticker_items = message.sticker_items
 	}
 
 	return apiMessage
@@ -875,6 +1590,102 @@ export interface SelectMenuInteractionPayloadOptions {
 }
 
 /**
+ * Build resolved data for entity select types (UserSelect, RoleSelect, MentionableSelect, ChannelSelect)
+ * Returns the resolved entities that correspond to the selected values.
+ */
+function buildResolvedData(
+	componentType: ComponentType,
+	values: string[],
+	sessionState: SessionState,
+	guildId?: string
+): Record<string, Record<string, unknown>> | null {
+	// StringSelect (3) doesn't have resolved data
+	if (componentType === ComponentType.StringSelect) {
+		return null
+	}
+
+	const resolved: Record<string, Record<string, unknown>> = {}
+
+	switch (componentType) {
+		case ComponentType.UserSelect: {
+			// Resolve users by their IDs
+			const users: Record<string, unknown> = {}
+			for (const userId of values) {
+				const user = sessionState.users.get(userId)
+				if (user) {
+					users[userId] = mockUserToAPIUser(user)
+				}
+			}
+			if (Object.keys(users).length > 0) {
+				resolved.users = users
+			}
+			break
+		}
+
+		case ComponentType.RoleSelect: {
+			// Resolve roles by their IDs
+			const roles: Record<string, unknown> = {}
+			for (const roleId of values) {
+				const role = sessionState.roles.get(roleId)
+				if (role) {
+					roles[roleId] = mockRoleToAPIRole(role)
+				}
+			}
+			if (Object.keys(roles).length > 0) {
+				resolved.roles = roles
+			}
+			break
+		}
+
+		case ComponentType.MentionableSelect: {
+			// Resolve both users and roles
+			const users: Record<string, unknown> = {}
+			const roles: Record<string, unknown> = {}
+
+			for (const id of values) {
+				// Check if it's a user
+				const user = sessionState.users.get(id)
+				if (user) {
+					users[id] = mockUserToAPIUser(user)
+					continue
+				}
+
+				// Check if it's a role
+				const role = sessionState.roles.get(id)
+				if (role) {
+					roles[id] = mockRoleToAPIRole(role)
+				}
+			}
+
+			if (Object.keys(users).length > 0) {
+				resolved.users = users
+			}
+			if (Object.keys(roles).length > 0) {
+				resolved.roles = roles
+			}
+			break
+		}
+
+		case ComponentType.ChannelSelect: {
+			// Resolve channels by their IDs
+			const channels: Record<string, unknown> = {}
+			for (const channelId of values) {
+				const channel = sessionState.channels.get(channelId)
+				if (channel) {
+					channels[channelId] = mockChannelToAPIChannel(channel)
+				}
+			}
+			if (Object.keys(channels).length > 0) {
+				resolved.channels = channels
+			}
+			break
+		}
+	}
+
+	return Object.keys(resolved).length > 0 ? resolved : null
+}
+
+/**
  * Build an INTERACTION_CREATE payload for select menu interactions (op 0, t: "INTERACTION_CREATE")
  * For MESSAGE_COMPONENT (type 3) with component_type 3 (StringSelect), 5 (UserSelect),
  * 6 (RoleSelect), 7 (MentionableSelect), or 8 (ChannelSelect)
@@ -1230,9 +2041,11 @@ export function buildContextMenuInteractionPayload(options: ContextMenuInteracti
 
 /**
  * Convert MockThread to Discord API thread channel format
+ * @param thread - The MockThread to convert
+ * @param currentUserMember - Optional current user's thread membership (included when user is a member)
  */
-export function mockThreadToAPIChannel(thread: MockThread): APIChannel {
-	return {
+export function mockThreadToAPIChannel(thread: MockThread, currentUserMember?: MockThreadMember): APIChannel {
+	const result: Record<string, unknown> = {
 		id: thread.id,
 		type: thread.type as ChannelType,
 		guild_id: thread.guildId,
@@ -1255,7 +2068,19 @@ export function mockThreadToAPIChannel(thread: MockThread): APIChannel {
 		position: 0,
 		permission_overwrites: [],
 		nsfw: false
-	} as APIChannel
+	}
+
+	// Include current user's membership if provided
+	if (currentUserMember) {
+		result.member = {
+			id: thread.id,
+			user_id: currentUserMember.user_id,
+			join_timestamp: currentUserMember.join_timestamp,
+			flags: currentUserMember.flags
+		}
+	}
+
+	return result as APIChannel
 }
 
 /**
@@ -1273,10 +2098,13 @@ export interface ThreadCreatePayloadOptions {
  * Sent when a new thread is created or when the bot is added to an existing thread
  */
 export function buildThreadCreatePayload(options: ThreadCreatePayloadOptions): GatewayPayload {
-	const { thread, sequence, newlyCreated = true } = options
+	const { thread, sessionState, sequence, newlyCreated = true } = options
+
+	// Include member field if bot is a member of the thread
+	const botMember = sessionState.getThreadMember(thread.id, sessionState.botUser.id)
 
 	const data = {
-		...mockThreadToAPIChannel(thread),
+		...mockThreadToAPIChannel(thread, botMember ?? undefined),
 		newly_created: newlyCreated
 	}
 
@@ -1302,13 +2130,16 @@ export interface ThreadUpdatePayloadOptions {
  * Sent when thread metadata is updated (archived, locked, name, etc.)
  */
 export function buildThreadUpdatePayload(options: ThreadUpdatePayloadOptions): GatewayPayload {
-	const { thread, sequence } = options
+	const { thread, sessionState, sequence } = options
+
+	// Include member field if bot is a member of the thread
+	const botMember = sessionState.getThreadMember(thread.id, sessionState.botUser.id)
 
 	return {
 		op: GatewayOpcodes.Dispatch,
 		s: sequence,
 		t: 'THREAD_UPDATE',
-		d: mockThreadToAPIChannel(thread)
+		d: mockThreadToAPIChannel(thread, botMember ?? undefined)
 	}
 }
 
@@ -1363,7 +2194,7 @@ export function buildThreadListSyncPayload(options: ThreadListSyncPayloadOptions
 
 	const data: Record<string, unknown> = {
 		guild_id: guildId,
-		threads: threads.map(mockThreadToAPIChannel),
+		threads: threads.map((thread) => mockThreadToAPIChannel(thread)),
 		members: members.map((member) => ({
 			id: member.id,
 			user_id: member.user_id,

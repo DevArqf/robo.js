@@ -8,6 +8,7 @@ import { isMultipartRequest, parseMultipartMessage, MultipartError } from '../..
 import { getImageDimensions, isImageContentType } from '../../../../../utils/image.js'
 import type { MockChannel, MockMessage, MockAttachment, AttachmentPayload, StoredAttachment } from '../../../../../types/index.js'
 import type { Session } from '../../../../../session/session.js'
+import { enforcePermissions } from '../../../../../utils/permission-check.js'
 
 // Default port for CDN URLs (can be overridden via environment)
 const CDN_BASE_URL = process.env.MOCK_CDN_URL || 'http://localhost:53596'
@@ -85,6 +86,17 @@ export default async (request: RoboRequest) => {
 			headers: { 'Content-Type': 'application/json' }
 		})
 	}
+
+	// 6b. Check permissions (Phase 4L-Extended)
+	const permError = enforcePermissions(
+		session,
+		request.method,
+		`/channels/${channelId}/messages/${messageId}`,
+		channelId,
+		undefined,
+		{ messageId, messageAuthorId: message.authorId }
+	)
+	if (permError) return permError
 
 	// 7. Handle based on method
 	if (request.method === 'PATCH') {

@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'node:http'
 import type { Duplex } from 'node:stream'
 import WebSocket, { WebSocketServer } from 'ws'
-import { GatewayCloseCodes, GatewayOpcodes, GatewayIntentBits } from 'discord-api-types/v10'
+import { GatewayCloseCodes, GatewayOpcodes } from 'discord-api-types/v10'
 import { buildHelloPayload, buildHeartbeatAckPayload, buildReadyPayload, buildGuildCreatePayload, isValidIdentifyPayload } from '../discord/payloads.js'
 import type { GatewayPayload } from '../discord/payloads.js'
 import { GATEWAY_VERSION, DEFAULT_HEARTBEAT_INTERVAL } from '../discord/opcodes.js'
@@ -9,6 +9,13 @@ import { generateGatewaySessionId } from '../utils/id.js'
 import { sessionManager } from './manager.js'
 import { mockLogger } from './logger.js'
 import type { ActionType, ConnectionState } from '../types/index.js'
+import {
+	shouldDispatchEvent,
+	stripMessageContent,
+	hasApprovedPrivilegedIntents,
+	DEFAULT_APPROVED_PRIVILEGED_INTENTS,
+	INTENT_CLOSE_CODES
+} from './intents.js'
 
 /**
  * Discord Gateway WebSocket server
@@ -230,6 +237,16 @@ export class GatewayServer {
 			return
 		}
 
+		// Phase 2H: Check privileged intents if enforceIntents is enabled
+		if (session.config?.enforceIntents) {
+			const approvedPrivileged = session.config.approvedPrivilegedIntents ?? DEFAULT_APPROVED_PRIVILEGED_INTENTS
+			if (!hasApprovedPrivilegedIntents(data.intents, approvedPrivileged)) {
+				mockLogger.warn(`Connection ${connState.id} declared unapproved privileged intents, closing with 4014`)
+				ws.close(INTENT_CLOSE_CODES.DISALLOWED_INTENTS, 'Disallowed intents')
+				return
+			}
+		}
+
 		// Update connection state
 		connState.identified = true
 		connState.sessionId = session.id
@@ -341,6 +358,11 @@ export class GatewayServer {
 			}
 		}
 
+		// WEBHOOKS_UPDATE requires Guilds intent (Phase 4J)
+		if (event === 'WEBHOOKS_UPDATE') {
+			return (connState.intents & GatewayIntentBits.Guilds) !== 0
+		}
+
 		// For other events, allow by default (can be expanded later)
 		return true
 	}
@@ -362,6 +384,7 @@ export class GatewayServer {
 			return 0
 		}
 
+		const enforceIntents = session.config?.enforceIntents ?? false
 		let dispatched = 0
 
 		for (const [connectionId, connState] of session.connections) {
@@ -370,10 +393,18 @@ export class GatewayServer {
 				continue
 			}
 
-			// Check intents
-			if (!this.hasRequiredIntent(connState, event, guildId)) {
-				mockLogger.debug(`Connection ${connectionId} lacks intent for ${event}, skipping`)
-				continue
+			// Phase 2H: Check intents using comprehensive filtering when enforceIntents is enabled
+			if (enforceIntents) {
+				if (!shouldDispatchEvent(event, data, connState.intents)) {
+					mockLogger.debug(`Connection ${connectionId} lacks intent for ${event}, skipping`)
+					continue
+				}
+			} else {
+				// Legacy behavior: use basic intent check
+				if (!this.hasRequiredIntent(connState, event, guildId)) {
+					mockLogger.debug(`Connection ${connectionId} lacks intent for ${event}, skipping`)
+					continue
+				}
 			}
 
 			// Get the WebSocket for this connection
@@ -383,13 +414,23 @@ export class GatewayServer {
 				continue
 			}
 
+			// Phase 2H: Strip message content if MESSAGE_CONTENT intent is missing
+			let eventData = data
+			if (enforceIntents && (event === 'MESSAGE_CREATE' || event === 'MESSAGE_UPDATE')) {
+				eventData = stripMessageContent(
+					data as Record<string, unknown>,
+					connState.intents,
+					session.state.botUser.id
+				)
+			}
+
 			// Increment sequence and send
 			connState.sequence++
 			const payload: GatewayPayload = {
 				op: GatewayOpcodes.Dispatch,
 				s: connState.sequence,
 				t: event,
-				d: data
+				d: eventData
 			}
 
 			this.send(ws, payload)

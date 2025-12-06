@@ -10,21 +10,24 @@ import type {
 	MockMessage,
 	MockAttachment,
 	AttachmentPayload,
-	StoredAttachment
+	StoredAttachment,
+	MockWebhook,
+	Session
 } from '../../../../../../types/index.js'
 import { MessageFlags, createComponentValidationError, createV2ConflictError } from '../../../../../../types/index.js'
 import { validateComponentsV2 } from '../../../../../../session/state.js'
-import type { Session } from '../../../../../../session/session.js'
 
 // Default port for CDN URLs (can be overridden via environment)
 const CDN_BASE_URL = process.env.MOCK_CDN_URL || 'http://localhost:53596'
 
 /**
- * GET/PATCH/DELETE /api/v10/webhooks/:app_id/:token/messages/:messageId
+ * This route handles both:
+ * 1. Regular webhook message operations (GET/PATCH/DELETE with token auth)
+ * 2. Interaction followup message operations
  *
- * GET - Get a followup message
- * PATCH - Edit a followup message
- * DELETE - Delete a followup message
+ * GET - Get a message sent by webhook
+ * PATCH - Edit a message sent by webhook
+ * DELETE - Delete a message sent by webhook
  *
  * Request body (PATCH - JSON or multipart):
  * {
@@ -47,9 +50,15 @@ export default async (request: RoboRequest) => {
 	}
 
 	// 2. Extract params from URL
-	const { app_id: appId, token, messageId } = request.params as { app_id: string; token: string; messageId: string }
+	const { app_id: webhookOrAppId, token, messageId } = request.params as { app_id: string; token: string; messageId: string }
 
-	// 3. Find session containing this interaction (lookup by token)
+	// 3. Try to find a regular webhook first (by looking up the token)
+	const webhookResult = findWebhookByToken(token)
+	if (webhookResult) {
+		return handleRegularWebhookMessage(request, webhookResult.session, webhookResult.webhook, webhookOrAppId, messageId)
+	}
+
+	// 4. Not a regular webhook - try interaction webhook
 	const session = sessionManager.findSessionByInteractionToken(token)
 	if (!session) {
 		return new Response(
@@ -80,7 +89,7 @@ export default async (request: RoboRequest) => {
 	}
 
 	// 5. Validate app_id matches interaction's applicationId
-	if (interaction.applicationId !== appId) {
+	if (interaction.applicationId !== webhookOrAppId) {
 		return new Response(
 			JSON.stringify({
 				error: 'Unknown Webhook',
@@ -141,10 +150,302 @@ export default async (request: RoboRequest) => {
 	if (request.method === 'GET') {
 		return handleGet(session, message)
 	} else if (request.method === 'PATCH') {
-		return handlePatch(request, session, interaction, message, appId, token, messageId)
+		return handlePatch(request, session, interaction, message, webhookOrAppId, token, messageId)
 	} else {
-		return handleDelete(session, interaction, message, appId, token, messageId)
+		return handleDelete(session, interaction, message, webhookOrAppId, token, messageId)
 	}
+}
+
+/**
+ * Find a webhook by its token across all sessions
+ */
+function findWebhookByToken(token: string): { session: Session; webhook: MockWebhook } | null {
+	for (const session of sessionManager.getAll()) {
+		const webhook = session.state.getWebhookByToken(token)
+		if (webhook) {
+			return { session, webhook }
+		}
+	}
+	return null
+}
+
+/**
+ * Handle regular webhook message operations
+ */
+async function handleRegularWebhookMessage(
+	request: RoboRequest,
+	session: Session,
+	webhook: MockWebhook,
+	webhookId: string,
+	messageId: string
+): Promise<Response> {
+	// Validate webhook ID matches
+	if (webhook.id !== webhookId) {
+		return new Response(JSON.stringify({ error: 'Unknown Webhook', code: 10015 }), {
+			status: 404,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// Get the message
+	const message = session.state.getMessage(messageId)
+	if (!message) {
+		return new Response(JSON.stringify({ error: 'Unknown Message', code: 10008 }), {
+			status: 404,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// Verify message is in webhook's channel (or a thread under it)
+	const channel = session.state.getChannel(message.channelId)
+	if (!channel) {
+		return new Response(JSON.stringify({ error: 'Unknown Message', code: 10008 }), {
+			status: 404,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// Message must be in webhook's channel or a thread parented to it
+	const isInWebhookChannel = message.channelId === webhook.channel_id || channel.parentId === webhook.channel_id
+	if (!isInWebhookChannel) {
+		return new Response(JSON.stringify({ error: 'Unknown Message', code: 10008 }), {
+			status: 404,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// Handle based on method
+	if (request.method === 'GET') {
+		return handleGet(session, message)
+	} else if (request.method === 'PATCH') {
+		return handleWebhookMessagePatch(request, session, webhook, message, messageId)
+	} else {
+		return handleWebhookMessageDelete(session, webhook, message, messageId)
+	}
+}
+
+/**
+ * Handle PATCH for regular webhook messages
+ */
+async function handleWebhookMessagePatch(
+	request: RoboRequest,
+	session: Session,
+	webhook: MockWebhook,
+	message: MockMessage,
+	messageId: string
+): Promise<Response> {
+	const channelId = message.channelId
+
+	// Parse body (JSON or multipart)
+	let body: {
+		content?: string
+		embeds?: unknown[]
+		components?: unknown[]
+		flags?: number
+		attachments?: (AttachmentPayload | { id: string })[]
+	}
+
+	const newAttachments: MockAttachment[] = []
+
+	try {
+		if (isMultipartRequest(request)) {
+			const parsed = await parseMultipartMessage(request)
+			body = parsed.body as typeof body
+
+			for (let i = 0; i < parsed.files.length; i++) {
+				const file = parsed.files[i]
+				const attachmentId = generateSnowflake()
+				const meta = body.attachments?.find((a) => a.id === i) || {}
+
+				let width: number | undefined
+				let height: number | undefined
+				if (isImageContentType(file.contentType)) {
+					const dims = getImageDimensions(file.data, file.contentType)
+					if (dims) {
+						width = dims.width
+						height = dims.height
+					}
+				}
+
+				const storedAttachment: StoredAttachment = {
+					id: attachmentId,
+					channelId,
+					messageId,
+					filename: ('filename' in meta && meta.filename) || file.filename,
+					contentType: file.contentType,
+					size: file.size,
+					data: file.data,
+					width,
+					height
+				}
+				session.state.storeAttachment(storedAttachment)
+
+				newAttachments.push({
+					id: attachmentId,
+					filename: storedAttachment.filename,
+					title: 'title' in meta ? meta.title : undefined,
+					description: 'description' in meta ? meta.description : undefined,
+					content_type: file.contentType,
+					size: file.size,
+					url: `${CDN_BASE_URL}/cdn/attachments/${channelId}/${attachmentId}/${encodeURIComponent(storedAttachment.filename)}`,
+					proxy_url: `${CDN_BASE_URL}/cdn/attachments/${channelId}/${attachmentId}/${encodeURIComponent(storedAttachment.filename)}`,
+					width,
+					height
+				})
+			}
+		} else {
+			body = await request.json()
+		}
+	} catch (error) {
+		if (error instanceof MultipartError) {
+			return new Response(JSON.stringify({ error: error.message, code: error.code }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+		return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+			status: 400,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// Validate Components V2 if flag is set
+	if (body.flags && body.flags & MessageFlags.IsComponentsV2) {
+		if (body.content || (body.embeds && body.embeds.length > 0)) {
+			return new Response(JSON.stringify(createV2ConflictError()), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		const attachmentFilenames = new Set(newAttachments.map((a) => a.filename))
+		const validation = validateComponentsV2(body.components ?? [], attachmentFilenames)
+		if (!validation.valid) {
+			return new Response(JSON.stringify(createComponentValidationError(validation.errors)), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+	}
+
+	// Determine final attachments
+	let finalAttachments: MockAttachment[]
+	if (body.attachments !== undefined) {
+		finalAttachments = []
+		for (const attachmentRef of body.attachments) {
+			if (typeof attachmentRef.id === 'string') {
+				const existing = message.attachments.find((a) => a.id === attachmentRef.id)
+				if (existing) {
+					finalAttachments.push(existing)
+				}
+			}
+		}
+		finalAttachments.push(...newAttachments)
+
+		for (const oldAttachment of message.attachments) {
+			if (!finalAttachments.find((a) => a.id === oldAttachment.id)) {
+				session.state.deleteAttachment(oldAttachment.id)
+			}
+		}
+	} else {
+		finalAttachments = [...message.attachments, ...newAttachments]
+	}
+
+	// Update message
+	const updatedMessage = session.state.updateMessage(message.id, {
+		content: body.content ?? message.content,
+		embeds: body.embeds ?? message.embeds,
+		attachments: finalAttachments,
+		flags: body.flags ?? message.flags,
+		components: body.components ?? message.components
+	})
+
+	if (!updatedMessage) {
+		return new Response(JSON.stringify({ error: 'Failed to update message' }), {
+			status: 500,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// Record action
+	session.recordAction(
+		'message_edited',
+		{
+			webhook_id: webhook.id,
+			message_id: messageId,
+			channel_id: channelId,
+			guild_id: message.guildId,
+			content: updatedMessage.content
+		},
+		{
+			endpoint: `PATCH /webhooks/${webhook.id}/:token/messages/${messageId}`,
+			method: 'PATCH'
+		}
+	)
+
+	// Dispatch MESSAGE_UPDATE
+	const author = session.state.getUser(message.authorId) || session.state.botUser
+	const apiMessage = mockMessageToAPIMessage(updatedMessage, author)
+	const dispatchData: Record<string, unknown> = { ...apiMessage }
+	if (updatedMessage.guildId) {
+		dispatchData.guild_id = updatedMessage.guildId
+	}
+
+	const channel = session.state.getChannel(message.channelId)
+	getGatewayServer().dispatchToSession(session.id, 'MESSAGE_UPDATE', dispatchData, channel?.guildId)
+
+	return new Response(JSON.stringify(apiMessage), {
+		status: 200,
+		headers: { 'Content-Type': 'application/json' }
+	})
+}
+
+/**
+ * Handle DELETE for regular webhook messages
+ */
+function handleWebhookMessageDelete(
+	session: Session,
+	webhook: MockWebhook,
+	message: MockMessage,
+	messageId: string
+): Response {
+	const channel = session.state.getChannel(message.channelId)
+
+	const deleted = session.state.deleteMessage(message.id)
+	if (!deleted) {
+		return new Response(JSON.stringify({ error: 'Failed to delete message' }), {
+			status: 500,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// Record action
+	session.recordAction(
+		'message_deleted',
+		{
+			webhook_id: webhook.id,
+			message_id: messageId,
+			channel_id: message.channelId,
+			guild_id: message.guildId
+		},
+		{
+			endpoint: `DELETE /webhooks/${webhook.id}/:token/messages/${messageId}`,
+			method: 'DELETE'
+		}
+	)
+
+	// Dispatch MESSAGE_DELETE
+	const dispatchData: { id: string; channel_id: string; guild_id?: string } = {
+		id: messageId,
+		channel_id: message.channelId
+	}
+	if (message.guildId) {
+		dispatchData.guild_id = message.guildId
+	}
+
+	getGatewayServer().dispatchToSession(session.id, 'MESSAGE_DELETE', dispatchData, channel?.guildId)
+
+	return new Response(null, { status: 204 })
 }
 
 function handleGet(session: Session, message: MockMessage) {
