@@ -48,20 +48,25 @@
 		"test": "NODE_OPTIONS=--experimental-vm-modules jest"
 	},
 	"devDependencies": {
+		"@robojs/discordjs": "workspace:*",
 		"@robojs/server": "workspace:*",
 		"@swc/core": "^1.13.5",
 		"@types/node": "^24.6.2",
-		"discord.js": "14.22.1",
+		"discord.js": "14.25.1",
 		"prettier": "^3.6.2",
 		"robo.js": "workspace:*",
 		"tsx": "^4.17.0",
 		"typescript": "^5.9.3"
 	},
 	"peerDependencies": {
+		"@robojs/discordjs": "^0.0.0",
 		"@robojs/server": "^0.6.0",
 		"robo.js": "^0.10.1"
 	},
 	"peerDependenciesMeta": {
+		"@robojs/discordjs": {
+			"optional": false
+		},
 		"@robojs/server": {
 			"optional": true
 		},

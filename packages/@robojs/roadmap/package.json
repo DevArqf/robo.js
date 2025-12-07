@@ -35,6 +35,7 @@
 		"prepublishOnly": "robo build plugin"
 	},
 	"devDependencies": {
+		"@robojs/discordjs": "workspace:*",
 		"@robojs/server": "workspace:*",
 		"@swc/core": "^1.13.5",
 		"@types/node": "^24.8.0",
@@ -44,9 +45,13 @@
 		"typescript": "^5.9.3"
 	},
 	"peerDependencies": {
+		"@robojs/discordjs": "^0.0.0",
 		"robo.js": "^0.10.1"
 	},
 	"peerDependenciesMeta": {
+		"@robojs/discordjs": {
+			"optional": false
+		},
 		"robo.js": {
 			"optional": false
 		},
