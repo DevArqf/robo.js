@@ -1,3 +1,5 @@
 export * from './core/types.js'
 export { SyncContextProvider } from './core/context.js'
+export { useSyncBroadcast } from './core/useSyncBroadcast.js'
+export { useSyncContext } from './core/useSyncContext.js'
 export { useSyncState } from './core/useSyncState.js'
