@@ -26,7 +26,7 @@ export interface RadixNode<T extends RadixNodeData = RadixNodeData> {
 	data: RadixNodeData | null
 	paramName: string | null
 	wildcardChildNode: RadixNode<T> | null
-	placeholderChildNode: RadixNode<T> | null
+	placeholderChildren: RadixNode<T>[]
 }
 
 export interface RadixRouterOptions {
@@ -101,54 +101,50 @@ function lookup(ctx: RadixRouterContext, path: string): MatchedRoute {
 	}
 
 	const sections = path.split('/')
+	return lookupRecursive(ctx.rootNode, sections, 0, {})
+}
 
-	const params: MatchedRoute['params'] = {}
-	let paramsFound = false
-	let wildcardNode = null
-	let node = ctx.rootNode
-	let wildCardParam = null
-
-	for (let i = 0; i < sections.length; i++) {
-		const section = sections[i]
-
-		if (node.wildcardChildNode !== null) {
-			wildcardNode = node.wildcardChildNode
-			wildCardParam = sections.slice(i).join('/')
+function lookupRecursive(
+	node: RadixNode,
+	sections: string[],
+	index: number,
+	params: Record<string, unknown>
+): MatchedRoute | null {
+	// Base case: consumed all sections
+	if (index >= sections.length) {
+		if (node.data !== null) {
+			return Object.keys(params).length > 0 ? { ...node.data, params } : node.data
 		}
-
-		// Exact matches take precedence over placeholders
-		const nextNode = node.children.get(section)
-		if (nextNode !== undefined) {
-			node = nextNode
-		} else {
-			node = node.placeholderChildNode
-			if (node !== null) {
-				params[node.paramName] = section
-				paramsFound = true
-			} else {
-				break
-			}
-		}
-	}
-
-	if ((node === null || node.data === null) && wildcardNode !== null) {
-		node = wildcardNode
-		params[node.paramName || '_'] = wildCardParam
-		paramsFound = true
-	}
-
-	if (!node) {
 		return null
 	}
 
-	if (paramsFound) {
+	const section = sections[index]
+
+	// Priority 1: Exact match
+	const exactChild = node.children.get(section)
+	if (exactChild !== undefined) {
+		const result = lookupRecursive(exactChild, sections, index + 1, params)
+		if (result !== null) return result
+	}
+
+	// Priority 2: Try each placeholder child
+	for (const placeholderChild of node.placeholderChildren) {
+		const newParams = { ...params, [placeholderChild.paramName]: section }
+		const result = lookupRecursive(placeholderChild, sections, index + 1, newParams)
+		if (result !== null) return result
+	}
+
+	// Priority 3: Wildcard (captures rest of path)
+	if (node.wildcardChildNode !== null) {
+		const wildcard = node.wildcardChildNode
+		const wildcardValue = sections.slice(index).join('/')
 		return {
-			...node.data,
-			params: paramsFound ? params : undefined
+			...wildcard.data,
+			params: { ...params, [wildcard.paramName || '_']: wildcardValue }
 		}
 	}
 
-	return node.data
+	return null
 }
 
 function insert(ctx: RadixRouterContext, path: string, data: unknown) {
@@ -175,7 +171,7 @@ function insert(ctx: RadixRouterContext, path: string, data: unknown) {
 
 			if (type === NODE_TYPES.PLACEHOLDER) {
 				childNode.paramName = section === '*' ? `_${_unnamedPlaceholderCtr++}` : section.slice(1)
-				node.placeholderChildNode = childNode
+				node.placeholderChildren.push(childNode)
 				isStaticRoute = false
 			} else if (type === NODE_TYPES.WILDCARD) {
 				node.wildcardChildNode = childNode
@@ -218,7 +214,11 @@ function remove(ctx: RadixRouterContext, path: string) {
 			const parentNode = node.parent
 			parentNode.children.delete(lastSection)
 			parentNode.wildcardChildNode = null
-			parentNode.placeholderChildNode = null
+			// Remove from placeholderChildren array
+			const placeholderIndex = parentNode.placeholderChildren.indexOf(node)
+			if (placeholderIndex !== -1) {
+				parentNode.placeholderChildren.splice(placeholderIndex, 1)
+			}
 		}
 		success = true
 	}
@@ -234,7 +234,7 @@ function createRadixNode(options: Partial<RadixNode> = {}): RadixNode {
 		data: options.data || null,
 		paramName: options.paramName || null,
 		wildcardChildNode: null,
-		placeholderChildNode: null
+		placeholderChildren: []
 	}
 }
 
