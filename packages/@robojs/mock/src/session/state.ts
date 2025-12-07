@@ -2680,7 +2680,7 @@ export function createMockMessage(config: MockMessageConfig): MockMessage {
 		editedTimestamp: null,
 		tts: config.tts ?? false,
 		mentionEveryone: content.includes('@everyone'),
-		mentions: [],
+		mentions: config.mentions ?? [],
 		mentionRoles: [],
 		attachments: config.attachments ?? [],
 		embeds: config.embeds ?? [],

@@ -155,6 +155,8 @@ export class Session implements ISession {
 		guildId?: string
 		embeds?: unknown[]
 		attachments?: unknown[]
+		/** User IDs that are mentioned in this message */
+		mentions?: string[]
 	}): Promise<MockMessage> {
 		if (this.ending) {
 			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
@@ -198,7 +200,8 @@ export class Session implements ISession {
 			authorId: author.id,
 			content: options.content ?? '',
 			embeds: options.embeds ?? [],
-			attachments: options.attachments ?? []
+			attachments: options.attachments ?? [],
+			mentions: options.mentions ?? []
 		})
 
 		// Build the MESSAGE_CREATE payload

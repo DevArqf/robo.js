@@ -1230,6 +1230,8 @@ export interface MockMessageConfig {
 	attachments?: MockAttachment[]
 	tts?: boolean
 	type?: number
+	/** User IDs that are mentioned in this message */
+	mentions?: Snowflake[]
 	// Phase 3I: APIMessage completeness config fields
 	call?: MockMessageCall
 	interactionMetadata?: MockMessageInteractionMetadata

@@ -47,6 +47,19 @@ export default async (request: RoboRequest) => {
 		return badRequest('Invalid JSON body')
 	}
 
+	// Convert approvedPrivilegedIntents from string to bigint if present
+	// (JSON serialization converts bigint to string)
+	if (body.config?.approvedPrivilegedIntents !== undefined) {
+		const intentsValue = body.config.approvedPrivilegedIntents
+		if (typeof intentsValue === 'string') {
+			try {
+				body.config.approvedPrivilegedIntents = BigInt(intentsValue) as unknown as bigint
+			} catch {
+				return badRequest('approvedPrivilegedIntents must be a valid bigint value')
+			}
+		}
+	}
+
 	const options: CreateSessionOptions = {
 		name: body.name,
 		ttl: body.ttl,

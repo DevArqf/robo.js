@@ -91,11 +91,15 @@ export default async (request: RoboRequest) => {
 			}
 			embeds?: unknown[]
 			attachments?: unknown[]
+			mentions?: Array<{ id?: string; username?: string; bot?: boolean }>
 		}
 
 		if (!data.channel_id) {
 			return badRequest('MESSAGE_CREATE requires "channel_id" in data')
 		}
+
+		// Extract mention user IDs from the mentions array
+		const mentionIds = data.mentions?.map((m) => m.id).filter((id): id is string => !!id) ?? []
 
 		try {
 			const message = await session.dispatchMessage({
@@ -103,7 +107,8 @@ export default async (request: RoboRequest) => {
 				content: data.content,
 				author: data.author,
 				embeds: data.embeds,
-				attachments: data.attachments
+				attachments: data.attachments,
+				mentions: mentionIds
 			})
 
 			return {

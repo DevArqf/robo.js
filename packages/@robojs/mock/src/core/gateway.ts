@@ -18,16 +18,42 @@ import {
 } from './intents.js'
 
 /**
+ * Per-connection control flags for testing
+ */
+interface ConnectionControlFlags {
+	stopHeartbeatAcks?: boolean
+}
+
+/**
  * Discord Gateway WebSocket server
  * Handles WebSocket connections and sends Gateway protocol messages
  */
 export class GatewayServer {
 	private wss: WebSocketServer
 	private connections: Map<WebSocket, ConnectionState> = new Map()
+	private controlFlags: Map<string, ConnectionControlFlags> = new Map()
+	private heartbeatInterval: number = DEFAULT_HEARTBEAT_INTERVAL
 
 	constructor() {
 		this.wss = new WebSocketServer({ noServer: true })
 		this.wss.on('connection', this.handleConnection.bind(this))
+	}
+
+	/**
+	 * Set the heartbeat interval for new connections (in ms)
+	 * Default is 41250ms (standard Discord interval)
+	 * Use shorter intervals for testing (e.g., 1000ms)
+	 */
+	setHeartbeatInterval(interval: number): void {
+		this.heartbeatInterval = interval
+		mockLogger.debug(`Gateway heartbeat interval set to ${interval}ms`)
+	}
+
+	/**
+	 * Get the current heartbeat interval
+	 */
+	getHeartbeatInterval(): number {
+		return this.heartbeatInterval
 	}
 
 	/**
@@ -43,7 +69,7 @@ export class GatewayServer {
 			sequence: 0,
 			lastAckSequence: null,
 			lastHeartbeat: Date.now(),
-			heartbeatInterval: DEFAULT_HEARTBEAT_INTERVAL,
+			heartbeatInterval: this.heartbeatInterval,
 			missedHeartbeats: 0
 		}
 	}
@@ -193,6 +219,12 @@ export class GatewayServer {
 				connState.lastAckSequence = typeof payload.d === 'number' ? payload.d : null
 				// Reset missed heartbeats counter (client is alive)
 				connState.missedHeartbeats = 0
+				// Check if ACKs are disabled for testing
+				const flags = this.controlFlags.get(connState.sessionId)
+				if (flags?.stopHeartbeatAcks) {
+					mockLogger.debug(`Heartbeat ACK suppressed for connection ${connState.id} (testing mode)`)
+					break
+				}
 				// Send HEARTBEAT_ACK immediately
 				this.send(ws, buildHeartbeatAckPayload())
 				mockLogger.debug(`Heartbeat ACK sent to connection ${connState.id}`)
@@ -439,6 +471,96 @@ export class GatewayServer {
 		}
 
 		return dispatched
+	}
+
+	// ========================================================================
+	// Control API Methods (for testing)
+	// ========================================================================
+
+	/**
+	 * Set whether to stop sending heartbeat ACKs for a session
+	 * Used for testing heartbeat timeout handling
+	 *
+	 * @param sessionId - The session ID to control
+	 * @param stop - Whether to stop sending ACKs (true) or resume (false)
+	 */
+	setStopHeartbeatAcks(sessionId: string, stop: boolean): void {
+		let flags = this.controlFlags.get(sessionId)
+		if (!flags) {
+			flags = {}
+			this.controlFlags.set(sessionId, flags)
+		}
+		flags.stopHeartbeatAcks = stop
+		mockLogger.debug(`Heartbeat ACKs ${stop ? 'disabled' : 'enabled'} for session ${sessionId}`)
+	}
+
+	/**
+	 * Force disconnect all connections for a session with a specific close code
+	 * Used for testing reconnection handling
+	 *
+	 * @param sessionId - The session ID to disconnect
+	 * @param closeCode - The WebSocket close code to use
+	 * @param reason - Optional reason string
+	 * @returns Number of connections disconnected
+	 */
+	disconnectSession(sessionId: string, closeCode: number, reason?: string): number {
+		let disconnected = 0
+		for (const [ws, connState] of this.connections) {
+			if (connState.sessionId === sessionId) {
+				ws.close(closeCode, reason ?? 'Disconnected by control API')
+				disconnected++
+			}
+		}
+		mockLogger.debug(`Disconnected ${disconnected} connections from session ${sessionId} with code ${closeCode}`)
+		return disconnected
+	}
+
+	/**
+	 * Invalidate a session (clears session data for fresh READY on reconnect)
+	 * Used for testing session invalidation handling
+	 *
+	 * @param sessionId - The session ID to invalidate
+	 * @returns true if session was invalidated, false if not found
+	 */
+	invalidateSession(sessionId: string): boolean {
+		const session = sessionManager.get(sessionId)
+		if (!session) {
+			return false
+		}
+
+		// Clear all connection states from the session
+		for (const [connectionId, connState] of session.connections) {
+			// Reset connection state flags
+			connState.identified = false
+			connState.sequence = 0
+		}
+		session.connections.clear()
+
+		// Clear control flags
+		this.controlFlags.delete(sessionId)
+
+		mockLogger.debug(`Session ${sessionId} invalidated`)
+		return true
+	}
+
+	/**
+	 * Get control flags for a session
+	 *
+	 * @param sessionId - The session ID
+	 * @returns The control flags, or undefined if none set
+	 */
+	getControlFlags(sessionId: string): ConnectionControlFlags | undefined {
+		return this.controlFlags.get(sessionId)
+	}
+
+	/**
+	 * Clear control flags for a session
+	 *
+	 * @param sessionId - The session ID
+	 */
+	clearControlFlags(sessionId: string): void {
+		this.controlFlags.delete(sessionId)
+		mockLogger.debug(`Control flags cleared for session ${sessionId}`)
 	}
 
 	/**

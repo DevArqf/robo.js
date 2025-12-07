@@ -5,18 +5,19 @@ import { mockThreadToAPIChannel, mockChannelToAPIChannel } from '../../../discor
 import { enforcePermissions } from '../../../utils/permission-check.js'
 
 /**
- * Channel endpoint - handles PATCH and DELETE for channels (including threads)
+ * Channel endpoint - handles GET, PATCH and DELETE for channels (including threads)
  *
- * PATCH /api/v10/channels/:id - Modify a channel/thread
- * DELETE /api/v10/channels/:id - Delete a channel/thread
+ * GET    /api/v10/channels/:id    - Fetch a channel
+ * PATCH  /api/v10/channels/:id    - Modify a channel/thread
+ * DELETE /api/v10/channels/:id    - Delete a channel/thread
  *
  * For threads (types 10, 11, 12), this endpoint supports:
  * - PATCH: name, archived, auto_archive_duration, locked, invitable, rate_limit_per_user
  * - DELETE: Remove the thread entirely
  */
 export default async (request: RoboRequest) => {
-	// 1. Validate method (PATCH or DELETE)
-	if (request.method !== 'PATCH' && request.method !== 'DELETE') {
+	// 1. Validate method
+	if (request.method !== 'GET' && request.method !== 'PATCH' && request.method !== 'DELETE') {
 		return new Response(JSON.stringify({ error: 'Method not allowed' }), {
 			status: 405,
 			headers: { 'Content-Type': 'application/json' }
@@ -65,6 +66,15 @@ export default async (request: RoboRequest) => {
 
 	// Check if this is a thread
 	const isThread = channel.type === 10 || channel.type === 11 || channel.type === 12
+
+	// GET - return channel representation
+	if (request.method === 'GET') {
+		if (isThread) {
+			const botMember = session.state.getThreadMember(channelId, session.state.botUser.id)
+			return mockThreadToAPIChannel(channel as any, botMember ?? undefined)
+		}
+		return mockChannelToAPIChannel(channel)
+	}
 
 	if (request.method === 'DELETE') {
 		// 5a. DELETE - Remove channel/thread
