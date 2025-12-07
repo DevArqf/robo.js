@@ -132,7 +132,7 @@ importers:
         version: 0.40.0
       '@prisma/client':
         specifier: '*'
-        version: 2.0.0-alpha.538
+        version: 7.1.0(typescript@5.9.3)
       argon2id:
         specifier: ^1.0.1
         version: 1.0.1
@@ -145,7 +145,7 @@ importers:
     devDependencies:
       '@auth/prisma-adapter':
         specifier: ^2.10.0
-        version: 2.10.0(@prisma/client@2.0.0-alpha.538)
+        version: 2.10.0(@prisma/client@7.1.0)
       '@react-email/components':
         specifier: ^0.5.5
         version: 0.5.5(react-dom@19.1.1)(react@19.1.1)
@@ -158,9 +158,6 @@ importers:
       '@types/node':
         specifier: ^24.2.1
         version: 24.8.0
-      discord.js:
-        specifier: 14.22.1
-        version: 14.22.1
       prettier:
         specifier: ^3.6.2
         version: 3.6.2
@@ -197,6 +194,9 @@ importers:
 
   packages/@robojs/cron:
     dependencies:
+      '@robojs/discordjs':
+        specifier: workspace:*
+        version: link:../discordjs
       croner:
         specifier: ^9.0.0
         version: 9.0.0
@@ -771,9 +771,6 @@ importers:
       '@types/ws':
         specifier: ^8.5.10
         version: 8.5.10
-      discord.js:
-        specifier: 14.22.1
-        version: 14.22.1
       prettier:
         specifier: ^3.2.5
         version: 3.3.3
@@ -930,13 +927,13 @@ packages:
       preact: 10.24.3
       preact-render-to-string: 6.5.11(preact@10.24.3)
 
-  /@auth/prisma-adapter@2.10.0(@prisma/client@2.0.0-alpha.538):
+  /@auth/prisma-adapter@2.10.0(@prisma/client@7.1.0):
     resolution: {integrity: sha512-EliOQoTjGK87jWWqnJvlQjbR4PjQZQqtwRwPAe108WwT9ubuuJJIrL68aNnQr4hFESz6P7SEX2bZy+y2yL37Gw==}
     peerDependencies:
       '@prisma/client': '>=2.26.0 || >=3 || >=4 || >=5 || >=6'
     dependencies:
       '@auth/core': 0.40.0
-      '@prisma/client': 2.0.0-alpha.538
+      '@prisma/client': 7.1.0(typescript@5.9.3)
     transitivePeerDependencies:
       - '@simplewebauthn/browser'
       - '@simplewebauthn/server'
@@ -3260,14 +3257,23 @@ packages:
     engines: {node: ^12.20.0 || ^14.18.0 || >=16.0.0}
     dev: true
 
-  /@prisma/client@2.0.0-alpha.538:
-    resolution: {integrity: sha512-D9ymAv5iXYsWYJW8KfT5sVXfrsmthxWlUX3sU8f3/p2Q1Y+Z1UzNe/LrhSt5ipwXp1fIEzskbds0OyP/EuhKBA==}
-    requiresBuild: true
+  /@prisma/client-runtime-utils@7.1.0:
+    resolution: {integrity: sha512-39xmeBrNTN40FzF34aJMjfX1PowVCqoT3UKUWBBSP3aXV05NRqGBC3x2wCDs96ti6ZgdiVzqnRDHtbzU8X+lPQ==}
+
+  /@prisma/client@7.1.0(typescript@5.9.3):
+    resolution: {integrity: sha512-qf7GPYHmS/xybNiSOpzv9wBo+UwqfL2PeyX+08v+KVHDI0AlSCQIh5bBySkH3alu06NX9wy98JEnckhMHoMFfA==}
+    engines: {node: ^20.19 || ^22.12 || >=24.0}
     peerDependencies:
-      prisma2: '*'
+      prisma: '*'
+      typescript: '>=5.4.0'
     peerDependenciesMeta:
-      prisma2:
+      prisma:
         optional: true
+      typescript:
+        optional: true
+    dependencies:
+      '@prisma/client-runtime-utils': 7.1.0
+      typescript: 5.9.3
 
   /@react-email/body@0.1.0(react@19.1.1):
     resolution: {integrity: sha512-o1bcSAmDYNNHECbkeyceCVPGmVsYvT+O3sSO/Ct7apKUu3JphTi31hu+0Nwqr/pgV5QFqdoT5vdS3SW5DJFHgQ==}

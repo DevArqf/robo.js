@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { getPluginOptions } from 'robo.js'
+import { StartContext } from 'robo.js'
 import { Server } from '@robojs/server'
 import { createFlashcoreAdapter } from '../adapters/flashcore.js'
 import { normalizeAuthOptions, type NormalizedAuthPluginOptions } from '../config/defaults.js'
@@ -16,7 +16,6 @@ import {
 import { ensureLeadingSlash, joinPath, stripTrailingSlash } from '../utils/path.js'
 import { EmailManager, setEmailManager, notifyEmail } from '../emails/manager.js'
 import type { RoboReply, RoboRequest } from '@robojs/server'
-import type { Client } from 'discord.js'
 import type { AuthConfig } from '@auth/core'
 import type { CookiesOptions, LoggerInstance } from '@auth/core/types'
 import type { Provider } from '@auth/core/providers'
@@ -184,8 +183,8 @@ function resolveBaseUrl(options: NormalizedAuthPluginOptions): string {
 	return fallback
 }
 
-export default async function startAuth(_client: Client, runtimeOptions?: unknown) {
-	const rawOptions = runtimeOptions ?? getPluginOptions('@robojs/auth') ?? {}
+export default async (context: StartContext) => {
+	const rawOptions = context.pluginConfig
 	const options = normalizeAuthOptions(rawOptions)
 	await Server.ready()
 

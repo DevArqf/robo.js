@@ -7,7 +7,7 @@
 import { _PREFIX, packageJson } from '@/core/constants.js'
 import { logger } from '@/core/logger.js'
 import { BaseEngine, type EngineSupportedFeatures, type MCPTool } from '@/engines/base.js'
-import { options as pluginOptions } from '@/events/_start.js'
+import { options as pluginOptions } from 'src/robo/start.js'
 import fs from 'node:fs/promises'
 import type { Stats } from 'node:fs'
 import path from 'node:path'
@@ -43,7 +43,8 @@ import type {
 	ResponseOutputText,
 	ResponseOutputRefusal
 } from 'openai/resources/responses/responses'
-import { Flashcore, client, color, portal } from 'robo.js'
+import { Flashcore, color, portal } from 'robo.js'
+import { getClient } from '@robojs/discordjs'
 import type { Command } from 'robo.js'
 import { ImagesResponse } from 'openai/resources/images.js'
 import type { ReasoningEffort, ResponsesModel } from 'openai/resources/shared.js'
@@ -967,7 +968,7 @@ export class OpenAiEngine extends BaseEngine {
 			return cached
 		}
 
-		const guild = state.options.channel?.guild ?? client.guilds.cache.get(state.options.guildId)
+		const guild = state.options.channel?.guild ?? getClient().guilds.cache.get(state.options.guildId)
 		if (!guild) {
 			return null
 		}
@@ -1066,7 +1067,7 @@ export class OpenAiEngine extends BaseEngine {
 		const member = state.lastSpeakerMember ?? state.options.member ?? null
 		const user =
 			state.lastSpeakerMember?.user ??
-			(state.lastSpeakerId ? (client.users.cache.get(state.lastSpeakerId) ?? null) : null) ??
+			(state.lastSpeakerId ? (getClient().users.cache.get(state.lastSpeakerId) ?? null) : null) ??
 			member?.user ??
 			state.options.member?.user ??
 			null
@@ -2425,21 +2426,46 @@ async function loadFunctions() {
 		return key.replaceAll('/', ' ')
 	})
 
-	portal?.commands
-		.filter((command) => {
+	// Get all discord commands from the portal
+	const commandRecords = portal.getByType('discord:commands')
+	if (!commandRecords) {
+		logger.debug('No discord commands found in portal')
+		return { functions, handlers }
+	}
+
+	// Filter and process commands
+	const commandEntries = Object.entries(commandRecords)
+		.filter(([key]) => {
 			if (Array.isArray(pluginOptions?.commands)) {
-				return whitelistedCommands.includes(command.key.replaceAll('/', ' '))
+				return whitelistedCommands.includes(key.replaceAll('/', ' '))
 			}
 			return !!pluginOptions?.commands
 		})
-		.forEach((command) => {
-			const parameters = {
-				properties: {} as ChatFunction['parameters']['properties'],
-				required: [] as string[],
-				type: 'object' as const
-			}
 
-			command.handler.config?.options?.forEach((option) => {
+	for (const [key, recordOrArray] of commandEntries) {
+		const record = Array.isArray(recordOrArray) ? recordOrArray[0] : recordOrArray
+		if (!record) continue
+
+		// Import the handler to get config
+		try {
+			await portal.importHandler('discord', 'commands', key)
+		} catch (error) {
+			logger.warn(`Failed to import command handler: ${key}`, error)
+			continue
+		}
+
+		const handler = record.handler as Command | null
+		if (!handler) continue
+
+		const parameters = {
+			properties: {} as ChatFunction['parameters']['properties'],
+			required: [] as string[],
+			type: 'object' as const
+		}
+
+		const options = handler.config?.options
+		if (options) {
+			for (const option of options) {
 				const optionType = option.type ?? 'string'
 				const schemaType: ChatFunctionProperty['type'] =
 					optionType === 'boolean'
@@ -2466,16 +2492,17 @@ async function loadFunctions() {
 				if (option.required) {
 					parameters.required?.push(option.name)
 				}
-			})
+			}
+		}
 
-			const name = command.key.replaceAll('/', '_')
-			functions.push({
-				description: command.description ?? '',
-				name,
-				parameters
-			})
-			handlers[name] = command.handler
+		const name = key.replaceAll('/', '_')
+		functions.push({
+			description: handler.config?.description ?? '',
+			name,
+			parameters
 		})
+		handlers[name] = handler
+	}
 
 	logger.debug(`Loaded ${functions.length} GPT functions for OpenAI engine`)
 

@@ -9,10 +9,10 @@ import {
 	type BackgroundTaskSnapshot
 } from '@/core/chat/background-tasks.js'
 import type { ChatOptions, ChatReply } from '@/core/chat/types.js'
-import { options as pluginOptions } from '@/events/_start.js'
+import { options as pluginOptions } from 'src/robo/start.js'
 import { voiceManager, type VoiceEventMap, getVoiceMetricsSnapshot, type VoiceConfigPatch } from '@/core/voice/index.js'
 import { tokenLedger, TokenLimitError } from '@/core/token-ledger.js'
-import { client } from 'robo.js'
+import { getClient } from '@robojs/discordjs'
 import { loadDiscordVoice, OptionalDependencyError } from '@/core/voice/deps.js'
 import type {
 	BaseEngine,
@@ -523,14 +523,14 @@ function getRestrictChannels(): string[] {
  */
 async function resolveGuild(guildId: string): Promise<Guild> {
 	// Fetch from cache first to reduce API traffic
-	const cached = client.guilds.cache.get(guildId)
+	const cached = getClient().guilds.cache.get(guildId)
 	if (cached) {
 		return cached
 	}
 
 	// Fall back to REST fetch when the guild is not cached locally
 
-	return client.guilds.fetch(guildId)
+	return getClient().guilds.fetch(guildId)
 }
 
 /**
@@ -649,7 +649,7 @@ async function chat(messages: ChatMessage[], options: ChatOptions): Promise<void
 		} else if (typeof reply.message?.content === 'string') {
 			// Extract and clean the assistant's text response
 			let content = reply.message.content
-			const clientUsername = client?.user?.username ?? 'mock'
+			const clientUsername = getClient()?.user?.username ?? 'mock'
 
 			if (content.toLowerCase().startsWith(clientUsername.toLowerCase() + ':')) {
 				// Remove bot username prefix if present

@@ -1,6 +1,7 @@
 /** Discord utility helpers for chunking messages, mocking interactions, and mention handling. */
 import { ApplicationCommandType, ChatInputCommandInteraction, InteractionType, Message } from 'discord.js'
-import { client, logger } from 'robo.js'
+import { logger } from 'robo.js'
+import { getClient } from '@robojs/discordjs'
 import type {
 	APIInteraction,
 	APIMessage,
@@ -135,7 +136,7 @@ export async function mockInteraction(
 	// Build mock interaction data structure
 	const interactionData = {
 		id: Date.now().toString(),
-		application_id: client.user?.id ?? 'mock',
+		application_id: getClient().user?.id ?? 'mock',
 		type: InteractionType.ApplicationCommand,
 		app_permissions: member?.permissions?.bitfield?.toString() ?? '',
 		channel: {
@@ -157,7 +158,7 @@ export async function mockInteraction(
 	} as unknown as APIInteraction
 
 	// @ts-expect-error - Mock
-	const interaction: ChatInputCommandInteraction = new ChatInputCommandInteraction(client, interactionData)
+	const interaction: ChatInputCommandInteraction = new ChatInputCommandInteraction(getClient(), interactionData)
 
 	const callbacks = options?.callbacks
 	const commandOptions = options?.commandOptions ?? []
@@ -402,7 +403,7 @@ export async function mockInteraction(
 		}
 		const id = extractId(value)
 		if (id) {
-			return client.users.cache.get(id) ?? null
+			return getClient().users.cache.get(id) ?? null
 		}
 		return null
 	}
@@ -426,7 +427,7 @@ export async function mockInteraction(
 		}
 		const id = extractId(value)
 		if (id) {
-			const cached = guild?.channels.cache.get(id) ?? client.channels.cache.get(id)
+			const cached = guild?.channels.cache.get(id) ?? getClient().channels.cache.get(id)
 			if (cached) {
 				return cached
 			}
@@ -648,16 +649,16 @@ export function mockMessage(
 		attachments: [],
 		embeds: [],
 		author: {
-			id: client.user?.id ?? 'mock',
-			username: client.user?.username ?? 'mock',
-			discriminator: client.user?.discriminator ?? '0',
-			global_name: client.user?.username ?? 'mock',
-			avatar: client.user?.avatar ?? 'mock'
+			id: getClient().user?.id ?? 'mock',
+			username: getClient().user?.username ?? 'mock',
+			discriminator: getClient().user?.discriminator ?? '0',
+			global_name: getClient().user?.username ?? 'mock',
+			avatar: getClient().user?.avatar ?? 'mock'
 		}
 	}
 
 	// @ts-expect-error - Private constructor
-	return new Message(client, messageData)
+	return new Message(getClient(), messageData)
 }
 
 /** Replaces @username mentions with Discord mention syntax using a provided mapping. */

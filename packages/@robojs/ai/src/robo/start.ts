@@ -6,9 +6,9 @@ import { setEngine, setEngineReady } from '@/core/ai.js'
 import { logger } from '@/core/logger.js'
 import { voiceManager } from '@/core/voice/index.js'
 import { tokenLedger, type TokenLimitConfig, type TokenLedgerHooks } from '../core/token-ledger.js'
-import { Client } from 'discord.js'
 import type { VoiceConfigPatch } from '../core/voice/config.js'
 import type { BaseEngine, Hook, HookEvent, MCPTool } from '@/engines/base.js'
+import { StartContext } from 'robo.js'
 
 /** Voice configuration with optional per-guild overrides and instructions. */
 interface VoicePluginVoiceOptions extends VoiceConfigPatch {
@@ -84,18 +84,19 @@ export let options: PluginOptions
  * @param _client Discord client instance (unused but part of the lifecycle signature).
  * @param pluginOptions Configuration resolved from the Robo project.
  */
-export default async (_client: Client, pluginOptions: PluginOptions) => {
-	options = pluginOptions
+export default async (context: StartContext<PluginOptions>) => {
+	const { pluginConfig } = context
+	options = pluginConfig
 
 	// Check if OpenAI API key is available
 	const hasOpenAiKey = typeof process.env.OPENAI_API_KEY === 'string' && process.env.OPENAI_API_KEY.trim().length > 0
 
 	// Configure token tracking and limits
 	tokenLedger.configure({
-		limits: pluginOptions.usage?.limits,
+		limits: pluginConfig.usage?.limits,
 		hooks: {
-			onRecorded: pluginOptions.usage?.onRecorded,
-			onLimitReached: pluginOptions.usage?.onLimitReached
+			onRecorded: pluginConfig.usage?.onRecorded,
+			onLimitReached: pluginConfig.usage?.onLimitReached
 		}
 	})
 
@@ -104,7 +105,7 @@ export default async (_client: Client, pluginOptions: PluginOptions) => {
 		try {
 			const { OpenAiEngine } = await import('@/engines/openai/engine.js')
 			options.engine = new OpenAiEngine({
-				mcp: pluginOptions.mcp
+				mcp: pluginConfig.mcp
 			})
 		} catch (error) {
 			logger.error('Failed to load the default OpenAI engine', error)
@@ -137,9 +138,9 @@ export default async (_client: Client, pluginOptions: PluginOptions) => {
 	const engineSupportsVoice = engineFeatures.voice
 
 	// Configure voice features if engine supports them
-	if (pluginOptions.voice) {
+	if (pluginConfig.voice) {
 		if (engineSupportsVoice) {
-			await configureVoice(pluginOptions.voice)
+			await configureVoice(pluginConfig.voice)
 		} else {
 			await voiceManager.setBaseConfig({ enabled: false })
 			logger.warn(

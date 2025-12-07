@@ -6,9 +6,9 @@
 import { AI, getEngine } from '@/core/ai.js'
 import { chunkMessage, replaceUsernamesWithIds } from '@/utils/discord-utils.js'
 import { logger } from '@/core/logger.js'
-import { options as pluginOptions } from '@/events/_start.js'
+import { options as pluginOptions } from 'src/robo/start.js'
 import { Message, type MessageReplyOptions } from 'discord.js'
-import { client } from 'robo.js'
+import { getClient } from '@robojs/discordjs'
 import type { ChatMessage, ChatMessageContent } from '@/engines/base.js'
 
 /**
@@ -17,7 +17,7 @@ import type { ChatMessage, ChatMessageContent } from '@/engines/base.js'
  */
 export default async (message: Message) => {
 	// Ignore messages from the bot itself
-	if (message.author.id === client.user?.id) {
+	if (message.author.id === getClient().user?.id) {
 		return
 	}
 
@@ -31,7 +31,7 @@ export default async (message: Message) => {
 
 	// Require mention unless in whitelisted channel or DM
 	const isOpenConvo = pluginOptions.whitelist?.channelIds?.includes(message.channel.id) || message.channel.isDMBased()
-	if (!message.mentions.users.has(client.user?.id ?? '') && !isOpenConvo) {
+	if (!message.mentions.users.has(getClient().user?.id ?? '') && !isOpenConvo) {
 		logger.debug('Message received but not mentioned')
 
 		return
@@ -42,18 +42,18 @@ export default async (message: Message) => {
 	if (message.reference?.messageId) {
 		const referencedMessage = await message.channel.messages.fetch(message.reference.messageId)
 
-		if (referencedMessage.author.id !== client.user?.id) {
+		if (referencedMessage.author.id !== getClient().user?.id) {
 			targetMessage = referencedMessage
 
 			// Merge user content into target when replying with extra text
-			if (message.content.replaceAll(`<@${client.user?.id}>`, '').trim()) {
+			if (message.content.replaceAll(`<@${getClient().user?.id}>`, '').trim()) {
 				targetMessage.content = message.content + '\n' + targetMessage.content
 			}
 		}
 	}
 
 	// Replace Discord mentions with readable usernames
-	let processedContent = targetMessage.content.replaceAll(`<@${client.user?.username}>`, '@' + client.user?.username)
+	let processedContent = targetMessage.content.replaceAll(`<@${getClient().user?.username}>`, '@' + getClient().user?.username)
 	for (const user of targetMessage.mentions.users.values()) {
 		processedContent = processedContent.replaceAll(`<@${user.id}>`, '@' + user.username)
 	}
@@ -107,7 +107,7 @@ export default async (message: Message) => {
 
 	// Structure messages for AI consumption
 	const gptMessages: ChatMessage[] = messages.map((nextMessage) => ({
-		role: nextMessage.author.id === client.user?.id ? 'assistant' : 'user',
+		role: nextMessage.author.id === getClient().user?.id ? 'assistant' : 'user',
 		content: getMessageContent(nextMessage)
 	}))
 
@@ -281,7 +281,7 @@ async function getSurroundingContext(
 			// Skip excluded messages, bot messages, and empty messages
 			if (
 				!excludeIds.has(msg.id) &&
-				msg.author.id !== client.user?.id &&
+				msg.author.id !== getClient().user?.id &&
 				msg.content.trim().length > 0
 			) {
 				contextMessages.push(msg)

@@ -26,7 +26,7 @@ import type {
 import { ComponentType } from 'discord.js'
 import { Command, color, getConfig } from 'robo.js'
 import type { SageOptions } from 'robo.js'
-import { extractCommandOptions } from 'robo.js/utils.js'
+import { extractCommandOptions } from '@robojs/discordjs'
 import { mockInteraction } from '@/utils/discord-utils.js'
 
 /**
@@ -416,7 +416,8 @@ async function getCommandReply(
 	}
 
 	// Extract command options from interaction payload
-	const commandOptions = extractCommandOptions(interaction, command.config?.options)
+	// Cast to any[] to handle type differences between robo.js and @robojs/discordjs CommandOption types
+	const commandOptions = extractCommandOptions(interaction, command.config?.options as Parameters<typeof extractCommandOptions>[1])
 	let functionResult: unknown
 	try {
 		// Execute command handler with mock interaction

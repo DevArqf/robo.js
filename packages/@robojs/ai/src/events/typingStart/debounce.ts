@@ -1,13 +1,13 @@
 /** Minimal typing event handler that logs activity for debugging purposes. */
 import { logger } from '@/core/logger.js'
-import { client } from 'robo.js'
+import { getClient } from '@robojs/discordjs'
 import type { Typing } from 'discord.js'
 
 /** Handles typing start events, logging them while skipping the bot's own typing events. */
 export default (event: Typing) => {
 	const { user } = event
 
-	if (user.id === client.user?.id) {
+	if (user.id === getClient().user?.id) {
 		// Ignore typing events from the bot itself
 
 		return

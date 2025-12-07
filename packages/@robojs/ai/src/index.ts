@@ -124,7 +124,7 @@ export * from './engines/base.js'
  * Type-only exports describing AI plugin bootstrap options and usage telemetry wiring. Import when
  * authoring plugin entry points or registering lifecycle hooks within Robo projects.
  */
-export type { PluginOptions, PluginUsageOptions } from './events/_start.js'
+export type { PluginOptions, PluginUsageOptions } from './robo/start.js'
 
 /**
  * Token ledger type definitions covering configuration, query, and event payload surfaces. Combine
