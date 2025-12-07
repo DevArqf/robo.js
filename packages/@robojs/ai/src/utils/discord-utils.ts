@@ -19,7 +19,7 @@ import type {
 	MessagePayload,
 	Role
 } from 'discord.js'
-import type { CommandOption } from 'robo.js'
+import type { CommandOption } from '@robojs/discordjs'
 
 /** Lifecycle callbacks invoked during the mock interaction flow. */
 interface MockInteractionCallbacks {

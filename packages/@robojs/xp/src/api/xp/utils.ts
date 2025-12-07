@@ -1,5 +1,6 @@
 import type { RoboRequest } from '@robojs/server'
-import { client, logger } from 'robo.js'
+import { logger } from 'robo.js'
+import { getClient } from '@robojs/discordjs'
 import type { Guild } from 'discord.js'
 
 const apiLogger = logger.fork('xp-api')
@@ -59,7 +60,7 @@ export async function getGuildFromRequest(request: RoboRequest): Promise<Guild> 
 		throw error
 	}
 
-	const guild = await client.guilds.fetch(guildId).catch(() => null)
+	const guild = await getClient().guilds.fetch(guildId).catch(() => null)
 	if (!guild) {
 		const error = new Error('Guild not found or bot not member')
 		;(error as Error & { code: string }).code = ERROR_CODES.GUILD_NOT_FOUND

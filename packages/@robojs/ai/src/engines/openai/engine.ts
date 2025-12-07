@@ -45,7 +45,7 @@ import type {
 } from 'openai/resources/responses/responses'
 import { Flashcore, color, portal } from 'robo.js'
 import { getClient } from '@robojs/discordjs'
-import type { Command } from 'robo.js'
+import type { Command } from '@robojs/discordjs'
 import { ImagesResponse } from 'openai/resources/images.js'
 import type { ReasoningEffort, ResponsesModel } from 'openai/resources/shared.js'
 import { incrementRealtimeReconnects, incrementFailedFrameAppends } from '@/core/voice/metrics.js'

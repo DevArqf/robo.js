@@ -1,5 +1,6 @@
 import type { RoboRequest } from '@robojs/server'
-import { client, logger } from 'robo.js'
+import { logger } from 'robo.js'
+import { getClient } from '@robojs/discordjs'
 import { wrapHandler, success, validateMethod } from './utils.js'
 
 const apiLogger = logger.fork('xp-api')
@@ -28,6 +29,7 @@ export default wrapHandler(async (request: RoboRequest) => {
 
 	try {
 		// Check Discord client status
+		const client = getClient()
 		const discordReady = client.isReady()
 		const guildCount = client.guilds.cache.size
 

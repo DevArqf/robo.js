@@ -1,5 +1,5 @@
 /** Utility helpers for formatting chat command names and arguments for display. */
-import type { Command } from 'robo.js'
+import type { Command } from '@robojs/discordjs'
 
 /**
  * Converts a command name into a readable display label by replacing separators, handling

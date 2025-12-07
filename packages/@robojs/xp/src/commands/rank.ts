@@ -5,8 +5,7 @@
  * Supports theme customization via guild config.
  */
 
-import type { ChatInputCommandInteraction } from 'discord.js'
-import type { CommandConfig, CommandResult } from 'robo.js'
+import { createCommandConfig } from '@robojs/discordjs'
 import { logger } from 'robo.js'
 import { getConfig } from '../config.js'
 import { getUserData } from '../core/xp.js'
@@ -26,11 +25,13 @@ import {
 	getEmbedColor,
 	getXpLabel
 } from '../core/utils.js'
+import type { CommandResult } from '@robojs/discordjs'
+import type { ChatInputCommandInteraction } from 'discord.js'
 
 /**
  * Command configuration
  */
-export const config: CommandConfig = {
+export const config = createCommandConfig({
 	description: "View your rank or another user's rank",
 	dmPermission: false,
 	options: [
@@ -41,7 +42,7 @@ export const config: CommandConfig = {
 			required: false
 		}
 	]
-}
+} as const)
 
 /**
  * Command handler

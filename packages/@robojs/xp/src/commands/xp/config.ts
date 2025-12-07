@@ -1,5 +1,5 @@
-import { MessageFlags, type ChatInputCommandInteraction } from 'discord.js'
-import type { CommandConfig, CommandResult } from 'robo.js'
+import { MessageFlags } from 'discord.js'
+import { createCommandConfig } from '@robojs/discordjs'
 import { getConfig } from '../../config.js'
 import { xpLogger } from '../../core/logger.js'
 import {
@@ -10,12 +10,14 @@ import {
 	createPermissionError
 } from '../../core/utils.js'
 import { COMPONENT_FLAGS, buildMainMenuView } from '../../core/config-ui.js'
+import type { CommandResult } from '@robojs/discordjs'
+import type { ChatInputCommandInteraction } from 'discord.js'
 
-export const config: CommandConfig = {
+export const config = createCommandConfig({
 	description: 'Configure XP system settings',
 	defaultMemberPermissions: getRequiredPermissionBit(),
 	dmPermission: false
-}
+} as const)
 
 export default async function (interaction: ChatInputCommandInteraction): Promise<CommandResult> {
 	try {

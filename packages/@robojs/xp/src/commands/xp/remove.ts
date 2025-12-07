@@ -1,5 +1,4 @@
-import { type ChatInputCommandInteraction } from 'discord.js'
-import type { CommandConfig, CommandResult } from 'robo.js'
+import { createCommandConfig } from '@robojs/discordjs'
 import { logger } from 'robo.js'
 import { removeXP, getUserData } from '../../core/xp.js'
 import { getConfig } from '../../config.js'
@@ -15,8 +14,10 @@ import {
 	formatUser,
 	getXpLabel
 } from '../../core/utils.js'
+import type { CommandResult } from '@robojs/discordjs'
+import type { ChatInputCommandInteraction } from 'discord.js'
 
-export const config: CommandConfig = {
+export const config = createCommandConfig({
 	description: 'Remove XP from a user',
 	defaultMemberPermissions: getRequiredPermissionBit(),
 	dmPermission: false,
@@ -42,7 +43,7 @@ export const config: CommandConfig = {
 			description: 'Reason for removing XP'
 		}
 	]
-}
+} as const)
 
 export default async function (interaction: ChatInputCommandInteraction): Promise<CommandResult> {
 	try {

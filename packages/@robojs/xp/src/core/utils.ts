@@ -13,7 +13,7 @@ import {
 	type InteractionReplyOptions,
 	type RepliableInteraction
 } from 'discord.js'
-import type { CommandResult } from 'robo.js'
+import type { CommandResult } from '@robojs/discordjs'
 import type { GuildConfig } from '../types.js'
 import { logger } from 'robo.js'
 

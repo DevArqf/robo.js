@@ -1,5 +1,4 @@
-import { type ChatInputCommandInteraction } from 'discord.js'
-import type { CommandConfig, CommandResult } from 'robo.js'
+import { createCommandConfig } from '@robojs/discordjs'
 import { xpLogger } from '../../core/logger.js'
 import { getConfig } from '../../config.js'
 import {
@@ -14,11 +13,13 @@ import {
 	calculateTotalPages,
 	REWARDS_PER_PAGE
 } from '../../core/rewards-ui.js'
+import type { CommandResult } from '@robojs/discordjs'
+import type { ChatInputCommandInteraction } from 'discord.js'
 
-export const config: CommandConfig = {
+export const config = createCommandConfig({
 	description: 'List all role rewards',
 	dmPermission: false
-}
+} as const)
 
 export default async function (interaction: ChatInputCommandInteraction): Promise<CommandResult> {
 	try {

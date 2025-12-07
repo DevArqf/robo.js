@@ -24,10 +24,10 @@ import type {
 	User
 } from 'discord.js'
 import { ComponentType } from 'discord.js'
-import { Command, color, getConfig } from 'robo.js'
-import type { SageOptions } from 'robo.js'
+import { color, getPluginOptions } from 'robo.js'
 import { extractCommandOptions } from '@robojs/discordjs'
 import { mockInteraction } from '@/utils/discord-utils.js'
+import type { Command, DiscordConfig, SageOptions } from '@robojs/discordjs'
 
 /**
  * Extends {@link ChatReply} with command execution metadata for downstream processing.
@@ -526,9 +526,9 @@ const DEFAULT_SAGE_OPTIONS: Required<Pick<SageOptions, 'defer' | 'deferBuffer' |
  * Merges global and command-level Sage configuration, giving precedence to command overrides.
  */
 function resolveSageOptions(command: Command): SageOptions {
-	const config = getConfig()
+	const pluginConfig = getPluginOptions('@robojs/discordjs') as unknown as DiscordConfig
 	const commandSage = command.config?.sage
-	const configSage = config?.sage
+	const configSage = pluginConfig?.sage
 
 	if (commandSage === false || (commandSage === undefined && configSage === false)) {
 		return {

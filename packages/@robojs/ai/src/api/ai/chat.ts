@@ -1,7 +1,7 @@
 /** API endpoint for executing chat requests via the AI engine. */
 import { AI } from '@/core/ai.js'
 import { logger } from '@/core/logger.js'
-import { options as pluginOptions } from '@/events/_start.js'
+import { options as pluginOptions } from '@/robo/start.js'
 import type { ChatMessage } from '@/engines/base.js'
 import type { RoboRequest } from '@robojs/server'
 

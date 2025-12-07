@@ -7,7 +7,8 @@
  * This design prevents situations where parallel progression systems would
  * grant Discord roles, which should only come from the primary leveling system.
  */
-import { client, logger } from 'robo.js'
+import { logger } from 'robo.js'
+import { getClient } from '@robojs/discordjs'
 import { PermissionFlagsBits } from 'discord.js'
 import type { GuildMember, Role } from 'discord.js'
 import * as events from './events.js'
@@ -182,6 +183,7 @@ export async function reconcileRoleRewards(
 ): Promise<void> {
 	try {
 		// Guard: Ensure client and guilds API are available
+		const client = getClient()
 		if (!client?.guilds) {
 			logger.warn('Robo.js client not initialized; cannot reconcile role rewards', { guildId, userId })
 			return
@@ -262,6 +264,7 @@ async function handleLevelDown(
 
 	try {
 		// Guard: Ensure client and guilds API are available
+		const client = getClient()
 		if (!client?.guilds) {
 			logger.warn('Robo.js client not initialized; cannot handle level down', { guildId, userId })
 			return

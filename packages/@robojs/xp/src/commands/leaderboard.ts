@@ -4,9 +4,7 @@
  * Displays paginated server XP leaderboard with top users.
  * Supports access control via config and theme customization.
  */
-
-import type { ChatInputCommandInteraction } from 'discord.js'
-import type { CommandConfig, CommandResult } from 'robo.js'
+import { createCommandConfig } from '@robojs/discordjs'
 import { logger } from 'robo.js'
 import { getConfig } from '../config.js'
 import { getLeaderboard } from '../runtime/service.js'
@@ -22,11 +20,13 @@ import {
 	getEmbedColor,
 	getXpLabel
 } from '../core/utils.js'
+import type { CommandResult } from '@robojs/discordjs'
+import type { ChatInputCommandInteraction } from 'discord.js'
 
 /**
  * Command configuration
  */
-export const config: CommandConfig = {
+export const config = createCommandConfig({
 	description: 'View the server XP leaderboard',
 	dmPermission: false,
 	options: [
@@ -39,7 +39,7 @@ export const config: CommandConfig = {
 			max: 100
 		}
 	]
-}
+} as const)
 
 /**
  * Constants

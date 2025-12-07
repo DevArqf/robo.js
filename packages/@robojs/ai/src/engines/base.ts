@@ -5,7 +5,7 @@
  */
 import type { ChatReply } from '../core/chat/types.js'
 import type { GuildMember, TextBasedChannel, User, VoiceBasedChannel } from 'discord.js'
-import type { Command } from 'robo.js'
+import type { Command } from '@robojs/discordjs'
 
 /**
  * Enumerates feature flags describing the optional capabilities an engine exposes.

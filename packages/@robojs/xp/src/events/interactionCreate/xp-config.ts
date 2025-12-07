@@ -9,7 +9,7 @@ import type {
 	RoleSelectMenuInteraction,
 	StringSelectMenuInteraction
 } from 'discord.js'
-import type { CommandResult } from 'robo.js'
+import type { CommandResult } from '@robojs/discordjs'
 import { getConfig, setConfig } from '../../config.js'
 import { xpLogger } from '../../core/logger.js'
 import {
