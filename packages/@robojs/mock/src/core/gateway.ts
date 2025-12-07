@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'node:http'
 import type { Duplex } from 'node:stream'
 import WebSocket, { WebSocketServer } from 'ws'
-import { GatewayCloseCodes, GatewayOpcodes } from 'discord-api-types/v10'
+import { GatewayCloseCodes, GatewayIntentBits, GatewayOpcodes } from 'discord-api-types/v10'
 import { buildHelloPayload, buildHeartbeatAckPayload, buildReadyPayload, buildGuildCreatePayload, isValidIdentifyPayload } from '../discord/payloads.js'
 import type { GatewayPayload } from '../discord/payloads.js'
 import { GATEWAY_VERSION, DEFAULT_HEARTBEAT_INTERVAL } from '../discord/opcodes.js'

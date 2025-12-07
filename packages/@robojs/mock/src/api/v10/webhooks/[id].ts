@@ -34,7 +34,7 @@ export default async (request: RoboRequest) => {
 	}
 
 	// 2. Extract webhook ID from params
-	const { webhookId } = request.params as { webhookId: string }
+	const { id: webhookId } = request.params as { id: string }
 
 	// 3. Get the webhook
 	const webhook = session.state.getWebhook(webhookId)

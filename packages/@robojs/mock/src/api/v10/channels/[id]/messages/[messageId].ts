@@ -14,8 +14,9 @@ import { enforcePermissions } from '../../../../../utils/permission-check.js'
 const CDN_BASE_URL = process.env.MOCK_CDN_URL || 'http://localhost:53596'
 
 /**
- * PATCH/DELETE /api/v10/channels/:id/messages/:messageId
+ * GET/PATCH/DELETE /api/v10/channels/:id/messages/:messageId
  *
+ * GET - Fetch a single message
  * PATCH - Edit a message (bot can only edit its own messages)
  * DELETE - Delete a message
  *
@@ -27,12 +28,12 @@ const CDN_BASE_URL = process.env.MOCK_CDN_URL || 'http://localhost:53596'
  *   attachments?: object[] // Attachment metadata (IDs to keep, new file metadata)
  * }
  *
- * Response (PATCH): APIMessage object
+ * Response (GET/PATCH): APIMessage object
  * Response (DELETE): 204 No Content
  */
 export default async (request: RoboRequest) => {
 	// 1. Validate method
-	if (request.method !== 'PATCH' && request.method !== 'DELETE') {
+	if (request.method !== 'GET' && request.method !== 'PATCH' && request.method !== 'DELETE') {
 		return new Response(JSON.stringify({ error: 'Method not allowed' }), {
 			status: 405,
 			headers: { 'Content-Type': 'application/json' }
@@ -99,7 +100,11 @@ export default async (request: RoboRequest) => {
 	if (permError) return permError
 
 	// 7. Handle based on method
-	if (request.method === 'PATCH') {
+	if (request.method === 'GET') {
+		// GET - Return the message
+		const author = session.state.getUser(message.authorId) || session.state.botUser
+		return mockMessageToAPIMessage(message, author)
+	} else if (request.method === 'PATCH') {
 		return handlePatch(request, session, channel, message, channelId, messageId)
 	} else {
 		return handleDelete(session, channel, channelId, messageId)

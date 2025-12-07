@@ -82,6 +82,7 @@ export default async (request: RoboRequest) => {
 	// Handle MESSAGE_CREATE specially
 	if (body.event === 'MESSAGE_CREATE') {
 		const data = body.data as {
+			id?: string
 			channel_id?: string
 			content?: string
 			author?: {
@@ -103,6 +104,7 @@ export default async (request: RoboRequest) => {
 
 		try {
 			const message = await session.dispatchMessage({
+				id: data.id,
 				channelId: data.channel_id,
 				content: data.content,
 				author: data.author,

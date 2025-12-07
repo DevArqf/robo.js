@@ -3,6 +3,7 @@ import { sessionManager } from '../../../core/manager.js'
 import { parseMockToken } from '../../../utils/id.js'
 import { mockThreadToAPIChannel, mockChannelToAPIChannel } from '../../../discord/payloads.js'
 import { enforcePermissions } from '../../../utils/permission-check.js'
+import { getGatewayServer } from '../../../core/gateway.js'
 
 /**
  * Channel endpoint - handles GET, PATCH and DELETE for channels (including threads)
@@ -125,11 +126,16 @@ export default async (request: RoboRequest) => {
 			)
 		}
 
-		// Return the deleted channel object (no member field on delete since thread is gone)
+		// Dispatch CHANNEL_DELETE event
 		if (isThread) {
-			return mockThreadToAPIChannel(channel as any)
+			const apiChannel = mockThreadToAPIChannel(channel as any)
+			getGatewayServer().dispatchToSession(session.id, 'CHANNEL_DELETE', apiChannel, channel.guildId)
+			return apiChannel
+		} else {
+			const apiChannel = mockChannelToAPIChannel(channel)
+			getGatewayServer().dispatchToSession(session.id, 'CHANNEL_DELETE', apiChannel, channel.guildId)
+			return apiChannel
 		}
-		return mockChannelToAPIChannel(channel)
 	}
 
 	// 5b. PATCH - Modify channel/thread
@@ -145,6 +151,9 @@ export default async (request: RoboRequest) => {
 		nsfw?: boolean
 		position?: number
 		parent_id?: string | null
+		permission_overwrites?: Array<{ id: string; type: number; allow: string; deny: string }>
+		bitrate?: number
+		user_limit?: number
 	}
 
 	try {
@@ -187,13 +196,43 @@ export default async (request: RoboRequest) => {
 			}
 		)
 
-		// Include member field if bot is a member of the thread
+		// Dispatch THREAD_UPDATE event
 		const botMember = session.state.getThreadMember(channelId, session.state.botUser.id)
-		return mockThreadToAPIChannel(thread, botMember ?? undefined)
+		const apiChannel = mockThreadToAPIChannel(thread, botMember ?? undefined)
+		getGatewayServer().dispatchToSession(session.id, 'THREAD_UPDATE', apiChannel, thread.guildId)
+
+		return apiChannel
 	} else {
 		// Update regular channel (basic implementation)
 		if (body.name !== undefined) {
 			channel.name = body.name
+		}
+
+		// Update additional channel properties
+		if (body.topic !== undefined && channel.type === 0) {
+			channel.topic = body.topic
+		}
+		if (body.nsfw !== undefined) {
+			channel.nsfw = body.nsfw
+		}
+		if (body.rate_limit_per_user !== undefined) {
+			channel.rateLimitPerUser = body.rate_limit_per_user
+		}
+		if (body.bitrate !== undefined && channel.type === 2) {
+			channel.bitrate = body.bitrate
+		}
+		if (body.user_limit !== undefined && channel.type === 2) {
+			channel.userLimit = body.user_limit
+		}
+
+		// Handle permission_overwrites (for lockPermissions and direct updates)
+		if (body.permission_overwrites !== undefined) {
+			channel.permissionOverwrites = body.permission_overwrites.map((ow) => ({
+				id: ow.id,
+				type: ow.type,
+				allow: ow.allow,
+				deny: ow.deny
+			}))
 		}
 
 		// Record action
@@ -209,6 +248,10 @@ export default async (request: RoboRequest) => {
 			}
 		)
 
-		return mockChannelToAPIChannel(channel)
+		// Dispatch CHANNEL_UPDATE event
+		const apiChannel = mockChannelToAPIChannel(channel)
+		getGatewayServer().dispatchToSession(session.id, 'CHANNEL_UPDATE', apiChannel, channel.guildId)
+
+		return apiChannel
 	}
 }

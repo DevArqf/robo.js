@@ -161,6 +161,12 @@ export interface MockChannel {
 	type: number
 	parentId?: Snowflake | null
 	permissionOverwrites?: MockChannelOverwrite[] // Phase 4L
+	topic?: string | null
+	nsfw?: boolean
+	bitrate?: number
+	userLimit?: number
+	rateLimitPerUser?: number
+	status?: string | null // Voice channel status
 }
 
 // ============================================================================
@@ -203,6 +209,7 @@ export interface MockThread extends MockChannel {
 	messageCount: number // Approximate count
 	totalMessageSent?: number // Total messages ever sent (including deleted)
 	lastMessageId?: Snowflake | null
+	rateLimitPerUser?: number // Slowmode in seconds
 }
 
 /**
@@ -365,6 +372,8 @@ export interface MockMessage {
 	embeds: unknown[]
 	pinned: boolean
 	type: number
+	// Phase 3B: Reactions
+	reactions?: MockReaction[]
 	// Phase 3I: APIMessage completeness fields
 	call?: MockMessageCall
 	interaction_metadata?: MockMessageInteractionMetadata
@@ -378,6 +387,30 @@ export interface MockMessage {
 	poll?: MockPoll
 	// Phase 4I: Stickers
 	sticker_items?: MockStickerItem[]
+	// Phase 3: Message reference (for replies)
+	message_reference?: {
+		message_id?: Snowflake
+		channel_id?: Snowflake
+		guild_id?: Snowflake
+	}
+}
+
+/**
+ * Mock reaction data for messages
+ */
+export interface MockReaction {
+	count: number
+	count_details: {
+		burst: number
+		normal: number
+	}
+	me: boolean
+	me_burst: boolean
+	emoji: {
+		id: Snowflake | null
+		name: string
+	}
+	burst_colors: string[]
 }
 
 // ============================================================================
@@ -1244,6 +1277,12 @@ export interface MockMessageConfig {
 	poll?: MockPollConfig
 	// Phase 4I: Stickers
 	sticker_ids?: Snowflake[]
+	// Phase 3: Message reference (for replies)
+	message_reference?: {
+		message_id?: Snowflake
+		channel_id?: Snowflake
+		guild_id?: Snowflake
+	}
 }
 
 /**
@@ -1332,6 +1371,8 @@ export type ActionType =
 	| 'message_sent'
 	| 'message_edited'
 	| 'message_deleted'
+	| 'message_pinned'
+	| 'message_unpinned'
 	| 'reaction_added'
 	| 'reaction_removed'
 	| 'interaction_response'

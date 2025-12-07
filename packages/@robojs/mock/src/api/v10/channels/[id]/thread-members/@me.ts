@@ -1,6 +1,8 @@
 import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../../../core/manager.js'
 import { parseMockToken } from '../../../../../utils/id.js'
+import { mockThreadToAPIChannel } from '../../../../../discord/payloads.js'
+import { getGatewayServer } from '../../../../../core/gateway.js'
 
 /**
  * PUT /api/v10/channels/:id/thread-members/@me - Join a thread
@@ -67,6 +69,10 @@ export default async (request: RoboRequest) => {
 			}
 		)
 
+		// Dispatch THREAD_UPDATE so Discord.js updates its local cache
+		const apiChannel = mockThreadToAPIChannel(thread, member ?? undefined)
+		getGatewayServer().dispatchToSession(session.id, 'THREAD_UPDATE', apiChannel, thread.guildId)
+
 		// Return 204 No Content
 		return new Response(null, { status: 204 })
 	} else {
@@ -85,6 +91,11 @@ export default async (request: RoboRequest) => {
 				method: 'DELETE'
 			}
 		)
+
+		// Dispatch THREAD_UPDATE so Discord.js updates its local cache
+		// After leaving, the member field should not be included
+		const apiChannel = mockThreadToAPIChannel(thread)
+		getGatewayServer().dispatchToSession(session.id, 'THREAD_UPDATE', apiChannel, thread.guildId)
 
 		// Return 204 No Content
 		return new Response(null, { status: 204 })

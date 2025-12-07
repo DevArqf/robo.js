@@ -149,6 +149,8 @@ export class Session implements ISession {
 	 * @returns The created message
 	 */
 	async dispatchMessage(options: {
+		/** Optional message ID - if not provided, one will be generated */
+		id?: string
 		channelId: string
 		content?: string
 		author?: Partial<MockUser> & { id?: string; username?: string }
@@ -195,6 +197,7 @@ export class Session implements ISession {
 
 		// Create the message in state
 		const message = this.state.createMessage({
+			id: options.id,
 			channelId: options.channelId,
 			guildId,
 			authorId: author.id,

@@ -508,19 +508,36 @@ export function mockChannelToAPIChannel(channel: MockChannel): APIChannel {
 		return mockForumChannelToAPIChannel(channel as MockForumChannel)
 	}
 
-	return {
+	const result: APIChannel = {
 		id: channel.id,
 		type: channel.type as ChannelType,
 		guild_id: channel.guildId,
 		name: channel.name,
 		position: 0,
-		permission_overwrites: [],
-		nsfw: false,
-		topic: null,
+		permission_overwrites: channel.permissionOverwrites
+			? channel.permissionOverwrites.map((ow) => ({
+					id: ow.id,
+					type: ow.type,
+					allow: ow.allow,
+					deny: ow.deny
+				}))
+			: [],
+		nsfw: channel.nsfw ?? false,
+		topic: channel.topic ?? null,
 		last_message_id: null,
-		rate_limit_per_user: 0,
+		rate_limit_per_user: channel.rateLimitPerUser ?? 0,
 		parent_id: channel.parentId ?? null
 	} as APIChannel
+
+	// Add voice channel specific fields
+	if (channel.type === 2) {
+		// GuildVoice
+		;(result as any).bitrate = channel.bitrate ?? 64000
+		;(result as any).user_limit = channel.userLimit ?? 0
+		;(result as any).status = channel.status ?? null
+	}
+
+	return result
 }
 
 /**
@@ -1121,6 +1138,19 @@ export function mockMessageToAPIMessage(message: MockMessage, author: MockUser):
 		type: message.type as MessageType
 	}
 
+	// Phase 3B: Add reactions (always include to ensure Discord.js cache is updated)
+	// Include empty array to clear reactions, or populated array if reactions exist
+	if (message.reactions !== undefined) {
+		apiMessage.reactions = message.reactions.map((r) => ({
+			count: r.count,
+			count_details: r.count_details,
+			me: r.me,
+			me_burst: r.me_burst,
+			emoji: r.emoji,
+			burst_colors: r.burst_colors
+		}))
+	}
+
 	// Phase 3I: Add optional fields if present
 
 	// Call info for voice/video calls in DMs (MessageType.Call = 3)
@@ -1196,6 +1226,15 @@ export function mockMessageToAPIMessage(message: MockMessage, author: MockUser):
 	// Phase 4G: Polls
 	if (message.poll) {
 		;(apiMessage as unknown as { poll: unknown }).poll = message.poll
+	}
+
+	// Phase 3: Message reference (for replies)
+	if (message.message_reference) {
+		apiMessage.message_reference = {
+			message_id: message.message_reference.message_id,
+			channel_id: message.message_reference.channel_id ?? message.channelId,
+			guild_id: message.message_reference.guild_id ?? message.guildId
+		}
 	}
 
 	// Phase 4I: Stickers
@@ -2064,7 +2103,7 @@ export function mockThreadToAPIChannel(thread: MockThread, currentUserMember?: M
 			invitable: thread.threadMetadata.invitable,
 			create_timestamp: thread.threadMetadata.create_timestamp
 		},
-		rate_limit_per_user: 0,
+		rate_limit_per_user: thread.rateLimitPerUser ?? 0,
 		position: 0,
 		permission_overwrites: [],
 		nsfw: false

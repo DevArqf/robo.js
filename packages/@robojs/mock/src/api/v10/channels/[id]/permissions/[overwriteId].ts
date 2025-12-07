@@ -2,6 +2,8 @@ import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../../../core/manager.js'
 import { parseMockToken } from '../../../../../utils/id.js'
 import { OverwriteType } from '../../../../../types/index.js'
+import { mockChannelToAPIChannel } from '../../../../../discord/payloads.js'
+import { getGatewayServer } from '../../../../../core/gateway.js'
 
 /**
  * PUT /api/v10/channels/:id/permissions/:overwriteId - Edit channel permissions
@@ -127,6 +129,13 @@ export default async (request: RoboRequest) => {
 				method: 'PUT'
 			}
 		)
+
+		// Dispatch CHANNEL_UPDATE event so Discord.js updates its local cache
+		const updatedChannel = session.state.getChannel(channelId)
+		if (updatedChannel) {
+			const apiChannel = mockChannelToAPIChannel(updatedChannel)
+			getGatewayServer().dispatchToSession(session.id, 'CHANNEL_UPDATE', apiChannel, channel.guildId)
+		}
 
 		// Discord returns 204 No Content on success
 		return new Response(null, { status: 204 })

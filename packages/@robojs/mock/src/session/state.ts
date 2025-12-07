@@ -703,6 +703,9 @@ export class MockServerState implements SessionState {
 		if (updates.invitable !== undefined && thread.type === 12) {
 			thread.threadMetadata.invitable = updates.invitable
 		}
+		if (updates.rateLimitPerUser !== undefined) {
+			thread.rateLimitPerUser = updates.rateLimitPerUser
+		}
 
 		return thread
 	}
@@ -2629,7 +2632,8 @@ export function createMockThread(config: MockThreadConfig): MockThread {
 		memberCount: 1, // Owner is always a member
 		messageCount: 0,
 		totalMessageSent: 0,
-		lastMessageId: null
+		lastMessageId: null,
+		rateLimitPerUser: config.rateLimitPerUser ?? 0
 	}
 }
 
@@ -2720,6 +2724,11 @@ export function createMockMessage(config: MockMessageConfig): MockMessage {
 	// Phase 4G: Polls
 	if (config.poll) {
 		message.poll = createMockPoll(config.poll)
+	}
+
+	// Phase 3: Message reference (for replies)
+	if (config.message_reference) {
+		message.message_reference = config.message_reference
 	}
 
 	return message

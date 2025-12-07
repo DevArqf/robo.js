@@ -9,26 +9,25 @@ import type { MockAttachment, AttachmentPayload, StoredAttachment } from '../../
 import { MessageFlags, createComponentValidationError, createV2ConflictError } from '../../../../types/index.js'
 import { validateComponentsV2 } from '../../../../session/state.js'
 import { enforcePermissions } from '../../../../utils/permission-check.js'
+import { getGatewayServer } from '../../../../core/gateway.js'
 
 // Default port for CDN URLs (can be overridden via environment)
 const CDN_BASE_URL = process.env.MOCK_CDN_URL || 'http://localhost:53596'
 
 /**
+ * GET /api/v10/channels/:id/messages - List messages in a channel
  * POST /api/v10/channels/:id/messages - Create a message in a channel
  *
- * This endpoint captures messages sent by the bot via REST API.
- * It creates the message in session state, records it as an action,
- * and returns the created message in Discord's APIMessage format.
+ * GET: Returns an array of messages with optional limit, before, after, around
+ * POST: Creates a message and returns APIMessage object
  *
  * Supports both:
  * - JSON body: { content, embeds, components, tts, message_reference }
  * - Multipart: payload_json + files[0], files[1], etc.
- *
- * Response: APIMessage object
  */
 export default async (request: RoboRequest) => {
-	// 1. Validate POST method
-	if (request.method !== 'POST') {
+	// 1. Validate method
+	if (request.method !== 'GET' && request.method !== 'POST') {
 		return new Response(JSON.stringify({ error: 'Method not allowed' }), {
 			status: 405,
 			headers: { 'Content-Type': 'application/json' }
@@ -66,6 +65,70 @@ export default async (request: RoboRequest) => {
 		})
 	}
 
+	// GET - List messages
+	if (request.method === 'GET') {
+		// Check permissions
+		const permError = enforcePermissions(session, 'GET', `/channels/${channelId}/messages`, channelId)
+		if (permError) return permError
+
+		// Parse query parameters
+		const url = new URL(request.url)
+		const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 100)
+		const before = url.searchParams.get('before')
+		const after = url.searchParams.get('after')
+		const around = url.searchParams.get('around')
+
+		// Get messages for channel
+		let messages = session.state.getMessagesForChannel(channelId)
+
+		// Sort by timestamp descending (newest first)
+		messages.sort((a, b) => {
+			const timeA = new Date(a.timestamp).getTime()
+			const timeB = new Date(b.timestamp).getTime()
+			return timeB - timeA
+		})
+
+		// Apply pagination
+		if (around) {
+			// Find message and return messages around it
+			const aroundIndex = messages.findIndex((m) => m.id === around)
+			if (aroundIndex >= 0) {
+				const start = Math.max(0, aroundIndex - Math.floor(limit / 2))
+				messages = messages.slice(start, start + limit)
+			} else {
+				messages = messages.slice(0, limit)
+			}
+		} else if (before) {
+			// Get messages before this ID
+			const beforeIndex = messages.findIndex((m) => m.id === before)
+			if (beforeIndex >= 0) {
+				messages = messages.slice(beforeIndex + 1, beforeIndex + 1 + limit)
+			} else {
+				messages = messages.slice(0, limit)
+			}
+		} else if (after) {
+			// Get messages after this ID
+			const afterIndex = messages.findIndex((m) => m.id === after)
+			if (afterIndex >= 0) {
+				messages = messages.slice(0, afterIndex).slice(-limit)
+			} else {
+				messages = messages.slice(0, limit)
+			}
+		} else {
+			// Just limit
+			messages = messages.slice(0, limit)
+		}
+
+		// Convert to API format
+		const apiMessages = messages.map((msg) => {
+			const author = session.state.getUser(msg.authorId) || session.state.botUser
+			return mockMessageToAPIMessage(msg, author)
+		})
+
+		return apiMessages
+	}
+
+	// POST - Create message
 	// 4b. Check permissions (Phase 4L-Extended)
 	const permError = enforcePermissions(
 		session,
@@ -191,6 +254,14 @@ export default async (request: RoboRequest) => {
 		}
 	}
 
+	// 5b1. Validate message length (2000 character limit)
+	if (body.content && body.content.length > 2000) {
+		return new Response(JSON.stringify({ error: 'Message content exceeds 2000 characters', code: 50035 }), {
+			status: 400,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
 	// 5c. Validate poll if present
 	if (body.poll) {
 		if (!body.poll.question?.text) {
@@ -261,7 +332,14 @@ export default async (request: RoboRequest) => {
 		flags: body.flags,
 		components: body.components,
 		poll: body.poll,
-		sticker_ids: body.sticker_ids
+		sticker_ids: body.sticker_ids,
+		message_reference: body.message_reference
+			? {
+					message_id: body.message_reference.message_id,
+					channel_id: channelId,
+					guild_id: channel.guildId
+				}
+			: undefined
 	})
 
 	// 7. Record as 'message_sent' action
@@ -284,6 +362,15 @@ export default async (request: RoboRequest) => {
 		}
 	)
 
-	// 8. Return APIMessage response
-	return mockMessageToAPIMessage(message, session.state.botUser)
+	// 8. Dispatch MESSAGE_CREATE event via Gateway
+	const author = session.state.botUser
+	const apiMessage = mockMessageToAPIMessage(message, author)
+	const dispatchData: Record<string, unknown> = { ...apiMessage }
+	if (message.guildId) {
+		dispatchData.guild_id = message.guildId
+	}
+	getGatewayServer().dispatchToSession(session.id, 'MESSAGE_CREATE', dispatchData, channel.guildId)
+
+	// 9. Return APIMessage response
+	return apiMessage
 }
