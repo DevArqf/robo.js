@@ -22,6 +22,8 @@ const _connections: Array<Connection> = []
 const _state: Record<string, unknown> = {}
 const _keySubscribers: Record<string, string[]> = {} // key -> [connectionId...] in subscription order
 const _keyHosts: Record<string, string> = {} // key -> hostConnectionId
+const _pendingUnsubscribes: Record<string, NodeJS.Timeout> = {} // "connectionId:cleanKey" -> timeout
+const UNSUBSCRIBE_DELAY_MS = 150 // Debounce delay to handle React StrictMode double-firing
 let _wss: WebSocketServer | undefined
 
 function getSocketServer() {
@@ -195,6 +197,21 @@ function handleMessage(connection: Connection, message: string) {
 		}
 
 		case 'on': {
+			// Cancel any pending unsubscribe for this connection+key (handles StrictMode remount)
+			const pendingKey = `${connection.id}:${cleanKey}`
+			if (_pendingUnsubscribes[pendingKey]) {
+				clearTimeout(_pendingUnsubscribes[pendingKey])
+				delete _pendingUnsubscribes[pendingKey]
+				syncLogger.debug(`Cancelled pending unsubscribe for ${connection.id} on ${cleanKey}`)
+
+				// Already subscribed, just send current state if exists
+				if (_state[cleanKey]) {
+					const response: MessagePayload = { data: _state[cleanKey], key, type: 'update' }
+					connection.ws.send(JSON.stringify(response))
+				}
+				break
+			}
+
 			const isNewSubscriber = !connection.watch.includes(cleanKey)
 
 			if (isNewSubscriber) {
@@ -231,14 +248,24 @@ function handleMessage(connection: Connection, message: string) {
 		}
 
 		case 'off': {
-			const index = connection.watch.indexOf(cleanKey)
-			if (index > -1) {
-				connection.watch.splice(index, 1)
-				syncLogger.debug(`Connection ${connection.id} stopped watching:`, cleanKey)
+			const pendingKey = `${connection.id}:${cleanKey}`
 
-				// Handle unsubscription with host migration
-				handleUnsubscribe(connection, cleanKey, key)
+			// Clear any existing pending unsubscribe for this connection+key
+			if (_pendingUnsubscribes[pendingKey]) {
+				clearTimeout(_pendingUnsubscribes[pendingKey])
 			}
+
+			// Schedule delayed unsubscribe (handles React StrictMode double-firing)
+			_pendingUnsubscribes[pendingKey] = setTimeout(() => {
+				delete _pendingUnsubscribes[pendingKey]
+
+				const index = connection.watch.indexOf(cleanKey)
+				if (index > -1) {
+					connection.watch.splice(index, 1)
+					syncLogger.debug(`Connection ${connection.id} stopped watching:`, cleanKey)
+					handleUnsubscribe(connection, cleanKey, key)
+				}
+			}, UNSUBSCRIBE_DELAY_MS)
 			break
 		}
 
@@ -348,6 +375,14 @@ function handleConnection(ws: WebSocket) {
 
 	ws.on('close', () => {
 		syncLogger.debug(`Connection ${connection.id} closed. Removing...`)
+
+		// Clear any pending unsubscribes for this connection (they're closing anyway)
+		Object.keys(_pendingUnsubscribes).forEach((pendingKey) => {
+			if (pendingKey.startsWith(`${connection.id}:`)) {
+				clearTimeout(_pendingUnsubscribes[pendingKey])
+				delete _pendingUnsubscribes[pendingKey]
+			}
+		})
 
 		// Handle unsubscription for all watched keys with host migration
 		connection.watch.forEach((cleanKey) => {
