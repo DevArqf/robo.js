@@ -1,5 +1,6 @@
 import { ServerHandler, createServerHandler } from '../core/handler.js'
 import { logger } from '../core/logger.js'
+import { getPluginRouteRegistry } from '../core/plugin-routes.js'
 import { Router } from '../core/router.js'
 import { BaseEngine } from '../engines/base.js'
 import http from 'node:http'
@@ -26,9 +27,18 @@ export class NodeEngine extends BaseEngine {
 		this._server.on('error', (error: Error) => logger.error(`Server error:`, error))
 		this._server.on('upgrade', (req, socket, head) => {
 			// Remove query parameters prior to matching WebSocket handlers
-			const path = (req.url ?? '').split('?')[0]
-			const handler = this._websocketHandlers[path]
-			logger.debug('Handling WebSocket upgrade for path:', path)
+			let wsPath = (req.url ?? '').split('?')[0]
+
+			// Check for plugin API prefix and strip it for transparent routing
+			const registry = getPluginRouteRegistry()
+			const apiMatch = registry.matchApiPrefix(wsPath)
+			if (apiMatch) {
+				wsPath = registry.stripPrefix(wsPath, apiMatch.prefix)
+				logger.debug(`Stripped plugin prefix ${apiMatch.prefix} from WebSocket path → ${wsPath}`)
+			}
+
+			const handler = this._websocketHandlers[wsPath]
+			logger.debug('Handling WebSocket upgrade for path:', wsPath)
 
 			if (handler) {
 				handler(req, socket, head)

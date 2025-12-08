@@ -171,6 +171,25 @@ expect(result.ok).toBe(true)
 expect(result.header('Content-Type')).toBe('application/json')
 ```
 
+### Testing Handler Return Values
+
+Use `testHandler` when you want the raw return value from a handler (before it's wrapped in a Response):
+
+```typescript
+import { testHandler } from '@robojs/server/testing'
+import { GET } from '../src/api/users/[id]'
+
+// Returns the handler's raw return value
+const result = await testHandler(GET, {
+	params: { id: '123' }
+})
+
+// Result is directly what the handler returned
+expect(result).toEqual({ id: '123', name: 'John' })
+```
+
+This is useful when your handler returns plain objects and you want to test the logic without Response wrapping.
+
 ### Testing Multiple Routes
 
 Use `createTestClient` for integration-style tests with multiple routes:

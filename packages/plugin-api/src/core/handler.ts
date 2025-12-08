@@ -3,6 +3,7 @@ import { RoboResponse } from './robo-response.js'
 import { logger } from './logger.js'
 import { pluginOptions } from '../robo/start.js'
 import { mimeDb } from './mime.js'
+import { getPluginRouteRegistry } from './plugin-routes.js'
 import { createReadStream } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import { IncomingMessage, ServerResponse } from 'node:http'
@@ -40,10 +41,56 @@ export function createServerHandler(router: Router, vite?: ViteDevServer, onNotF
 
 		// Find matching route and execute handler
 		logger.debug(color.bold(req.method), req.url)
-		const route = router.find(parsedUrl.pathname)
 
-		// If Vite is available, forward the request to Vite
-		if (!route?.handler && vite) {
+		// Check for plugin API prefix and strip it for transparent routing
+		const registry = getPluginRouteRegistry()
+		const apiMatch = registry.matchApiPrefix(parsedUrl.pathname ?? '')
+		let lookupPath = parsedUrl.pathname
+		let activePluginPrefix: string | null = null
+
+		if (apiMatch) {
+			lookupPath = registry.stripPrefix(parsedUrl.pathname ?? '', apiMatch.prefix)
+			activePluginPrefix = apiMatch.prefix
+			logger.debug(`Stripped plugin prefix ${apiMatch.prefix} → ${lookupPath}`)
+		}
+
+		const route = router.find(lookupPath)
+
+		// If no route found and we have a plugin prefix, check plugin static assets FIRST
+		// This must happen before Vite middleware to avoid Vite serving index.html for prefixed paths
+		if (!route?.handler && activePluginPrefix) {
+			const staticMatch = registry.matchStaticPrefix(parsedUrl.pathname ?? '')
+			if (staticMatch) {
+				const strippedPath = registry.stripPrefix(parsedUrl.pathname ?? '', staticMatch.prefix)
+				const pluginPublicDir = registry.getPublicDir(staticMatch.plugin)
+
+				if (pluginPublicDir) {
+					const fileCallback = async (filePath: string, mimeType: string) => {
+						res.setHeader('Content-Type', mimeType)
+						res.setHeader('X-Content-Type-Options', 'nosniff')
+						res.writeHead(200)
+						await pipeline(createReadStream(filePath), res)
+					}
+
+					try {
+						const handled = await handlePluginStaticFile(strippedPath, pluginPublicDir, fileCallback)
+						if (handled) {
+							return
+						}
+					} catch (error) {
+						if (error instanceof Response) {
+							res.statusCode = error.status
+							res.end(error.statusText)
+							return
+						}
+						logger.error('Plugin static file error:', error)
+					}
+				}
+			}
+		}
+
+		// If Vite is available and no plugin prefix matched, forward to Vite
+		if (!route?.handler && vite && !activePluginPrefix) {
 			logger.debug(`Forwarding to Vite:`, req.url)
 			vite.middlewares(req, res)
 			return
@@ -119,18 +166,43 @@ export function createServerHandler(router: Router, vite?: ViteDevServer, onNotF
 			applyParams(requestWrapper, route.params)
 		}
 
-		// If route missing, check if we can return something from the public folder
+		// If route missing, check plugin static assets first, then project's public folder
 		if (!route?.handler) {
-			logger.debug(`No route found for ${req.method} ${req.url}, checking public folder...`)
-			try {
-				const callback = async (filePath: string, mimeType: string) => {
-					res.setHeader('Content-Type', mimeType)
-					res.setHeader('X-Content-Type-Options', 'nosniff')
-					res.writeHead(200)
-					await pipeline(createReadStream(filePath), res)
-				}
+			logger.debug(`No route found for ${req.method} ${req.url}, checking static assets...`)
 
-				if (await handlePublicFile(parsedUrl, callback)) {
+			const fileCallback = async (filePath: string, mimeType: string) => {
+				res.setHeader('Content-Type', mimeType)
+				res.setHeader('X-Content-Type-Options', 'nosniff')
+				res.writeHead(200)
+				await pipeline(createReadStream(filePath), res)
+			}
+
+			// Check for plugin static assets (if path matches a plugin's static prefix)
+			try {
+				const staticMatch = registry.matchStaticPrefix(parsedUrl.pathname ?? '')
+				if (staticMatch) {
+					const strippedPath = registry.stripPrefix(parsedUrl.pathname ?? '', staticMatch.prefix)
+					const pluginPublicDir = registry.getPublicDir(staticMatch.plugin)
+
+					if (pluginPublicDir) {
+						const handled = await handlePluginStaticFile(strippedPath, pluginPublicDir, fileCallback)
+						if (handled) {
+							return
+						}
+					}
+				}
+			} catch (error) {
+				if (error instanceof Response) {
+					replyWrapper.send(error)
+					return
+				} else {
+					logger.error(error)
+				}
+			}
+
+			// Check project's public folder
+			try {
+				if (await handlePublicFile(parsedUrl, fileCallback)) {
 					return
 				}
 			} catch (error) {
@@ -188,6 +260,24 @@ export function createServerHandler(router: Router, vite?: ViteDevServer, onNotF
 				return
 			}
 
+			// Try plugin SPA fallback first (if path matches a plugin's static prefix)
+			const staticMatch = registry.matchStaticPrefix(parsedUrl.pathname ?? '')
+			if (staticMatch) {
+				const strippedPath = registry.stripPrefix(parsedUrl.pathname ?? '', staticMatch.prefix)
+				const pluginPublicDir = registry.getPublicDir(staticMatch.plugin)
+
+				if (pluginPublicDir) {
+					if (await tryServePluginSpaFallback(req, res, strippedPath, staticMatch.plugin, pluginPublicDir)) {
+						return
+					}
+				}
+			}
+
+			if (res.writableEnded || res.headersSent) {
+				return
+			}
+
+			// Try project's SPA fallback
 			if (await tryServeSpaFallback(req, res, parsedUrl.pathname)) {
 				return
 			}
@@ -287,6 +377,111 @@ export async function handlePublicFile(
 	}
 
 	return false
+}
+
+/**
+ * Serve static files from a plugin's public directory.
+ * Similar to handlePublicFile but operates on a specific plugin's public dir.
+ */
+export async function handlePluginStaticFile(
+	pathname: string,
+	pluginPublicDir: string,
+	callback: (filePath: string, mimeType: string) => void | Promise<void>
+): Promise<boolean> {
+	// Decode and resolve the file path
+	const decodedPath = decodeURI(pathname)
+	const filePath = path.join(pluginPublicDir, decodedPath)
+
+	// Check if the requested path is within the plugin's public folder to guard against directory traversal
+	if (!filePath.startsWith(pluginPublicDir)) {
+		logger.warn(`Requested path is outside the plugin public folder. Denying access...`)
+		throw RoboResponse.json(
+			{
+				message: 'Access Denied'
+			},
+			{
+				status: 403
+			}
+		)
+	}
+
+	// See if the file exists
+	try {
+		const stats = await stat(filePath)
+
+		if (stats.isFile()) {
+			logger.debug(`Serving plugin static file: ${filePath}`)
+			const ext = path.extname(filePath).slice(1)
+			const mimeType = mimeDb[ext] ?? 'application/octet-stream'
+			await callback(filePath, mimeType)
+			return true
+		} else if (stats.isDirectory()) {
+			// Look for an index file in the directory
+			const files = await readdir(filePath)
+			const indexExtensions = ['html', 'htm', 'js', 'json']
+			const indexFile = files.find((file) => {
+				const extension = path.extname(file).slice(1)
+				return indexExtensions.includes(extension) && file.startsWith('index.')
+			})
+
+			if (indexFile) {
+				const indexFilePath = path.join(filePath, indexFile)
+				const ext = path.extname(indexFilePath).slice(1)
+				const mimeType = mimeDb[ext] ?? 'application/octet-stream'
+				logger.debug('Serving plugin index file:', indexFilePath)
+				await callback(indexFilePath, mimeType)
+				return true
+			}
+		}
+	} catch (error) {
+		// Ignore ENOENT errors (file not found)
+		if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+			throw error
+		}
+	}
+
+	return false
+}
+
+/**
+ * Serve plugin SPA fallback (index.html) for client-side routing.
+ * Returns true if handled, false otherwise.
+ */
+async function tryServePluginSpaFallback(
+	req: IncomingMessage,
+	res: ServerResponse<IncomingMessage>,
+	pathname: string | null | undefined,
+	pluginName: string,
+	pluginPublicDir: string
+): Promise<boolean> {
+	if (req.method && req.method !== 'GET') {
+		return false
+	}
+	// Skip if path has a file extension (static file request)
+	if (pathname && path.extname(pathname)) {
+		return false
+	}
+	if (!acceptsHtml(req)) {
+		return false
+	}
+
+	const indexFilePath = path.join(pluginPublicDir, 'index.html')
+
+	try {
+		const stats = await stat(indexFilePath)
+		if (!stats.isFile()) {
+			return false
+		}
+	} catch {
+		return false
+	}
+
+	logger.debug(`Serving plugin SPA fallback for ${pluginName}: ${indexFilePath}`)
+	res.setHeader('Content-Type', 'text/html; charset=utf-8')
+	res.setHeader('X-Content-Type-Options', 'nosniff')
+	res.writeHead(200)
+	await pipeline(createReadStream(indexFilePath), res)
+	return true
 }
 
 /**

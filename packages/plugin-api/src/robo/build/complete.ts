@@ -1,21 +1,26 @@
 /**
- * Build Complete Hook - Vite Production Build
+ * Build Complete Hook - Vite Production Build & Plugin Assets
  *
  * This hook runs during `robo build` (production builds only) to:
  * 1. Bundle frontend assets using Vite
  * 2. Output to .robo/public/ for production serving
+ * 3. Copy plugin static assets to .robo/public/{namespace}/
  *
  * In development mode, the Vite dev server handles this instead (see start.ts).
  */
 import { logger } from '../../core/logger.js'
 import { hasDependency } from '../../core/runtime-utils.js'
 import { existsSync } from 'node:fs'
+import { cp, mkdir } from 'node:fs/promises'
 import path from 'node:path'
+import { getPluginOptions } from 'robo.js'
 import type { BuildCompleteContext } from 'robo.js'
 import type { ConfigEnv, UserConfig } from 'vite'
+import type { PluginConfig } from '../start.js'
+import type { PluginPrefixConfig } from '../../core/plugin-routes.js'
 
 /**
- * Build complete hook - Bundles frontend assets with Vite for production
+ * Build complete hook - Bundles frontend assets with Vite and copies plugin assets
  */
 export default async function (context: BuildCompleteContext): Promise<void> {
 	const { mode } = context
@@ -26,16 +31,22 @@ export default async function (context: BuildCompleteContext): Promise<void> {
 		return
 	}
 
-	// Check if Vite is available
-	if (!(await hasDependency('vite', true))) {
+	// Build Vite assets if available
+	if (await hasDependency('vite', true)) {
+		try {
+			await buildVite()
+		} catch (error) {
+			logger.error('Failed to build Vite:', error)
+		}
+	} else {
 		logger.debug('Vite not installed. Skipping Vite build...')
-		return
 	}
 
+	// Copy plugin static assets
 	try {
-		await buildVite()
+		await copyPluginAssets()
 	} catch (error) {
-		logger.error('Failed to build Vite:', error)
+		logger.error('Failed to copy plugin assets:', error)
 	}
 }
 
@@ -89,4 +100,76 @@ async function buildVite(): Promise<void> {
 		}
 	})
 	logger.debug('Vite build completed in', Date.now() - time, 'ms')
+}
+
+/**
+ * Copy plugin static assets to production public directory.
+ * For each plugin with a static prefix, copies public/ from node_modules
+ * to .robo/public/{namespace}/ for production serving.
+ */
+async function copyPluginAssets(): Promise<void> {
+	const pluginConfig = getPluginOptions('@robojs/server') as PluginConfig | null
+	const pluginPrefixes = pluginConfig?.pluginPrefixes
+
+	if (!pluginPrefixes || Object.keys(pluginPrefixes).length === 0) {
+		logger.debug('No plugin prefixes configured. Skipping plugin asset copy...')
+		return
+	}
+
+	logger.debug('Copying plugin static assets...')
+	const time = Date.now()
+	let copiedCount = 0
+
+	for (const [pluginName, prefixConfig] of Object.entries(pluginPrefixes)) {
+		// Check if this plugin has static assets enabled
+		const hasStatic = hasStaticPrefix(prefixConfig)
+		if (!hasStatic) {
+			logger.debug(`Plugin ${pluginName} has no static prefix. Skipping...`)
+			continue
+		}
+
+		// Check if plugin has a public/ directory
+		const sourcePath = path.join(process.cwd(), 'node_modules', pluginName, 'public')
+		if (!existsSync(sourcePath)) {
+			logger.debug(`Plugin ${pluginName} has no public/ directory. Skipping...`)
+			continue
+		}
+
+		// Determine destination path
+		const namespace = getPluginNamespace(pluginName)
+		const destPath = path.join(process.cwd(), '.robo', 'public', namespace)
+
+		// Copy plugin assets
+		try {
+			await mkdir(destPath, { recursive: true })
+			await cp(sourcePath, destPath, { recursive: true })
+			logger.debug(`Copied ${pluginName} assets to ${destPath}`)
+			copiedCount++
+		} catch (error) {
+			logger.error(`Failed to copy assets for ${pluginName}:`, error)
+		}
+	}
+
+	if (copiedCount > 0) {
+		logger.debug(`Copied assets for ${copiedCount} plugin(s) in ${Date.now() - time}ms`)
+	}
+}
+
+/**
+ * Check if a plugin prefix config includes static assets.
+ */
+function hasStaticPrefix(config: PluginPrefixConfig): boolean {
+	if (typeof config === 'string') {
+		return true // String prefix applies to both API and static
+	}
+	return config.static !== false && config.static !== undefined
+}
+
+/**
+ * Convert plugin name to filesystem-safe namespace.
+ * @example '@robojs/mock' -> 'robojs-mock'
+ * @example 'my-plugin' -> 'my-plugin'
+ */
+function getPluginNamespace(pluginName: string): string {
+	return pluginName.replace(/^@/, '').replace(/\//g, '-')
 }

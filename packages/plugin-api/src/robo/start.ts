@@ -9,6 +9,7 @@
  * 5. Optionally start a tunnel for external access
  */
 import { logger } from '../core/logger.js'
+import { initPluginRoutes, type PluginPrefixMap } from '../core/plugin-routes.js'
 import { hasDependency } from '../core/runtime-utils.js'
 import { setConfig, setEngine } from '../core/server.js'
 import { existsSync } from 'node:fs'
@@ -33,6 +34,19 @@ export interface PluginConfig {
 	cors?: boolean
 	engine?: BaseEngine
 	hostname?: string
+	/**
+	 * Plugin URL prefixes - centralized configuration for plugin route prefixing.
+	 *
+	 * Example:
+	 * ```typescript
+	 * pluginPrefixes: {
+	 *   '@robojs/mock': '/mock',  // Both API and static under /mock/*
+	 *   // OR granular:
+	 *   '@robojs/mock': { api: '/mock-api', static: '/mock-static' }
+	 * }
+	 * ```
+	 */
+	pluginPrefixes?: PluginPrefixMap
 	port?: number
 	prefix?: string | null | false
 	vite?: ViteDevServer
@@ -129,6 +143,13 @@ export default async (context: StartContext<PluginConfig>) => {
 
 	// Assign engine instance for `Server.getEngine()`
 	setEngine(pluginOptions.engine)
+
+	// Initialize plugin route registry for prefix stripping and static asset serving
+	const registry = initPluginRoutes(pluginOptions.pluginPrefixes)
+	if (pluginOptions.pluginPrefixes) {
+		const pluginCount = Object.keys(pluginOptions.pluginPrefixes).length
+		logger.debug(`Initialized plugin route registry with ${pluginCount} plugin prefix(es)`)
+	}
 
 	// Start HTTP server only if API Routes are defined
 	const { engine, hostname = process.env.ROBO_HOSTNAME, port = parseInt(process.env.PORT ?? '3000') } = pluginOptions
