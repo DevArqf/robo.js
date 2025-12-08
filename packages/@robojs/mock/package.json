@@ -3,20 +3,20 @@
 	"description": "Discord Gateway mock server for automated testing of Discord.js bots",
 	"version": "0.1.0",
 	"type": "module",
-	"main": ".robo/build/production/index.js",
-	"types": ".robo/build/production/index.d.ts",
+	"main": ".robo/build/index.js",
+	"types": ".robo/build/index.d.ts",
 	"exports": {
 		".": {
-			"import": "./.robo/build/production/index.js",
-			"types": "./.robo/build/production/index.d.ts"
+			"import": "./.robo/build/index.js",
+			"types": "./.robo/build/index.d.ts"
 		},
 		"./session": {
-			"import": "./.robo/build/production/session/index.js",
-			"types": "./.robo/build/production/session/index.d.ts"
+			"import": "./.robo/build/session/index.js",
+			"types": "./.robo/build/session/index.d.ts"
 		},
 		"./types": {
-			"import": "./.robo/build/production/types/index.js",
-			"types": "./.robo/build/production/types/index.d.ts"
+			"import": "./.robo/build/types/index.js",
+			"types": "./.robo/build/types/index.d.ts"
 		}
 	},
 	"keywords": [
@@ -30,16 +30,16 @@
 		"typescript"
 	],
 	"scripts": {
-		"build": "robo build",
+		"build": "robo build plugin",
 		"deploy": "robo deploy",
-		"dev": "robox dev --tunnel",
+		"dev": "robo build plugin --watch",
 		"doctor": "sage doctor",
 		"invite": "robo invite",
 		"lint:style": "prettier --write .",
 		"start": "robo start",
 		"test": "NODE_OPTIONS=\"--experimental-vm-modules --disable-warning=ExperimentalWarning\" jest",
 		"test:unit": "NODE_OPTIONS=\"--experimental-vm-modules --disable-warning=ExperimentalWarning\" jest --selectProjects unit",
-		"test:integration": "NODE_OPTIONS=\"--experimental-vm-modules --disable-warning=ExperimentalWarning\" jest --selectProjects integration --runInBand",
+		"test:integration": "NODE_OPTIONS=\"--experimental-vm-modules --disable-warning=ExperimentalWarning\" jest --selectProjects integration --runInBand --forceExit",
 		"tunnel": ".robo/bin/cloudflared tunnel --url http://localhost:3000",
 		"upgrade": "sage upgrade"
 	},

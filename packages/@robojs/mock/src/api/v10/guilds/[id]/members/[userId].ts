@@ -1,0 +1,236 @@
+import type { RoboRequest } from '@robojs/server'
+import { sessionManager } from '../../../../../core/manager.js'
+import { parseMockToken } from '../../../../../utils/id.js'
+import { mockGuildMemberToAPIMember } from '../../../../../discord/payloads.js'
+import { enforcePermissions } from '../../../../../utils/permission-check.js'
+
+/**
+ * GET /api/v10/guilds/:id/members/:userId - Get guild member
+ * PATCH /api/v10/guilds/:id/members/:userId - Modify guild member
+ * DELETE /api/v10/guilds/:id/members/:userId - Remove guild member (kick)
+ *
+ * @see https://discord.com/developers/docs/resources/guild#get-guild-member
+ * @see https://discord.com/developers/docs/resources/guild#modify-guild-member
+ * @see https://discord.com/developers/docs/resources/guild#remove-guild-member
+ */
+export default async (request: RoboRequest) => {
+	// 1. Parse Authorization header → get session
+	const authHeader = request.headers.get('Authorization') || ''
+	const sessionId = parseMockToken(authHeader)
+
+	if (!sessionId) {
+		return new Response(JSON.stringify({ error: 'Unauthorized', code: 0 }), {
+			status: 401,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	const session = sessionManager.get(sessionId)
+	if (!session) {
+		return new Response(JSON.stringify({ error: 'Unauthorized', code: 0 }), {
+			status: 401,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// 2. Extract IDs from params
+	const { id: guildId, userId } = request.params as { id: string; userId: string }
+
+	// 3. Validate guild exists
+	const guild = session.state.guilds.get(guildId)
+	if (!guild) {
+		return new Response(JSON.stringify({ error: 'Unknown Guild', code: 10004 }), {
+			status: 404,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// Handle @me alias for the bot user
+	// URL-decode the userId since the router passes URL-encoded params (%40me -> @me)
+	const decodedUserId = decodeURIComponent(userId)
+	const targetUserId = decodedUserId === '@me' ? session.state.botUser.id : decodedUserId
+
+	// 4. Validate member exists
+	const member = session.state.getGuildMember(guildId, targetUserId)
+	if (!member) {
+		return new Response(JSON.stringify({ error: 'Unknown Member', code: 10007 }), {
+			status: 404,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// 4b. Check permissions for PATCH/DELETE
+	if (request.method === 'PATCH' || request.method === 'DELETE') {
+		const permError = enforcePermissions(
+			session,
+			request.method,
+			`/guilds/${guildId}/members/${targetUserId}`,
+			undefined,
+			guildId,
+			{ targetUserId }
+		)
+		if (permError) return permError
+	}
+
+	// Get the user for the member
+	const user = session.state.users.get(targetUserId)
+	if (!user) {
+		return new Response(JSON.stringify({ error: 'Unknown User', code: 10013 }), {
+			status: 404,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// Handle GET - Get member
+	if (request.method === 'GET') {
+		return new Response(JSON.stringify(mockGuildMemberToAPIMember(member, user)), {
+			status: 200,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// Handle PATCH - Modify member
+	if (request.method === 'PATCH') {
+		let body: {
+			nick?: string | null
+			roles?: string[]
+			mute?: boolean
+			deaf?: boolean
+			channel_id?: string | null
+			communication_disabled_until?: string | null
+		}
+
+		try {
+			body = await request.json()
+		} catch {
+			return new Response(JSON.stringify({ error: 'Invalid request body', code: 50035 }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// Validate nickname length if provided
+		if (body.nick !== undefined && body.nick !== null && body.nick.length > 32) {
+			return new Response(
+				JSON.stringify({ error: 'Nickname cannot exceed 32 characters', code: 50035 }),
+				{
+					status: 400,
+					headers: { 'Content-Type': 'application/json' }
+				}
+			)
+		}
+
+		// Validate communication_disabled_until if provided
+		if (body.communication_disabled_until !== undefined && body.communication_disabled_until !== null) {
+			const disabledUntil = new Date(body.communication_disabled_until)
+			if (isNaN(disabledUntil.getTime())) {
+				return new Response(
+					JSON.stringify({ error: 'Invalid communication_disabled_until format', code: 50035 }),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' }
+					}
+				)
+			}
+
+			// Max timeout is 28 days
+			const now = Date.now()
+			const maxTimeout = 28 * 24 * 60 * 60 * 1000
+			if (disabledUntil.getTime() > now + maxTimeout) {
+				return new Response(
+					JSON.stringify({ error: 'Timeout duration cannot exceed 28 days', code: 50035 }),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' }
+					}
+				)
+			}
+		}
+
+		// Update the member
+		const updatedMember = session.state.updateGuildMember(guildId, targetUserId, {
+			nick: body.nick,
+			roles: body.roles,
+			mute: body.mute,
+			deaf: body.deaf,
+			communicationDisabledUntil: body.communication_disabled_until
+		})
+
+		if (!updatedMember) {
+			return new Response(JSON.stringify({ error: 'Failed to update member', code: 50035 }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// Record action
+		session.recordAction(
+			'member_updated',
+			{
+				guild_id: guildId,
+				user_id: targetUserId,
+				updates: body
+			},
+			{
+				endpoint: `PATCH /guilds/${guildId}/members/${targetUserId}`,
+				method: 'PATCH'
+			}
+		)
+
+		// Dispatch GUILD_MEMBER_UPDATE event
+		await session.dispatchGuildMemberUpdate(guildId, updatedMember, user)
+
+		return new Response(JSON.stringify(mockGuildMemberToAPIMember(updatedMember, user)), {
+			status: 200,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	// Handle DELETE - Remove member (kick)
+	if (request.method === 'DELETE') {
+		// Cannot kick the bot itself (would break the session)
+		if (targetUserId === session.state.botUser.id) {
+			return new Response(
+				JSON.stringify({ error: 'Cannot kick the bot user', code: 50013 }),
+				{
+					status: 403,
+					headers: { 'Content-Type': 'application/json' }
+				}
+			)
+		}
+
+		// Remove the member
+		const removed = session.state.removeGuildMember(guildId, targetUserId)
+		if (!removed) {
+			return new Response(JSON.stringify({ error: 'Failed to remove member', code: 50035 }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// Record action
+		session.recordAction(
+			'member_kicked',
+			{
+				guild_id: guildId,
+				user_id: targetUserId
+			},
+			{
+				endpoint: `DELETE /guilds/${guildId}/members/${targetUserId}`,
+				method: 'DELETE'
+			}
+		)
+
+		// Dispatch GUILD_MEMBER_REMOVE event so client cache is updated
+		await session.dispatchGuildMemberRemove(guildId, user)
+
+		// Discord returns 204 No Content on successful kick
+		return new Response(null, { status: 204 })
+	}
+
+	// Method not allowed
+	return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+		status: 405,
+		headers: { 'Content-Type': 'application/json' }
+	})
+}

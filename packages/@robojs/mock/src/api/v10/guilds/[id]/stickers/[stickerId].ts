@@ -171,6 +171,9 @@ export default async (request: RoboRequest) => {
 			}
 		)
 
+		// Dispatch GUILD_STICKERS_UPDATE event
+		await session.dispatchGuildStickersUpdate(guildId)
+
 		return mockStickerToAPISticker(updated)
 	}
 
@@ -196,6 +199,9 @@ export default async (request: RoboRequest) => {
 				method: 'DELETE'
 			}
 		)
+
+		// Dispatch GUILD_STICKERS_UPDATE event
+		await session.dispatchGuildStickersUpdate(guildId)
 
 		return new Response(null, { status: 204 })
 	}

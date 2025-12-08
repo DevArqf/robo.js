@@ -70,6 +70,12 @@ export default async (request: RoboRequest) => {
 			name?: string
 			permissions?: string
 			color?: number
+			// Discord.js 14+ sends colors as an object with primary_color, secondary_color, tertiary_color
+			colors?: {
+				primary_color?: number | null
+				secondary_color?: number | null
+				tertiary_color?: number | null
+			}
 			hoist?: boolean
 			icon?: string | null
 			unicode_emoji?: string | null
@@ -112,9 +118,15 @@ export default async (request: RoboRequest) => {
 			}
 		}
 
+		// Handle color - support both legacy 'color' and new 'colors' object from Discord.js 14+
+		let color: number | undefined = body.color
+		if (body.colors?.primary_color !== undefined && body.colors.primary_color !== null) {
+			color = body.colors.primary_color
+		}
+
 		// Validate color if provided
-		if (body.color !== undefined) {
-			if (body.color < 0 || body.color > RoleLimits.MAX_COLOR_VALUE) {
+		if (color !== undefined) {
+			if (color < 0 || color > RoleLimits.MAX_COLOR_VALUE) {
 				return new Response(
 					JSON.stringify({ error: 'Invalid color value', code: 50035 }),
 					{
@@ -143,7 +155,7 @@ export default async (request: RoboRequest) => {
 		const role = session.state.createGuildRole(guildId, {
 			name: body.name,
 			permissions: body.permissions,
-			color: body.color,
+			color,
 			hoist: body.hoist,
 			icon: body.icon,
 			unicodeEmoji: body.unicode_emoji,

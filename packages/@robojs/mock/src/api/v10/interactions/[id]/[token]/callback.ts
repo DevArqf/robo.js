@@ -1,5 +1,6 @@
 import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../../../core/manager.js'
+import { getStageBridge } from '../../../../../core/stage-bridge.js'
 import { generateSnowflake } from '../../../../../utils/snowflake.js'
 import { isMultipartRequest, parseMultipartMessage, MultipartError } from '../../../../../utils/multipart.js'
 import { getImageDimensions, isImageContentType } from '../../../../../utils/image.js'
@@ -338,6 +339,16 @@ export default async (request: RoboRequest) => {
 		}
 	)
 
-	// 12. Discord returns 204 No Content on success
+	// 12. Notify stage clients of interaction response
+	try {
+		getStageBridge().onInteractionResponse(session.id, interaction.id, {
+			type: body.type,
+			data: responseData
+		})
+	} catch {
+		// Stage bridge may not be initialized
+	}
+
+	// 13. Discord returns 204 No Content on success
 	return new Response(null, { status: 204 })
 }

@@ -521,6 +521,75 @@ export default async (request: RoboRequest) => {
 		}
 	}
 
+	// Handle GUILD_MEMBER_ADD - create member in state AND dispatch event
+	if (body.event === 'GUILD_MEMBER_ADD') {
+		const data = body.data as {
+			guild_id?: string
+			user?: {
+				id?: string
+				username?: string
+				discriminator?: string
+				global_name?: string | null
+				bot?: boolean
+			}
+			roles?: string[]
+			joined_at?: string
+			deaf?: boolean
+			mute?: boolean
+			nick?: string | null
+		}
+
+		if (!data.guild_id || !data.user?.id) {
+			return badRequest('GUILD_MEMBER_ADD requires "guild_id" and "user.id" in data')
+		}
+
+		// Create user in state if not exists
+		if (!session.state.users.has(data.user.id)) {
+			session.state.users.set(data.user.id, {
+				id: data.user.id,
+				username: data.user.username ?? 'User',
+				discriminator: data.user.discriminator ?? '0',
+				globalName: data.user.global_name ?? null,
+				avatar: null,
+				bot: data.user.bot ?? false
+			})
+		}
+
+		// Create guild member in state
+		const memberKey = `${data.guild_id}:${data.user.id}`
+		if (!session.state.guildMembers.has(memberKey)) {
+			session.state.guildMembers.set(memberKey, {
+				userId: data.user.id,
+				guildId: data.guild_id,
+				roles: data.roles ?? [],
+				nick: data.nick ?? null,
+				joinedAt: data.joined_at ?? new Date().toISOString(),
+				premiumSince: null,
+				deaf: data.deaf ?? false,
+				mute: data.mute ?? false,
+				pending: false,
+				communicationDisabledUntil: null,
+				flags: 0
+			})
+		}
+
+		// Add user to guild members list
+		const guild = session.state.guilds.get(data.guild_id)
+		if (guild && !guild.members.includes(data.user.id)) {
+			guild.members.push(data.user.id)
+		}
+
+		// Dispatch the event
+		await session.dispatch(body.event, body.data)
+
+		return {
+			success: true,
+			dispatched: session.connections.size,
+			user_id: data.user.id,
+			guild_id: data.guild_id
+		}
+	}
+
 	// For other events, dispatch raw data
 	await session.dispatch(body.event, body.data)
 

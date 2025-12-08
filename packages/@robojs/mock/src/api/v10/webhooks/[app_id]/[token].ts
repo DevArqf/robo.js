@@ -1,5 +1,6 @@
 import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../../core/manager.js'
+import { getStageBridge } from '../../../../core/stage-bridge.js'
 import { mockMessageToAPIMessage, mockWebhookToAPIWebhook } from '../../../../discord/payloads.js'
 import { generateSnowflake } from '../../../../utils/snowflake.js'
 import { isMultipartRequest, parseMultipartMessage, MultipartError } from '../../../../utils/multipart.js'
@@ -755,7 +756,14 @@ async function handleInteractionWebhook(request: RoboRequest, appId: string, tok
 		}
 	)
 
-	// 12. Return APIMessage response
+	// 12. Notify stage clients of interaction followup
+	try {
+		getStageBridge().onInteractionFollowup(session.id, interaction.id, message)
+	} catch {
+		// Stage bridge may not be initialized
+	}
+
+	// 13. Return APIMessage response
 	return mockMessageToAPIMessage(message, session.state.botUser)
 }
 

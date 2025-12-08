@@ -3,6 +3,7 @@ import { sessionManager } from '../../../../core/manager.js'
 import { parseMockToken } from '../../../../utils/id.js'
 import { mockStickerToAPISticker } from '../../../../discord/payloads.js'
 import { StickerLimits } from '../../../../types/index.js'
+import { isMultipartRequest, MultipartError } from '../../../../utils/multipart.js'
 
 /**
  * GET /api/v10/guilds/:id/stickers - List all stickers for a guild
@@ -51,7 +52,7 @@ export default async (request: RoboRequest) => {
 
 	// Handle POST - Create guild sticker
 	if (request.method === 'POST') {
-		// Parse request body (could be multipart for file upload, but we'll use JSON for simplicity)
+		// Parse request body (supports both JSON and multipart/form-data)
 		let body: {
 			name: string
 			description?: string
@@ -59,8 +60,24 @@ export default async (request: RoboRequest) => {
 		}
 
 		try {
-			body = await request.json()
-		} catch {
+			if (isMultipartRequest(request)) {
+				// Parse multipart form data (Discord.js sends stickers as form-data)
+				const formData = await request.formData()
+				body = {
+					name: formData.get('name') as string || '',
+					description: (formData.get('description') as string) || undefined,
+					tags: formData.get('tags') as string || ''
+				}
+			} else {
+				body = await request.json()
+			}
+		} catch (error) {
+			if (error instanceof MultipartError) {
+				return new Response(JSON.stringify({ error: error.message, code: error.code }), {
+					status: 400,
+					headers: { 'Content-Type': 'application/json' }
+				})
+			}
 			return new Response(JSON.stringify({ error: 'Invalid request body', code: 50035 }), {
 				status: 400,
 				headers: { 'Content-Type': 'application/json' }
@@ -194,6 +211,9 @@ export default async (request: RoboRequest) => {
 				method: 'POST'
 			}
 		)
+
+		// Dispatch GUILD_STICKERS_UPDATE event
+		await session.dispatchGuildStickersUpdate(guildId)
 
 		return new Response(JSON.stringify(mockStickerToAPISticker(sticker)), {
 			status: 201,
