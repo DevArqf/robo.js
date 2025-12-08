@@ -23,6 +23,8 @@ export type { StateOptions } from './session/index.js'
 export { sessionManager } from './core/manager.js'
 export { mockLogger } from './core/logger.js'
 export { GatewayServer, getGatewayServer, closeGatewayServer } from './core/gateway.js'
+export { StageServer, getStageServer, closeStageServer } from './core/stage.js'
+export { StageBridge, getStageBridge, resetStageBridge } from './core/stage-bridge.js'
 
 // Discord Gateway exports
 export {
@@ -284,3 +286,36 @@ export type {
 // Permission enforcement helper (Phase 4L-Extended)
 export { enforcePermissions, getEnforcementLevel } from './utils/permission-check.js'
 export type { EnforcePermissionsOptions } from './utils/permission-check.js'
+
+// Stage WebSocket types (Phase 5A)
+export type {
+	StageEventType,
+	StageCommandType,
+	StageEvent,
+	StageCommand,
+	StageConnectionState,
+	StateSyncPayload,
+	StageGuild,
+	StageChannel,
+	StageUser,
+	StageMember,
+	StageMessage,
+	StageMessageSource,
+	StageMessageCreateData,
+	StageInteractionResponseData,
+	StageBotReadyData,
+	StageBotDisconnectedData,
+	StageBotErrorData,
+	StageCommandResponseData,
+	StageSendMessageData,
+	StageInvokeCommandData,
+	StageClickButtonData,
+	StageSelectOptionData,
+	StageSubmitModalData,
+	StageAddReactionData,
+	StageStartTypingData,
+	StageSubscribeChannelData,
+	StageSetPlaybackData,
+	BufferedStageEvent,
+	StageServerConfig
+} from './types/stage.js'

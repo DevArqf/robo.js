@@ -12,6 +12,10 @@ import type {
 	MockThread,
 	MockRole,
 	MockGuildMember,
+	MockScheduledEvent,
+	MockAutoModRule,
+	MockAutoModAction,
+	MockInvite,
 	DispatchSlashCommandOptions,
 	DispatchButtonClickOptions,
 	DispatchSelectMenuOptions,
@@ -22,12 +26,14 @@ import type {
 	SessionRecording,
 	SessionConfig
 } from '../types/index.js'
+import { AutoModerationTriggerType } from '../types/index.js'
 import { generateSessionId, createMockToken, generateInteractionToken } from '../utils/id.js'
 import { generateSnowflake } from '../utils/snowflake.js'
-import { MockServerState, createDefaultGuildWithChannel, createMockUser, createMockMessage } from './state.js'
+import { MockServerState, createDefaultGuildWithChannel, createMockUser, createMockMessage, createMockGuild, createMockChannel } from './state.js'
 import { ActionRecorder } from './recorder.js'
 import { mockLogger } from '../core/logger.js'
 import { getGatewayServer } from '../core/gateway.js'
+import { getStageBridge } from '../core/stage-bridge.js'
 import {
 	buildMessageCreatePayload,
 	buildInteractionCreatePayload,
@@ -49,7 +55,22 @@ import {
 	buildGuildRoleCreatePayload,
 	buildGuildRoleUpdatePayload,
 	buildGuildRoleDeletePayload,
+	buildGuildMemberAddPayload,
 	buildGuildMemberUpdatePayload,
+	buildGuildMemberRemovePayload,
+	buildGuildBanAddPayload,
+	buildGuildBanRemovePayload,
+	buildGuildScheduledEventCreatePayload,
+	buildGuildScheduledEventUpdatePayload,
+	buildGuildScheduledEventDeletePayload,
+	buildGuildScheduledEventUserAddPayload,
+	buildGuildScheduledEventUserRemovePayload,
+	buildAutoModerationRuleCreatePayload,
+	buildAutoModerationRuleUpdatePayload,
+	buildAutoModerationRuleDeletePayload,
+	buildAutoModerationActionExecutionPayload,
+	buildInviteCreatePayload,
+	buildInviteDeletePayload,
 	type GatewayPayload
 } from '../discord/payloads.js'
 
@@ -94,10 +115,34 @@ export class Session implements ISession {
 		// Create guilds from config
 		if (options?.config?.guilds) {
 			for (const guildConfig of options.config.guilds) {
-				createDefaultGuildWithChannel(this.state, {
-					guildName: guildConfig.name,
-					channelName: 'general'
+				// Create the guild
+				const guild = createMockGuild({
+					name: guildConfig.name ?? 'Test Guild',
+					ownerId: this.state.botUser.id
 				})
+
+				// Add guild to state (uses addGuild to ensure bot member is created)
+				this.state.addGuild(guild)
+
+				// Create channels from config, or default to a general channel
+				if (guildConfig.channels && guildConfig.channels.length > 0) {
+					for (const channelConfig of guildConfig.channels) {
+						const channel = createMockChannel({
+							guildId: guild.id,
+							name: channelConfig.name ?? 'channel',
+							type: channelConfig.type ?? 0
+						})
+						this.state.addChannelToGuild(guild.id, channel)
+					}
+				} else {
+					// Create default general channel if no channels specified
+					const channel = createMockChannel({
+						guildId: guild.id,
+						name: 'general',
+						type: 0 // GUILD_TEXT
+					})
+					this.state.addChannelToGuild(guild.id, channel)
+				}
 			}
 		}
 
@@ -139,6 +184,13 @@ export class Session implements ISession {
 		const dispatched = gateway.dispatchToSession(this.id, event, data, guildId)
 
 		mockLogger.debug(`Session ${this.id} dispatched: ${event} to ${dispatched} connection(s)`)
+
+		// Forward to stage clients (non-blocking)
+		try {
+			getStageBridge().onSessionDispatch(this.id, event, data)
+		} catch {
+			// Stage bridge may not be initialized in some contexts
+		}
 	}
 
 	/**
@@ -1351,6 +1403,32 @@ export class Session implements ISession {
 	// ============================================================================
 
 	/**
+	 * Dispatch GUILD_MEMBER_ADD event when a member joins a guild
+	 *
+	 * @param guildId - The guild where the member joined
+	 * @param member - The member who joined
+	 * @param user - The user associated with the member
+	 */
+	async dispatchGuildMemberAdd(guildId: string, member: MockGuildMember, user: MockUser): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		// Build payload
+		const payload = buildGuildMemberAddPayload({
+			guildId,
+			member,
+			user,
+			sequence: 0
+		})
+
+		// Dispatch to connections
+		await this.dispatch('GUILD_MEMBER_ADD', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched member add: ${user.username} in guild ${guildId}`)
+	}
+
+	/**
 	 * Dispatch GUILD_MEMBER_UPDATE event when a member is updated
 	 *
 	 * @param guildId - The guild where the member was updated
@@ -1374,6 +1452,339 @@ export class Session implements ISession {
 		await this.dispatch('GUILD_MEMBER_UPDATE', (payload as GatewayPayload).d)
 
 		mockLogger.debug(`Session ${this.id} dispatched member update: ${user.username} in guild ${guildId}`)
+	}
+
+	/**
+	 * Dispatch GUILD_MEMBER_REMOVE event when a member leaves or is removed from a guild
+	 *
+	 * @param guildId - The guild where the member was removed
+	 * @param user - The user who was removed
+	 */
+	async dispatchGuildMemberRemove(guildId: string, user: MockUser): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		// Build payload
+		const payload = buildGuildMemberRemovePayload({
+			guildId,
+			user,
+			sequence: 0
+		})
+
+		// Dispatch to connections
+		await this.dispatch('GUILD_MEMBER_REMOVE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched member remove: ${user.username} in guild ${guildId}`)
+	}
+
+	// ============================================================================
+	// Guild Ban Event Dispatching (Phase 4L-B)
+	// ============================================================================
+
+	/**
+	 * Dispatch GUILD_BAN_ADD event when a user is banned
+	 *
+	 * @param guildId - The guild where the user was banned
+	 * @param user - The user who was banned
+	 */
+	async dispatchGuildBanAdd(guildId: string, user: MockUser): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		// Build payload
+		const payload = buildGuildBanAddPayload({
+			guildId,
+			user,
+			sequence: 0
+		})
+
+		// Dispatch to connections
+		await this.dispatch('GUILD_BAN_ADD', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched ban add: ${user.username} in guild ${guildId}`)
+	}
+
+	/**
+	 * Dispatch GUILD_BAN_REMOVE event when a user is unbanned
+	 *
+	 * @param guildId - The guild where the user was unbanned
+	 * @param user - The user who was unbanned
+	 */
+	async dispatchGuildBanRemove(guildId: string, user: MockUser): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		// Build payload
+		const payload = buildGuildBanRemovePayload({
+			guildId,
+			user,
+			sequence: 0
+		})
+
+		// Dispatch to connections
+		await this.dispatch('GUILD_BAN_REMOVE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched ban remove: ${user.username} in guild ${guildId}`)
+	}
+
+	// ============================================================================
+	// Scheduled Event Dispatching (Phase 5B)
+	// ============================================================================
+
+	/**
+	 * Dispatch GUILD_SCHEDULED_EVENT_CREATE event
+	 *
+	 * @param event - The scheduled event that was created
+	 */
+	async dispatchGuildScheduledEventCreate(event: MockScheduledEvent): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		const payload = buildGuildScheduledEventCreatePayload({
+			event,
+			state: this.state,
+			sequence: 0
+		})
+
+		await this.dispatch('GUILD_SCHEDULED_EVENT_CREATE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched scheduled event create: ${event.name} in guild ${event.guildId}`)
+	}
+
+	/**
+	 * Dispatch GUILD_SCHEDULED_EVENT_UPDATE event
+	 *
+	 * @param event - The scheduled event that was updated
+	 */
+	async dispatchGuildScheduledEventUpdate(event: MockScheduledEvent): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		const payload = buildGuildScheduledEventUpdatePayload({
+			event,
+			state: this.state,
+			sequence: 0
+		})
+
+		await this.dispatch('GUILD_SCHEDULED_EVENT_UPDATE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched scheduled event update: ${event.name} in guild ${event.guildId}`)
+	}
+
+	/**
+	 * Dispatch GUILD_SCHEDULED_EVENT_DELETE event
+	 *
+	 * @param event - The scheduled event that was deleted
+	 */
+	async dispatchGuildScheduledEventDelete(event: MockScheduledEvent): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		const payload = buildGuildScheduledEventDeletePayload({
+			event,
+			state: this.state,
+			sequence: 0
+		})
+
+		await this.dispatch('GUILD_SCHEDULED_EVENT_DELETE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched scheduled event delete: ${event.name} in guild ${event.guildId}`)
+	}
+
+	/**
+	 * Dispatch GUILD_SCHEDULED_EVENT_USER_ADD event
+	 *
+	 * @param guildId - The guild ID
+	 * @param eventId - The scheduled event ID
+	 * @param userId - The user ID who subscribed
+	 */
+	async dispatchGuildScheduledEventUserAdd(guildId: string, eventId: string, userId: string): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		const payload = buildGuildScheduledEventUserAddPayload({
+			guildId,
+			eventId,
+			userId,
+			sequence: 0
+		})
+
+		await this.dispatch('GUILD_SCHEDULED_EVENT_USER_ADD', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched scheduled event user add: ${userId} to event ${eventId}`)
+	}
+
+	/**
+	 * Dispatch GUILD_SCHEDULED_EVENT_USER_REMOVE event
+	 *
+	 * @param guildId - The guild ID
+	 * @param eventId - The scheduled event ID
+	 * @param userId - The user ID who unsubscribed
+	 */
+	async dispatchGuildScheduledEventUserRemove(guildId: string, eventId: string, userId: string): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		const payload = buildGuildScheduledEventUserRemovePayload({
+			guildId,
+			eventId,
+			userId,
+			sequence: 0
+		})
+
+		await this.dispatch('GUILD_SCHEDULED_EVENT_USER_REMOVE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched scheduled event user remove: ${userId} from event ${eventId}`)
+	}
+
+	// ============================================================================
+	// Invite Event Dispatching (Phase 5A)
+	// ============================================================================
+
+	/**
+	 * Dispatch INVITE_CREATE event
+	 *
+	 * @param invite - The invite that was created
+	 */
+	async dispatchInviteCreate(invite: MockInvite): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		const payload = buildInviteCreatePayload({
+			invite,
+			state: this.state,
+			sequence: 0
+		})
+
+		await this.dispatch('INVITE_CREATE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched invite create: ${invite.code}`)
+	}
+
+	/**
+	 * Dispatch INVITE_DELETE event
+	 *
+	 * @param invite - The invite that was deleted
+	 */
+	async dispatchInviteDelete(invite: MockInvite): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		const payload = buildInviteDeletePayload({
+			invite,
+			sequence: 0
+		})
+
+		await this.dispatch('INVITE_DELETE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched invite delete: ${invite.code}`)
+	}
+
+	// ============================================================================
+	// Auto-Moderation Event Dispatching (Phase 5C)
+	// ============================================================================
+
+	/**
+	 * Dispatch AUTO_MODERATION_RULE_CREATE event
+	 *
+	 * @param rule - The auto-mod rule that was created
+	 */
+	async dispatchAutoModerationRuleCreate(rule: MockAutoModRule): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		const payload = buildAutoModerationRuleCreatePayload({
+			rule,
+			sequence: 0
+		})
+
+		await this.dispatch('AUTO_MODERATION_RULE_CREATE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched auto-mod rule create: ${rule.name} in guild ${rule.guildId}`)
+	}
+
+	/**
+	 * Dispatch AUTO_MODERATION_RULE_UPDATE event
+	 *
+	 * @param rule - The auto-mod rule that was updated
+	 */
+	async dispatchAutoModerationRuleUpdate(rule: MockAutoModRule): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		const payload = buildAutoModerationRuleUpdatePayload({
+			rule,
+			sequence: 0
+		})
+
+		await this.dispatch('AUTO_MODERATION_RULE_UPDATE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched auto-mod rule update: ${rule.name} in guild ${rule.guildId}`)
+	}
+
+	/**
+	 * Dispatch AUTO_MODERATION_RULE_DELETE event
+	 *
+	 * @param rule - The auto-mod rule that was deleted
+	 */
+	async dispatchAutoModerationRuleDelete(rule: MockAutoModRule): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		const payload = buildAutoModerationRuleDeletePayload({
+			rule,
+			sequence: 0
+		})
+
+		await this.dispatch('AUTO_MODERATION_RULE_DELETE', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched auto-mod rule delete: ${rule.name} in guild ${rule.guildId}`)
+	}
+
+	/**
+	 * Dispatch AUTO_MODERATION_ACTION_EXECUTION event
+	 *
+	 * @param options - The action execution details
+	 */
+	async dispatchAutoModerationActionExecution(options: {
+		guildId: string
+		action: MockAutoModAction
+		ruleId: string
+		ruleTriggerType: AutoModerationTriggerType
+		userId: string
+		channelId?: string
+		messageId?: string
+		content: string
+		matchedKeyword?: string
+		matchedContent?: string
+	}): Promise<void> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		const payload = buildAutoModerationActionExecutionPayload({
+			...options,
+			matchedKeyword: options.matchedKeyword ?? null,
+			matchedContent: options.matchedContent ?? null,
+			sequence: 0
+		})
+
+		await this.dispatch('AUTO_MODERATION_ACTION_EXECUTION', (payload as GatewayPayload).d)
+
+		mockLogger.debug(`Session ${this.id} dispatched auto-mod action execution for rule ${options.ruleId}`)
 	}
 
 	/**

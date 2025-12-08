@@ -1,8 +1,8 @@
 import { GatewayOpcodes, ChannelType, GuildDefaultMessageNotifications, GuildExplicitContentFilter, GuildMFALevel, GuildNSFWLevel, GuildPremiumTier, GuildVerificationLevel, MessageType, InteractionType, ApplicationCommandType, ComponentType } from 'discord-api-types/v10'
 import type { APIUser, APIUnavailableGuild, APIChannel, APIDMChannel, APIRole, APIGuildMember, Snowflake, APIMessage, APIEmbed, APIAttachment, APIMessageInteractionMetadata, APIMessageSnapshot, APIOverwrite, APIRoleTags } from 'discord-api-types/v10'
 import { DEFAULT_HEARTBEAT_INTERVAL, GATEWAY_VERSION } from './opcodes.js'
-import type { MockUser, MockGuild, MockChannel, MockMessage, MockInteraction, SessionState, MockMessageSnapshot, MockThread, MockThreadMember, MockForumChannel, MockForumThread, MockForumTag, MockSticker, MockWebhook, MockEmoji, MockRole, MockGuildMember, MockChannelOverwrite, MockApplicationCommand } from '../types/index.js'
-import { OverwriteType } from '../types/index.js'
+import type { MockUser, MockGuild, MockChannel, MockMessage, MockInteraction, SessionState, MockMessageSnapshot, MockThread, MockThreadMember, MockForumChannel, MockForumThread, MockForumTag, MockSticker, MockWebhook, MockEmoji, MockRole, MockGuildMember, MockChannelOverwrite, MockApplicationCommand, MockInvite, MockScheduledEvent, MockAutoModRule, MockAutoModAction, MockAutoModActionMetadata } from '../types/index.js'
+import { OverwriteType, GuildScheduledEventPrivacyLevel, GuildScheduledEventStatus, GuildScheduledEventEntityType, AutoModerationEventType, AutoModerationTriggerType, AutoModerationActionType, AutoModerationKeywordPresetType } from '../types/index.js'
 import { generateSnowflake } from '../utils/snowflake.js'
 
 /**
@@ -742,34 +742,34 @@ export function buildGuildCreatePayload(options: GuildCreatePayloadOptions): Gat
 		// Core guild fields
 		id: guild.id,
 		name: guild.name,
-		icon: null,
+		icon: guild.icon ?? null,
 		icon_hash: null,
-		splash: null,
+		splash: guild.splash ?? null,
 		discovery_splash: null,
 		owner_id: guild.ownerId,
-		afk_channel_id: null,
-		afk_timeout: 300,
+		afk_channel_id: guild.afkChannelId ?? null,
+		afk_timeout: guild.afkTimeout ?? 300,
 		widget_enabled: false,
 		widget_channel_id: null,
-		verification_level: GuildVerificationLevel.None,
-		default_message_notifications: GuildDefaultMessageNotifications.AllMessages,
-		explicit_content_filter: GuildExplicitContentFilter.Disabled,
+		verification_level: guild.verificationLevel ?? GuildVerificationLevel.None,
+		default_message_notifications: guild.defaultMessageNotifications ?? GuildDefaultMessageNotifications.AllMessages,
+		explicit_content_filter: guild.explicitContentFilter ?? GuildExplicitContentFilter.Disabled,
 		roles,
 		emojis: guild.emojis
 			.map((id) => sessionState.emojis.get(id))
 			.filter((e): e is MockEmoji => e !== undefined)
 			.map(mockEmojiToAPIEmoji),
 		features: [],
-		mfa_level: GuildMFALevel.None,
+		mfa_level: guild.mfaLevel ?? GuildMFALevel.None,
 		application_id: null,
-		system_channel_id: null,
-		system_channel_flags: 0,
+		system_channel_id: guild.systemChannelId ?? null,
+		system_channel_flags: guild.systemChannelFlags ?? 0,
 		rules_channel_id: null,
 		max_presences: null,
 		max_members: 250000,
 		vanity_url_code: null,
-		description: null,
-		banner: null,
+		description: guild.description ?? null,
+		banner: guild.banner ?? null,
 		premium_tier: GuildPremiumTier.None,
 		premium_subscription_count: 0,
 		preferred_locale: 'en-US',
@@ -1082,6 +1082,66 @@ export function buildGuildMemberRemovePayload(options: GuildMemberRemovePayloadO
 		op: GatewayOpcodes.Dispatch,
 		s: sequence,
 		t: 'GUILD_MEMBER_REMOVE',
+		d: {
+			guild_id: guildId,
+			user: mockUserToAPIUser(user)
+		}
+	}
+}
+
+// ============================================================================
+// GUILD_BAN_ADD and GUILD_BAN_REMOVE Payloads (Phase 4L-B)
+// ============================================================================
+
+/**
+ * Options for building a GUILD_BAN_ADD payload
+ */
+export interface GuildBanAddPayloadOptions {
+	guildId: string
+	user: MockUser
+	sequence: number
+}
+
+/**
+ * Build a GUILD_BAN_ADD payload (op 0, t: "GUILD_BAN_ADD")
+ * Sent when a user is banned from a guild
+ * @see https://discord.com/developers/docs/events/gateway-events#guild-ban-add
+ */
+export function buildGuildBanAddPayload(options: GuildBanAddPayloadOptions): GatewayPayload {
+	const { guildId, user, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'GUILD_BAN_ADD',
+		d: {
+			guild_id: guildId,
+			user: mockUserToAPIUser(user)
+		}
+	}
+}
+
+/**
+ * Options for building a GUILD_BAN_REMOVE payload
+ */
+export interface GuildBanRemovePayloadOptions {
+	guildId: string
+	user: MockUser
+	sequence: number
+}
+
+/**
+ * Build a GUILD_BAN_REMOVE payload (op 0, t: "GUILD_BAN_REMOVE")
+ * Sent when a user is unbanned from a guild
+ * @see https://discord.com/developers/docs/events/gateway-events#guild-ban-remove
+ */
+export function buildGuildBanRemovePayload(options: GuildBanRemovePayloadOptions): GatewayPayload {
+	const { guildId, user, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'GUILD_BAN_REMOVE',
 		d: {
 			guild_id: guildId,
 			user: mockUserToAPIUser(user)
@@ -2328,6 +2388,490 @@ export function buildThreadMembersUpdatePayload(options: ThreadMembersUpdatePayl
 		op: GatewayOpcodes.Dispatch,
 		s: sequence,
 		t: 'THREAD_MEMBERS_UPDATE',
+		d: data
+	}
+}
+
+// ============================================================================
+// Invite Conversion Functions (Phase 5A)
+// ============================================================================
+
+/**
+ * Convert a MockInvite to API invite format (basic)
+ */
+export function mockInviteToAPIInvite(invite: MockInvite, state: SessionState): Record<string, unknown> {
+	const guild = state.guilds.get(invite.guildId)
+	const channel = state.channels.get(invite.channelId)
+	const inviter = state.users.get(invite.inviterId)
+
+	const result: Record<string, unknown> = {
+		code: invite.code,
+		channel: channel
+			? {
+					id: channel.id,
+					name: channel.name,
+					type: channel.type
+				}
+			: null
+	}
+
+	if (guild) {
+		result.guild = {
+			id: guild.id,
+			name: guild.name,
+			icon: null // We don't store guild icons
+		}
+	}
+
+	if (inviter) {
+		result.inviter = mockUserToAPIUser(inviter)
+	}
+
+	if (invite.targetType !== undefined) {
+		result.target_type = invite.targetType
+	}
+
+	if (invite.targetUserId) {
+		const targetUser = state.users.get(invite.targetUserId)
+		if (targetUser) {
+			result.target_user = mockUserToAPIUser(targetUser)
+		}
+	}
+
+	if (invite.expiresAt) {
+		result.expires_at = invite.expiresAt
+	}
+
+	return result
+}
+
+/**
+ * Convert a MockInvite to API extended invite format (includes uses, max_uses, etc.)
+ */
+export function mockInviteToAPIExtendedInvite(invite: MockInvite, state: SessionState): Record<string, unknown> {
+	const base = mockInviteToAPIInvite(invite, state)
+
+	return {
+		...base,
+		uses: invite.uses,
+		max_uses: invite.maxUses,
+		max_age: invite.maxAge,
+		temporary: invite.temporary,
+		created_at: invite.createdAt
+	}
+}
+
+// ============================================================================
+// Invite Gateway Event Payload Builders (Phase 5A)
+// ============================================================================
+
+/**
+ * Options for building an INVITE_CREATE payload
+ */
+export interface InviteCreatePayloadOptions {
+	invite: MockInvite
+	state: SessionState
+	sequence: number
+}
+
+/**
+ * Build an INVITE_CREATE payload
+ *
+ * @see https://discord.com/developers/docs/events/gateway-events#invite-create
+ */
+export function buildInviteCreatePayload(options: InviteCreatePayloadOptions): GatewayPayload {
+	const { invite, state, sequence } = options
+	const inviter = state.users.get(invite.inviterId)
+
+	const data: Record<string, unknown> = {
+		channel_id: invite.channelId,
+		code: invite.code,
+		created_at: invite.createdAt,
+		guild_id: invite.guildId,
+		max_age: invite.maxAge,
+		max_uses: invite.maxUses,
+		temporary: invite.temporary,
+		uses: invite.uses
+	}
+
+	if (inviter) {
+		data.inviter = mockUserToAPIUser(inviter)
+	}
+
+	if (invite.targetType !== undefined) {
+		data.target_type = invite.targetType
+	}
+
+	if (invite.targetUserId) {
+		const targetUser = state.users.get(invite.targetUserId)
+		if (targetUser) {
+			data.target_user = mockUserToAPIUser(targetUser)
+		}
+	}
+
+	// Note: target_application is not currently supported in MockInvite
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'INVITE_CREATE',
+		d: data
+	}
+}
+
+/**
+ * Options for building an INVITE_DELETE payload
+ */
+export interface InviteDeletePayloadOptions {
+	invite: MockInvite
+	sequence: number
+}
+
+/**
+ * Build an INVITE_DELETE payload
+ *
+ * @see https://discord.com/developers/docs/events/gateway-events#invite-delete
+ */
+export function buildInviteDeletePayload(options: InviteDeletePayloadOptions): GatewayPayload {
+	const { invite, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'INVITE_DELETE',
+		d: {
+			channel_id: invite.channelId,
+			code: invite.code,
+			guild_id: invite.guildId
+		}
+	}
+}
+
+// ============================================================================
+// Scheduled Event Payload Builders (Phase 5B)
+// ============================================================================
+
+/**
+ * Convert a MockScheduledEvent to API format
+ */
+export function mockScheduledEventToAPIScheduledEvent(
+	event: MockScheduledEvent,
+	state?: SessionState,
+	includeUserCount?: boolean
+): Record<string, unknown> {
+	const result: Record<string, unknown> = {
+		id: event.id,
+		guild_id: event.guildId,
+		channel_id: event.channelId,
+		creator_id: event.creatorId,
+		name: event.name,
+		description: event.description,
+		scheduled_start_time: event.scheduledStartTime,
+		scheduled_end_time: event.scheduledEndTime,
+		privacy_level: event.privacyLevel,
+		status: event.status,
+		entity_type: event.entityType,
+		entity_id: event.entityId,
+		entity_metadata: event.entityMetadata,
+		image: event.image
+	}
+
+	if (state && event.creatorId) {
+		const creator = state.users.get(event.creatorId)
+		if (creator) {
+			result.creator = mockUserToAPIUser(creator)
+		}
+	}
+
+	if (includeUserCount) {
+		result.user_count = event.subscribers.size
+	}
+
+	return result
+}
+
+/**
+ * Options for building a GUILD_SCHEDULED_EVENT_CREATE payload
+ */
+export interface GuildScheduledEventCreatePayloadOptions {
+	event: MockScheduledEvent
+	state?: SessionState
+	sequence: number
+}
+
+/**
+ * Build a GUILD_SCHEDULED_EVENT_CREATE payload
+ */
+export function buildGuildScheduledEventCreatePayload(options: GuildScheduledEventCreatePayloadOptions): GatewayPayload {
+	const { event, state, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'GUILD_SCHEDULED_EVENT_CREATE',
+		d: mockScheduledEventToAPIScheduledEvent(event, state, true)
+	}
+}
+
+/**
+ * Options for building a GUILD_SCHEDULED_EVENT_UPDATE payload
+ */
+export interface GuildScheduledEventUpdatePayloadOptions {
+	event: MockScheduledEvent
+	state?: SessionState
+	sequence: number
+}
+
+/**
+ * Build a GUILD_SCHEDULED_EVENT_UPDATE payload
+ */
+export function buildGuildScheduledEventUpdatePayload(options: GuildScheduledEventUpdatePayloadOptions): GatewayPayload {
+	const { event, state, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'GUILD_SCHEDULED_EVENT_UPDATE',
+		d: mockScheduledEventToAPIScheduledEvent(event, state, true)
+	}
+}
+
+/**
+ * Options for building a GUILD_SCHEDULED_EVENT_DELETE payload
+ */
+export interface GuildScheduledEventDeletePayloadOptions {
+	event: MockScheduledEvent
+	state?: SessionState
+	sequence: number
+}
+
+/**
+ * Build a GUILD_SCHEDULED_EVENT_DELETE payload
+ */
+export function buildGuildScheduledEventDeletePayload(options: GuildScheduledEventDeletePayloadOptions): GatewayPayload {
+	const { event, state, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'GUILD_SCHEDULED_EVENT_DELETE',
+		d: mockScheduledEventToAPIScheduledEvent(event, state)
+	}
+}
+
+/**
+ * Options for building a GUILD_SCHEDULED_EVENT_USER_ADD payload
+ */
+export interface GuildScheduledEventUserAddPayloadOptions {
+	guildId: Snowflake
+	eventId: Snowflake
+	userId: Snowflake
+	sequence: number
+}
+
+/**
+ * Build a GUILD_SCHEDULED_EVENT_USER_ADD payload
+ */
+export function buildGuildScheduledEventUserAddPayload(options: GuildScheduledEventUserAddPayloadOptions): GatewayPayload {
+	const { guildId, eventId, userId, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'GUILD_SCHEDULED_EVENT_USER_ADD',
+		d: {
+			guild_scheduled_event_id: eventId,
+			user_id: userId,
+			guild_id: guildId
+		}
+	}
+}
+
+/**
+ * Options for building a GUILD_SCHEDULED_EVENT_USER_REMOVE payload
+ */
+export interface GuildScheduledEventUserRemovePayloadOptions {
+	guildId: Snowflake
+	eventId: Snowflake
+	userId: Snowflake
+	sequence: number
+}
+
+/**
+ * Build a GUILD_SCHEDULED_EVENT_USER_REMOVE payload
+ */
+export function buildGuildScheduledEventUserRemovePayload(options: GuildScheduledEventUserRemovePayloadOptions): GatewayPayload {
+	const { guildId, eventId, userId, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'GUILD_SCHEDULED_EVENT_USER_REMOVE',
+		d: {
+			guild_scheduled_event_id: eventId,
+			user_id: userId,
+			guild_id: guildId
+		}
+	}
+}
+
+// ============================================================================
+// Auto-Moderation Payload Builders (Phase 5C)
+// ============================================================================
+
+/**
+ * Convert a MockAutoModRule to API format
+ */
+export function mockAutoModRuleToAPIAutoModRule(rule: MockAutoModRule): Record<string, unknown> {
+	return {
+		id: rule.id,
+		guild_id: rule.guildId,
+		name: rule.name,
+		creator_id: rule.creatorId,
+		event_type: rule.eventType,
+		trigger_type: rule.triggerType,
+		trigger_metadata: {
+			keyword_filter: rule.triggerMetadata.keywordFilter,
+			regex_patterns: rule.triggerMetadata.regexPatterns,
+			presets: rule.triggerMetadata.presets,
+			allow_list: rule.triggerMetadata.allowList,
+			mention_total_limit: rule.triggerMetadata.mentionTotalLimit,
+			mention_raid_protection_enabled: rule.triggerMetadata.mentionRaidProtectionEnabled
+		},
+		actions: rule.actions.map((action) => ({
+			type: action.type,
+			metadata: action.metadata
+				? {
+						channel_id: action.metadata.channelId,
+						duration_seconds: action.metadata.durationSeconds,
+						custom_message: action.metadata.customMessage
+					}
+				: undefined
+		})),
+		enabled: rule.enabled,
+		exempt_roles: rule.exemptRoles,
+		exempt_channels: rule.exemptChannels
+	}
+}
+
+/**
+ * Options for building an AUTO_MODERATION_RULE_CREATE payload
+ */
+export interface AutoModerationRuleCreatePayloadOptions {
+	rule: MockAutoModRule
+	sequence: number
+}
+
+/**
+ * Build an AUTO_MODERATION_RULE_CREATE payload
+ */
+export function buildAutoModerationRuleCreatePayload(options: AutoModerationRuleCreatePayloadOptions): GatewayPayload {
+	const { rule, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'AUTO_MODERATION_RULE_CREATE',
+		d: mockAutoModRuleToAPIAutoModRule(rule)
+	}
+}
+
+/**
+ * Options for building an AUTO_MODERATION_RULE_UPDATE payload
+ */
+export interface AutoModerationRuleUpdatePayloadOptions {
+	rule: MockAutoModRule
+	sequence: number
+}
+
+/**
+ * Build an AUTO_MODERATION_RULE_UPDATE payload
+ */
+export function buildAutoModerationRuleUpdatePayload(options: AutoModerationRuleUpdatePayloadOptions): GatewayPayload {
+	const { rule, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'AUTO_MODERATION_RULE_UPDATE',
+		d: mockAutoModRuleToAPIAutoModRule(rule)
+	}
+}
+
+/**
+ * Options for building an AUTO_MODERATION_RULE_DELETE payload
+ */
+export interface AutoModerationRuleDeletePayloadOptions {
+	rule: MockAutoModRule
+	sequence: number
+}
+
+/**
+ * Build an AUTO_MODERATION_RULE_DELETE payload
+ */
+export function buildAutoModerationRuleDeletePayload(options: AutoModerationRuleDeletePayloadOptions): GatewayPayload {
+	const { rule, sequence } = options
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'AUTO_MODERATION_RULE_DELETE',
+		d: mockAutoModRuleToAPIAutoModRule(rule)
+	}
+}
+
+/**
+ * Options for building an AUTO_MODERATION_ACTION_EXECUTION payload
+ */
+export interface AutoModerationActionExecutionPayloadOptions {
+	guildId: Snowflake
+	action: MockAutoModAction
+	ruleId: Snowflake
+	ruleTriggerType: AutoModerationTriggerType
+	userId: Snowflake
+	channelId?: Snowflake
+	messageId?: Snowflake
+	alertSystemMessageId?: Snowflake
+	content: string
+	matchedKeyword: string | null
+	matchedContent: string | null
+	sequence: number
+}
+
+/**
+ * Build an AUTO_MODERATION_ACTION_EXECUTION payload
+ */
+export function buildAutoModerationActionExecutionPayload(options: AutoModerationActionExecutionPayloadOptions): GatewayPayload {
+	const { guildId, action, ruleId, ruleTriggerType, userId, channelId, messageId, alertSystemMessageId, content, matchedKeyword, matchedContent, sequence } = options
+
+	const data: Record<string, unknown> = {
+		guild_id: guildId,
+		action: {
+			type: action.type,
+			metadata: action.metadata
+				? {
+						channel_id: action.metadata.channelId,
+						duration_seconds: action.metadata.durationSeconds,
+						custom_message: action.metadata.customMessage
+					}
+				: undefined
+		},
+		rule_id: ruleId,
+		rule_trigger_type: ruleTriggerType,
+		user_id: userId,
+		content,
+		matched_keyword: matchedKeyword,
+		matched_content: matchedContent
+	}
+
+	if (channelId) data.channel_id = channelId
+	if (messageId) data.message_id = messageId
+	if (alertSystemMessageId) data.alert_system_message_id = alertSystemMessageId
+
+	return {
+		op: GatewayOpcodes.Dispatch,
+		s: sequence,
+		t: 'AUTO_MODERATION_ACTION_EXECUTION',
 		d: data
 	}
 }

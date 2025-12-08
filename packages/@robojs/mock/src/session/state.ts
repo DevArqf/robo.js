@@ -55,11 +55,25 @@ import type {
 	MockChannelOverwrite,
 	SerializedMockRole,
 	SerializedMockGuildMember,
+	// Phase 4L-B: Bans
+	MockBan,
+	MockBanConfig,
 	// Phase 4M: Application Commands
 	MockApplicationCommand,
-	MockApplicationCommandConfig
+	MockApplicationCommandConfig,
+	// Phase 5A: Invites
+	MockInvite,
+	MockInviteConfig,
+	// Phase 5B: Scheduled Events
+	MockScheduledEvent,
+	MockScheduledEventConfig,
+	MockScheduledEventUpdateConfig,
+	// Phase 5C: Auto-Moderation
+	MockAutoModRule,
+	MockAutoModRuleConfig,
+	MockAutoModRuleUpdateConfig
 } from '../types/index.js'
-import { ComponentsV2Limits, ComponentTypeV2, PollLayoutType, ForumLayoutType, ForumSortOrderType, StickerType, StickerFormatType, StickerLimits, WebhookType, WebhookLimits, EmojiLimits, RoleLimits, ApplicationCommandType, CommandLimits } from '../types/index.js'
+import { ComponentsV2Limits, ComponentTypeV2, PollLayoutType, ForumLayoutType, ForumSortOrderType, StickerType, StickerFormatType, StickerLimits, WebhookType, WebhookLimits, EmojiLimits, RoleLimits, BanLimits, ApplicationCommandType, CommandLimits, InviteLimits, ScheduledEventLimits, GuildScheduledEventPrivacyLevel, GuildScheduledEventStatus, GuildScheduledEventEntityType, AutoModLimits, AutoModerationEventType } from '../types/index.js'
 import { generateSnowflake } from '../utils/snowflake.js'
 import { MemoryAttachmentStorage, type AttachmentStorage, type StorageConfig, createStorage } from '../storage/attachment-storage.js'
 
@@ -97,7 +111,11 @@ export class MockServerState implements SessionState {
 	readonly emojis: Map<Snowflake, MockEmoji> // Phase 4K: emojiId -> emoji
 	readonly roles: Map<Snowflake, MockRole> // Phase 4L: roleId -> role
 	readonly guildMembers: Map<string, MockGuildMember> // Phase 4L: `${guildId}:${userId}` -> member
+	readonly bans: Map<string, MockBan> // Phase 4L-B: `${guildId}:${userId}` -> ban
 	readonly commands: Map<Snowflake, MockApplicationCommand> // Phase 4M: commandId -> command
+	readonly invites: Map<string, MockInvite> // Phase 5A: code -> invite
+	readonly scheduledEvents: Map<string, MockScheduledEvent> // Phase 5B: `${guildId}:${eventId}` -> event
+	readonly autoModRules: Map<string, MockAutoModRule> // Phase 5C: `${guildId}:${ruleId}` -> rule
 	readonly botUser: MockUser
 	readonly applicationId: Snowflake
 
@@ -137,7 +155,11 @@ export class MockServerState implements SessionState {
 		this.emojis = new Map()
 		this.roles = new Map()
 		this.guildMembers = new Map()
+		this.bans = new Map()
 		this.commands = new Map()
+		this.invites = new Map()
+		this.scheduledEvents = new Map()
+		this.autoModRules = new Map()
 		this.interactionsByToken = new Map()
 		this.webhooksByToken = new Map()
 		this.maxMessages = options?.maxMessages ?? DEFAULT_MAX_MESSAGES
@@ -201,6 +223,25 @@ export class MockServerState implements SessionState {
 		// Add bot user as member if not already
 		if (!guild.members.includes(this.botUser.id)) {
 			guild.members.push(this.botUser.id)
+		}
+
+		// Create a proper guild member entry for the bot user
+		// This ensures the bot can use @me endpoints like setNickname
+		const botMemberKey = `${guild.id}:${this.botUser.id}`
+		if (!this.guildMembers.has(botMemberKey)) {
+			this.guildMembers.set(botMemberKey, {
+				userId: this.botUser.id,
+				guildId: guild.id,
+				roles: [],
+				nick: null,
+				joinedAt: new Date().toISOString(),
+				premiumSince: null,
+				deaf: false,
+				mute: false,
+				pending: false,
+				communicationDisabledUntil: null,
+				flags: 0
+			})
 		}
 	}
 
@@ -2244,6 +2285,90 @@ export class MockServerState implements SessionState {
 	}
 
 	// ============================================================================
+	// Guild Ban Operations (Phase 4L-B)
+	// ============================================================================
+
+	/**
+	 * Get a ban for a specific user in a guild
+	 */
+	getBan(guildId: Snowflake, userId: Snowflake): MockBan | undefined {
+		return this.bans.get(`${guildId}:${userId}`)
+	}
+
+	/**
+	 * Get all bans for a guild
+	 */
+	getGuildBans(guildId: Snowflake): MockBan[] {
+		const bans: MockBan[] = []
+		for (const ban of this.bans.values()) {
+			if (ban.guildId === guildId) {
+				bans.push(ban)
+			}
+		}
+		return bans
+	}
+
+	/**
+	 * Create a ban for a user in a guild
+	 * Also removes the member from the guild if they're a member
+	 * @returns The created ban, or null if guild doesn't exist
+	 */
+	createBan(guildId: Snowflake, userId: Snowflake, config?: MockBanConfig): MockBan | null {
+		const guild = this.guilds.get(guildId)
+		if (!guild) {
+			return null
+		}
+
+		const key = `${guildId}:${userId}`
+
+		// Check if already banned
+		const existingBan = this.bans.get(key)
+		if (existingBan) {
+			return existingBan
+		}
+
+		// Validate reason length
+		let reason = config?.reason ?? null
+		if (reason && reason.length > BanLimits.MAX_REASON_LENGTH) {
+			reason = reason.substring(0, BanLimits.MAX_REASON_LENGTH)
+		}
+
+		const ban: MockBan = {
+			guildId,
+			userId,
+			reason,
+			createdAt: new Date().toISOString()
+		}
+
+		this.bans.set(key, ban)
+
+		// Remove member from guild if they're a member
+		this.removeGuildMember(guildId, userId)
+
+		return ban
+	}
+
+	/**
+	 * Remove a ban for a user in a guild
+	 * @returns true if removed, false if not found
+	 */
+	removeBan(guildId: Snowflake, userId: Snowflake): boolean {
+		const key = `${guildId}:${userId}`
+		if (!this.bans.has(key)) {
+			return false
+		}
+		this.bans.delete(key)
+		return true
+	}
+
+	/**
+	 * Check if a user is banned from a guild
+	 */
+	isBanned(guildId: Snowflake, userId: Snowflake): boolean {
+		return this.bans.has(`${guildId}:${userId}`)
+	}
+
+	// ============================================================================
 	// Application Command Operations (Phase 4M)
 	// ============================================================================
 
@@ -2497,6 +2622,436 @@ export class MockServerState implements SessionState {
 	}
 
 	// ============================================================================
+	// Invite Operations (Phase 5A)
+	// ============================================================================
+
+	/**
+	 * Get an invite by code
+	 */
+	getInvite(code: string): MockInvite | undefined {
+		return this.invites.get(code)
+	}
+
+	/**
+	 * Get all invites for a guild
+	 */
+	getGuildInvites(guildId: Snowflake): MockInvite[] {
+		return Array.from(this.invites.values()).filter((i) => i.guildId === guildId)
+	}
+
+	/**
+	 * Get all invites for a channel
+	 */
+	getChannelInvites(channelId: Snowflake): MockInvite[] {
+		return Array.from(this.invites.values()).filter((i) => i.channelId === channelId)
+	}
+
+	/**
+	 * Create an invite for a channel
+	 * @returns The created invite, or null if channel doesn't exist
+	 */
+	createInvite(guildId: Snowflake, channelId: Snowflake, config: MockInviteConfig = {}, inviterId: Snowflake): MockInvite | null {
+		// Validate channel exists
+		const channel = this.channels.get(channelId)
+		if (!channel || channel.guildId !== guildId) {
+			return null
+		}
+
+		// Generate unique code
+		let code = generateInviteCode()
+		while (this.invites.has(code)) {
+			code = generateInviteCode()
+		}
+
+		const now = new Date()
+		const maxAge = config.maxAge ?? InviteLimits.DEFAULT_MAX_AGE
+		const expiresAt = maxAge === 0 ? null : new Date(now.getTime() + maxAge * 1000).toISOString()
+
+		const invite: MockInvite = {
+			code,
+			guildId,
+			channelId,
+			inviterId,
+			maxAge,
+			maxUses: config.maxUses ?? 0,
+			uses: 0,
+			temporary: config.temporary ?? false,
+			createdAt: now.toISOString(),
+			expiresAt,
+			targetType: config.targetType,
+			targetUserId: config.targetUserId,
+			targetApplicationId: config.targetApplicationId
+		}
+
+		this.invites.set(code, invite)
+		return invite
+	}
+
+	/**
+	 * Delete an invite by code
+	 * @returns The deleted invite, or null if not found
+	 */
+	deleteInvite(code: string): MockInvite | null {
+		const invite = this.invites.get(code)
+		if (!invite) {
+			return null
+		}
+		this.invites.delete(code)
+		return invite
+	}
+
+	/**
+	 * Increment invite use count (when someone joins via invite)
+	 * @returns true if invite is still valid, false if expired/maxed out
+	 */
+	useInvite(code: string): boolean {
+		const invite = this.invites.get(code)
+		if (!invite) {
+			return false
+		}
+
+		// Check expiration
+		if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
+			this.invites.delete(code)
+			return false
+		}
+
+		invite.uses++
+
+		// Check max uses
+		if (invite.maxUses > 0 && invite.uses >= invite.maxUses) {
+			this.invites.delete(code)
+		}
+
+		return true
+	}
+
+	// ============================================================================
+	// Scheduled Event Operations (Phase 5B)
+	// ============================================================================
+
+	/**
+	 * Get a scheduled event by ID
+	 */
+	getScheduledEvent(guildId: Snowflake, eventId: Snowflake): MockScheduledEvent | undefined {
+		return this.scheduledEvents.get(`${guildId}:${eventId}`)
+	}
+
+	/**
+	 * Get all scheduled events for a guild
+	 */
+	getGuildScheduledEvents(guildId: Snowflake): MockScheduledEvent[] {
+		return Array.from(this.scheduledEvents.values()).filter((e) => e.guildId === guildId)
+	}
+
+	/**
+	 * Create a scheduled event
+	 * @returns The created event, or null if validation fails
+	 */
+	createScheduledEvent(guildId: Snowflake, config: MockScheduledEventConfig, creatorId: Snowflake): MockScheduledEvent | null {
+		// Validate guild exists
+		const guild = this.guilds.get(guildId)
+		if (!guild) {
+			return null
+		}
+
+		// Validate name
+		if (!config.name || config.name.length < ScheduledEventLimits.MIN_NAME_LENGTH || config.name.length > ScheduledEventLimits.MAX_NAME_LENGTH) {
+			return null
+		}
+
+		// Validate description
+		if (config.description && config.description.length > ScheduledEventLimits.MAX_DESCRIPTION_LENGTH) {
+			return null
+		}
+
+		// Validate channel for voice/stage events
+		if (config.entityType === GuildScheduledEventEntityType.Voice || config.entityType === GuildScheduledEventEntityType.StageInstance) {
+			if (!config.channelId) {
+				return null
+			}
+			const channel = this.channels.get(config.channelId)
+			if (!channel || channel.guildId !== guildId) {
+				return null
+			}
+		}
+
+		// Validate external events need location and end time
+		if (config.entityType === GuildScheduledEventEntityType.External) {
+			if (!config.entityMetadata?.location || !config.scheduledEndTime) {
+				return null
+			}
+			if (config.entityMetadata.location.length > ScheduledEventLimits.MAX_LOCATION_LENGTH) {
+				return null
+			}
+		}
+
+		// Check event limit
+		const existingEvents = this.getGuildScheduledEvents(guildId)
+		if (existingEvents.length >= ScheduledEventLimits.MAX_EVENTS_PER_GUILD) {
+			return null
+		}
+
+		const eventId = generateSnowflake()
+		const event: MockScheduledEvent = {
+			id: eventId,
+			guildId,
+			channelId: config.entityType === GuildScheduledEventEntityType.External ? null : (config.channelId ?? null),
+			creatorId,
+			name: config.name,
+			description: config.description ?? null,
+			scheduledStartTime: config.scheduledStartTime,
+			scheduledEndTime: config.scheduledEndTime ?? null,
+			privacyLevel: config.privacyLevel,
+			status: GuildScheduledEventStatus.Scheduled,
+			entityType: config.entityType,
+			entityId: null,
+			entityMetadata: config.entityMetadata ?? null,
+			image: config.image ?? null,
+			subscribers: new Set()
+		}
+
+		this.scheduledEvents.set(`${guildId}:${eventId}`, event)
+		return event
+	}
+
+	/**
+	 * Update a scheduled event
+	 * @returns The updated event, or null if not found
+	 */
+	updateScheduledEvent(guildId: Snowflake, eventId: Snowflake, updates: MockScheduledEventUpdateConfig): MockScheduledEvent | null {
+		const event = this.scheduledEvents.get(`${guildId}:${eventId}`)
+		if (!event) {
+			return null
+		}
+
+		// Validate name if provided
+		if (updates.name !== undefined) {
+			if (updates.name.length < ScheduledEventLimits.MIN_NAME_LENGTH || updates.name.length > ScheduledEventLimits.MAX_NAME_LENGTH) {
+				return null
+			}
+			event.name = updates.name
+		}
+
+		// Validate description if provided
+		if (updates.description !== undefined) {
+			if (updates.description !== null && updates.description.length > ScheduledEventLimits.MAX_DESCRIPTION_LENGTH) {
+				return null
+			}
+			event.description = updates.description
+		}
+
+		if (updates.privacyLevel !== undefined) event.privacyLevel = updates.privacyLevel
+		if (updates.scheduledStartTime !== undefined) event.scheduledStartTime = updates.scheduledStartTime
+		if (updates.scheduledEndTime !== undefined) event.scheduledEndTime = updates.scheduledEndTime
+		if (updates.channelId !== undefined) event.channelId = updates.channelId
+		if (updates.entityType !== undefined) event.entityType = updates.entityType
+		if (updates.entityMetadata !== undefined) event.entityMetadata = updates.entityMetadata
+		if (updates.status !== undefined) event.status = updates.status
+		if (updates.image !== undefined) event.image = updates.image
+
+		return event
+	}
+
+	/**
+	 * Delete a scheduled event
+	 * @returns true if deleted, false if not found
+	 */
+	deleteScheduledEvent(guildId: Snowflake, eventId: Snowflake): boolean {
+		return this.scheduledEvents.delete(`${guildId}:${eventId}`)
+	}
+
+	/**
+	 * Add a subscriber to a scheduled event
+	 * @returns true if added, false if event not found
+	 */
+	addScheduledEventSubscriber(guildId: Snowflake, eventId: Snowflake, userId: Snowflake): boolean {
+		const event = this.scheduledEvents.get(`${guildId}:${eventId}`)
+		if (!event) {
+			return false
+		}
+		event.subscribers.add(userId)
+		return true
+	}
+
+	/**
+	 * Remove a subscriber from a scheduled event
+	 * @returns true if removed, false if event not found or user wasn't subscribed
+	 */
+	removeScheduledEventSubscriber(guildId: Snowflake, eventId: Snowflake, userId: Snowflake): boolean {
+		const event = this.scheduledEvents.get(`${guildId}:${eventId}`)
+		if (!event) {
+			return false
+		}
+		return event.subscribers.delete(userId)
+	}
+
+	/**
+	 * Get subscribers for a scheduled event
+	 */
+	getScheduledEventSubscribers(guildId: Snowflake, eventId: Snowflake, options?: { limit?: number; withMember?: boolean; before?: Snowflake; after?: Snowflake }): Array<{ user: MockUser; member?: MockGuildMember }> {
+		const event = this.scheduledEvents.get(`${guildId}:${eventId}`)
+		if (!event) {
+			return []
+		}
+
+		let userIds = Array.from(event.subscribers)
+
+		// Apply pagination
+		if (options?.after) {
+			const afterIndex = userIds.indexOf(options.after)
+			if (afterIndex !== -1) {
+				userIds = userIds.slice(afterIndex + 1)
+			}
+		}
+		if (options?.before) {
+			const beforeIndex = userIds.indexOf(options.before)
+			if (beforeIndex !== -1) {
+				userIds = userIds.slice(0, beforeIndex)
+			}
+		}
+		if (options?.limit) {
+			userIds = userIds.slice(0, options.limit)
+		}
+
+		return userIds.map((userId) => {
+			const user = this.users.get(userId)
+			const result: { user: MockUser; member?: MockGuildMember } = {
+				user: user ?? { id: userId, username: 'Unknown', discriminator: '0', globalName: null, avatar: null, bot: false }
+			}
+			if (options?.withMember) {
+				const member = this.guildMembers.get(`${guildId}:${userId}`)
+				if (member) {
+					result.member = member
+				}
+			}
+			return result
+		})
+	}
+
+	// ============================================================================
+	// Auto-Moderation Rule Operations (Phase 5C)
+	// ============================================================================
+
+	/**
+	 * Get an auto-mod rule by ID
+	 */
+	getAutoModRule(guildId: Snowflake, ruleId: Snowflake): MockAutoModRule | undefined {
+		return this.autoModRules.get(`${guildId}:${ruleId}`)
+	}
+
+	/**
+	 * Get all auto-mod rules for a guild
+	 */
+	getGuildAutoModRules(guildId: Snowflake): MockAutoModRule[] {
+		return Array.from(this.autoModRules.values()).filter((r) => r.guildId === guildId)
+	}
+
+	/**
+	 * Create an auto-mod rule
+	 * @returns The created rule, or null if validation fails
+	 */
+	createAutoModRule(guildId: Snowflake, config: MockAutoModRuleConfig, creatorId: Snowflake): MockAutoModRule | null {
+		// Validate guild exists
+		const guild = this.guilds.get(guildId)
+		if (!guild) {
+			return null
+		}
+
+		// Validate name
+		if (!config.name || config.name.length < AutoModLimits.MIN_NAME_LENGTH || config.name.length > AutoModLimits.MAX_NAME_LENGTH) {
+			return null
+		}
+
+		// Validate at least one action
+		if (!config.actions || config.actions.length === 0) {
+			return null
+		}
+
+		// Check rule limit per trigger type
+		const existingRules = this.getGuildAutoModRules(guildId).filter((r) => r.triggerType === config.triggerType)
+		if (existingRules.length >= AutoModLimits.MAX_RULES_PER_TRIGGER_TYPE) {
+			return null
+		}
+
+		// Validate exempt roles/channels limits
+		if (config.exemptRoles && config.exemptRoles.length > AutoModLimits.MAX_EXEMPT_ROLES) {
+			return null
+		}
+		if (config.exemptChannels && config.exemptChannels.length > AutoModLimits.MAX_EXEMPT_CHANNELS) {
+			return null
+		}
+
+		const ruleId = generateSnowflake()
+		const rule: MockAutoModRule = {
+			id: ruleId,
+			guildId,
+			name: config.name,
+			creatorId,
+			eventType: config.eventType,
+			triggerType: config.triggerType,
+			triggerMetadata: config.triggerMetadata ?? {},
+			actions: config.actions,
+			enabled: config.enabled ?? false,
+			exemptRoles: config.exemptRoles ?? [],
+			exemptChannels: config.exemptChannels ?? []
+		}
+
+		this.autoModRules.set(`${guildId}:${ruleId}`, rule)
+		return rule
+	}
+
+	/**
+	 * Update an auto-mod rule
+	 * @returns The updated rule, or null if not found
+	 */
+	updateAutoModRule(guildId: Snowflake, ruleId: Snowflake, updates: MockAutoModRuleUpdateConfig): MockAutoModRule | null {
+		const rule = this.autoModRules.get(`${guildId}:${ruleId}`)
+		if (!rule) {
+			return null
+		}
+
+		// Validate name if provided
+		if (updates.name !== undefined) {
+			if (updates.name.length < AutoModLimits.MIN_NAME_LENGTH || updates.name.length > AutoModLimits.MAX_NAME_LENGTH) {
+				return null
+			}
+			rule.name = updates.name
+		}
+
+		// Validate exempt roles/channels limits
+		if (updates.exemptRoles !== undefined && updates.exemptRoles.length > AutoModLimits.MAX_EXEMPT_ROLES) {
+			return null
+		}
+		if (updates.exemptChannels !== undefined && updates.exemptChannels.length > AutoModLimits.MAX_EXEMPT_CHANNELS) {
+			return null
+		}
+
+		if (updates.eventType !== undefined) rule.eventType = updates.eventType
+		if (updates.triggerMetadata !== undefined) rule.triggerMetadata = updates.triggerMetadata
+		if (updates.actions !== undefined) rule.actions = updates.actions
+		if (updates.enabled !== undefined) rule.enabled = updates.enabled
+		if (updates.exemptRoles !== undefined) rule.exemptRoles = updates.exemptRoles
+		if (updates.exemptChannels !== undefined) rule.exemptChannels = updates.exemptChannels
+
+		return rule
+	}
+
+	/**
+	 * Delete an auto-mod rule
+	 * @returns The deleted rule, or null if not found
+	 */
+	deleteAutoModRule(guildId: Snowflake, ruleId: Snowflake): MockAutoModRule | null {
+		const key = `${guildId}:${ruleId}`
+		const rule = this.autoModRules.get(key)
+		if (!rule) {
+			return null
+		}
+		this.autoModRules.delete(key)
+		return rule
+	}
+
+	// ============================================================================
 	// State Management
 	// ============================================================================
 
@@ -2516,6 +3071,11 @@ export class MockServerState implements SessionState {
 		this.emojis.clear()
 		this.roles.clear()
 		this.guildMembers.clear()
+		this.bans.clear()
+		this.commands.clear()
+		this.invites.clear()
+		this.scheduledEvents.clear()
+		this.autoModRules.clear()
 		this.interactionsByToken.clear()
 		this.webhooksByToken.clear()
 		this.users.clear()
@@ -3422,4 +3982,20 @@ export function validateComponentsV2(
 		valid: errors.length === 0,
 		errors
 	}
+}
+
+// ============================================================================
+// Phase 5A: Invite Helper
+// ============================================================================
+
+/**
+ * Generate a random invite code
+ */
+function generateInviteCode(): string {
+	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+	let code = ''
+	for (let i = 0; i < InviteLimits.CODE_LENGTH; i++) {
+		code += chars.charAt(Math.floor(Math.random() * chars.length))
+	}
+	return code
 }

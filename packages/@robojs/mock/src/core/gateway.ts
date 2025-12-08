@@ -2,12 +2,13 @@ import type { IncomingMessage } from 'node:http'
 import type { Duplex } from 'node:stream'
 import WebSocket, { WebSocketServer } from 'ws'
 import { GatewayCloseCodes, GatewayIntentBits, GatewayOpcodes } from 'discord-api-types/v10'
-import { buildHelloPayload, buildHeartbeatAckPayload, buildReadyPayload, buildGuildCreatePayload, isValidIdentifyPayload } from '../discord/payloads.js'
+import { buildHelloPayload, buildHeartbeatAckPayload, buildReadyPayload, buildGuildCreatePayload, isValidIdentifyPayload, mockGuildMemberToAPIMember } from '../discord/payloads.js'
 import type { GatewayPayload } from '../discord/payloads.js'
 import { GATEWAY_VERSION, DEFAULT_HEARTBEAT_INTERVAL } from '../discord/opcodes.js'
 import { generateGatewaySessionId } from '../utils/id.js'
 import { sessionManager } from './manager.js'
 import { mockLogger } from './logger.js'
+import { getStageBridge } from './stage-bridge.js'
 import type { ActionType, ConnectionState } from '../types/index.js'
 import {
 	shouldDispatchEvent,
@@ -133,6 +134,13 @@ export class GatewayServer {
 				const session = sessionManager.get(state.sessionId)
 				session?.connections.delete(state.id)
 				mockLogger.debug(`Removed connection ${state.id} from session ${state.sessionId}`)
+
+				// Notify stage clients that bot disconnected (Phase 5A)
+				try {
+					getStageBridge().onBotDisconnected(state.sessionId, state.id, code, reason.toString())
+				} catch {
+					// Stage bridge may not be initialized
+				}
 			}
 			this.connections.delete(ws)
 			mockLogger.debug(`Connection closed: ${code} ${reason.toString()}`)
@@ -230,6 +238,16 @@ export class GatewayServer {
 				mockLogger.debug(`Heartbeat ACK sent to connection ${connState.id}`)
 				break
 
+			case GatewayOpcodes.RequestGuildMembers:
+				// Handle REQUEST_GUILD_MEMBERS (op 8)
+				if (!connState.identified) {
+					mockLogger.warn(`Received REQUEST_GUILD_MEMBERS before IDENTIFY, closing connection`)
+					ws.close(GatewayCloseCodes.NotAuthenticated, 'Not authenticated')
+					return
+				}
+				this.handleRequestGuildMembers(ws, connState, payload.d)
+				break
+
 			default:
 				// All other opcodes require authentication
 				if (!connState.identified) {
@@ -319,6 +337,117 @@ export class GatewayServer {
 			this.send(ws, guildCreatePayload)
 			mockLogger.debug(`Sent GUILD_CREATE for guild ${guild.id} (seq: ${connState.sequence}) to connection ${connState.id}`)
 		}
+
+		// Notify stage clients that bot is ready (Phase 5A)
+		try {
+			getStageBridge().onBotReady(session.id, session.state.botUser, connState.id)
+		} catch {
+			// Stage bridge may not be initialized
+		}
+	}
+
+	/**
+	 * Handle REQUEST_GUILD_MEMBERS (op 8)
+	 * Fetches guild members and responds with GUILD_MEMBERS_CHUNK events
+	 *
+	 * @see https://discord.com/developers/docs/topics/gateway-events#request-guild-members
+	 */
+	private handleRequestGuildMembers(ws: WebSocket, connState: ConnectionState, data: unknown): void {
+		// Validate payload
+		if (!data || typeof data !== 'object') {
+			mockLogger.warn('Invalid REQUEST_GUILD_MEMBERS payload')
+			return
+		}
+
+		const d = data as {
+			guild_id: string
+			query?: string
+			limit?: number
+			presences?: boolean
+			user_ids?: string[]
+			nonce?: string
+		}
+
+		// guild_id is required
+		if (typeof d.guild_id !== 'string') {
+			mockLogger.warn('REQUEST_GUILD_MEMBERS missing guild_id')
+			return
+		}
+
+		// Get session from connection state
+		const session = sessionManager.get(connState.sessionId)
+		if (!session) {
+			mockLogger.warn(`No session found for REQUEST_GUILD_MEMBERS: ${connState.sessionId}`)
+			return
+		}
+
+		// Validate guild exists
+		const guild = session.state.guilds.get(d.guild_id)
+		if (!guild) {
+			mockLogger.warn(`Unknown guild for REQUEST_GUILD_MEMBERS: ${d.guild_id}`)
+			return
+		}
+
+		// Collect members based on request
+		const members: Array<{ member: typeof session.state.guildMembers extends Map<string, infer V> ? V : never; user: typeof session.state.users extends Map<string, infer V> ? V : never }> = []
+
+		// If user_ids is specified, fetch specific users
+		if (Array.isArray(d.user_ids) && d.user_ids.length > 0) {
+			for (const userId of d.user_ids) {
+				const member = session.state.getGuildMember(d.guild_id, userId)
+				const user = session.state.users.get(userId)
+				if (member && user) {
+					members.push({ member, user })
+				}
+			}
+		} else {
+			// Otherwise, search by query or get all
+			const query = d.query ?? ''
+			const limit = d.limit ?? 0 // 0 means all members
+
+			for (const userId of guild.members) {
+				const member = session.state.getGuildMember(d.guild_id, userId)
+				const user = session.state.users.get(userId)
+				if (!member || !user) continue
+
+				// If query is specified, filter by username/nickname prefix
+				if (query.length > 0) {
+					const matchesQuery =
+						user.username.toLowerCase().startsWith(query.toLowerCase()) ||
+						(member.nick && member.nick.toLowerCase().startsWith(query.toLowerCase()))
+					if (!matchesQuery) continue
+				}
+
+				members.push({ member, user })
+
+				// Apply limit if specified and greater than 0
+				if (limit > 0 && members.length >= limit) {
+					break
+				}
+			}
+		}
+
+		// Convert to API format
+		const apiMembers = members.map(({ member, user }) => mockGuildMemberToAPIMember(member, user))
+
+		// Build and send GUILD_MEMBERS_CHUNK event
+		connState.sequence++
+		const chunkPayload: GatewayPayload = {
+			op: GatewayOpcodes.Dispatch,
+			s: connState.sequence,
+			t: 'GUILD_MEMBERS_CHUNK',
+			d: {
+				guild_id: d.guild_id,
+				members: apiMembers,
+				chunk_index: 0,
+				chunk_count: 1,
+				presences: [], // We don't track presences yet
+				nonce: d.nonce ?? null
+			}
+		}
+
+		this.send(ws, chunkPayload)
+		mockLogger.debug(`Sent GUILD_MEMBERS_CHUNK with ${apiMembers.length} members to connection ${connState.id}`)
 	}
 
 	/**

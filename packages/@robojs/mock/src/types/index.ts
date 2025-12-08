@@ -37,7 +37,11 @@ export interface SessionState {
 	emojis: Map<Snowflake, MockEmoji> // Phase 4K: Emoji storage
 	roles: Map<Snowflake, MockRole> // Phase 4L: Role storage
 	guildMembers: Map<string, MockGuildMember> // Phase 4L: key = `${guildId}:${userId}`
+	bans: Map<string, MockBan> // Phase 4L-B: key = `${guildId}:${userId}`
 	commands: Map<Snowflake, MockApplicationCommand> // Phase 4M: Application commands
+	invites: Map<string, MockInvite> // Phase 5A: Invite storage (key = code)
+	scheduledEvents: Map<string, MockScheduledEvent> // Phase 5B: key = `${guildId}:${eventId}`
+	autoModRules: Map<string, MockAutoModRule> // Phase 5C: key = `${guildId}:${ruleId}`
 	botUser: MockUser
 	applicationId: Snowflake
 	sequence: number
@@ -137,6 +141,19 @@ export interface MockGuild {
 	roles: Snowflake[]
 	stickers: Snowflake[] // Phase 4I: Guild sticker IDs
 	emojis: Snowflake[] // Phase 4K: Guild emoji IDs
+	// Guild settings (Phase 6: Guild CRUD)
+	description?: string | null
+	afkChannelId?: Snowflake | null
+	afkTimeout?: number // In seconds: 60, 300, 900, 1800, 3600
+	systemChannelId?: Snowflake | null
+	systemChannelFlags?: number
+	verificationLevel?: number // GuildVerificationLevel
+	defaultMessageNotifications?: number // GuildDefaultMessageNotifications
+	explicitContentFilter?: number // GuildExplicitContentFilter
+	mfaLevel?: number // GuildMFALevel
+	icon?: string | null
+	splash?: string | null
+	banner?: string | null
 }
 
 /**
@@ -958,6 +975,66 @@ export interface SerializedMockGuildMember {
 }
 
 // ============================================================================
+// Phase 4L-B: Ban Types
+// ============================================================================
+
+/**
+ * A guild ban entry
+ * @see https://discord.com/developers/docs/resources/guild#ban-object
+ */
+export interface MockBan {
+	guildId: Snowflake
+	userId: Snowflake
+	reason?: string | null
+	/** Timestamp when the ban was created */
+	createdAt: string
+}
+
+/**
+ * Configuration for creating a ban
+ */
+export interface MockBanConfig {
+	reason?: string | null
+	/** Number of seconds to delete messages for (0-604800, max 7 days) */
+	deleteMessageSeconds?: number
+}
+
+/**
+ * Options for dispatching guild ban add event
+ */
+export interface DispatchGuildBanAddOptions {
+	guildId: Snowflake
+	userId: Snowflake
+	reason?: string | null
+}
+
+/**
+ * Options for dispatching guild ban remove event
+ */
+export interface DispatchGuildBanRemoveOptions {
+	guildId: Snowflake
+	userId: Snowflake
+}
+
+/**
+ * Serialized ban for API responses
+ */
+export interface SerializedMockBan {
+	user: SerializedMockUser
+	reason: string | null
+}
+
+/**
+ * Validation constants for bans
+ */
+export const BanLimits = {
+	/** Maximum delete_message_seconds (7 days in seconds) */
+	MAX_DELETE_MESSAGE_SECONDS: 604800,
+	/** Maximum reason length */
+	MAX_REASON_LENGTH: 512
+} as const
+
+// ============================================================================
 // Phase 4E: Attachment Types
 // ============================================================================
 
@@ -1423,6 +1500,17 @@ export type ActionType =
 	| 'gateway_request_guild_members'
 	// Dispatched events (server → client, for debugging)
 	| 'dispatch'
+	// Invite actions (Phase 5A)
+	| 'invite_created'
+	| 'invite_deleted'
+	// Scheduled event actions (Phase 5B)
+	| 'scheduled_event_created'
+	| 'scheduled_event_updated'
+	| 'scheduled_event_deleted'
+	// AutoMod actions (Phase 5C)
+	| 'automod_rule_created'
+	| 'automod_rule_updated'
+	| 'automod_rule_deleted'
 
 /**
  * Recorded action from bot (for test assertions)
@@ -2215,3 +2303,565 @@ export interface SerializedMockApplicationCommand {
 	contexts?: number[]
 	version: string
 }
+
+// ============================================================================
+// Phase 5A: Invite Types
+// ============================================================================
+
+/**
+ * Invite target type enum
+ * @see https://discord.com/developers/docs/resources/invite#invite-object-invite-target-types
+ */
+export enum InviteTargetType {
+	Stream = 1,
+	EmbeddedApplication = 2
+}
+
+/**
+ * Full invite object
+ * @see https://discord.com/developers/docs/resources/invite#invite-object
+ */
+export interface MockInvite {
+	code: string
+	guildId: Snowflake
+	channelId: Snowflake
+	inviterId: Snowflake
+	maxAge: number // 0 = never expires, default 86400
+	maxUses: number // 0 = unlimited
+	uses: number
+	temporary: boolean
+	createdAt: string // ISO timestamp
+	expiresAt: string | null
+	targetType?: InviteTargetType
+	targetUserId?: Snowflake
+	targetApplicationId?: Snowflake
+}
+
+/**
+ * Configuration for creating an invite
+ */
+export interface MockInviteConfig {
+	maxAge?: number
+	maxUses?: number
+	temporary?: boolean
+	unique?: boolean
+	targetType?: InviteTargetType
+	targetUserId?: Snowflake
+	targetApplicationId?: Snowflake
+}
+
+/**
+ * Validation constants for invites
+ * @see https://discord.com/developers/docs/resources/invite
+ */
+export const InviteLimits = {
+	/** Maximum age in seconds (7 days) */
+	MAX_AGE: 604800,
+	/** Default max age in seconds (24 hours) */
+	DEFAULT_MAX_AGE: 86400,
+	/** Maximum uses (100, or 0 for unlimited) */
+	MAX_USES: 100,
+	/** Length of invite code */
+	CODE_LENGTH: 8
+} as const
+
+/**
+ * Serialized invite for API responses (basic)
+ */
+export interface SerializedMockInvite {
+	code: string
+	guild?: {
+		id: string
+		name: string
+		icon: string | null
+	}
+	channel: {
+		id: string
+		name: string
+		type: number
+	} | null
+	inviter?: SerializedMockUser
+	target_type?: InviteTargetType
+	target_user?: SerializedMockUser
+	target_application?: {
+		id: string
+		name: string
+		icon: string | null
+	}
+	approximate_member_count?: number
+	approximate_presence_count?: number
+	expires_at?: string | null
+	guild_scheduled_event?: SerializedMockScheduledEvent
+}
+
+/**
+ * Extended invite for guild/channel invite list (includes uses, max_uses, etc.)
+ */
+export interface SerializedMockExtendedInvite extends SerializedMockInvite {
+	uses: number
+	max_uses: number
+	max_age: number
+	temporary: boolean
+	created_at: string
+}
+
+// ============================================================================
+// Phase 5B: Scheduled Event Types
+// ============================================================================
+
+/**
+ * Guild scheduled event privacy level
+ * @see https://discord.com/developers/docs/resources/guild-scheduled-event#guild-scheduled-event-object-guild-scheduled-event-privacy-level
+ */
+export enum GuildScheduledEventPrivacyLevel {
+	GuildOnly = 2
+}
+
+/**
+ * Guild scheduled event status
+ * @see https://discord.com/developers/docs/resources/guild-scheduled-event#guild-scheduled-event-object-guild-scheduled-event-status
+ */
+export enum GuildScheduledEventStatus {
+	Scheduled = 1,
+	Active = 2,
+	Completed = 3,
+	Canceled = 4
+}
+
+/**
+ * Guild scheduled event entity type
+ * @see https://discord.com/developers/docs/resources/guild-scheduled-event#guild-scheduled-event-object-guild-scheduled-event-entity-types
+ */
+export enum GuildScheduledEventEntityType {
+	StageInstance = 1,
+	Voice = 2,
+	External = 3
+}
+
+/**
+ * Entity metadata for external events
+ */
+export interface MockScheduledEventEntityMetadata {
+	location?: string // Max 100 chars, required for EXTERNAL
+}
+
+/**
+ * Full scheduled event object
+ * @see https://discord.com/developers/docs/resources/guild-scheduled-event#guild-scheduled-event-object
+ */
+export interface MockScheduledEvent {
+	id: Snowflake
+	guildId: Snowflake
+	channelId: Snowflake | null // Required for STAGE_INSTANCE/VOICE, null for EXTERNAL
+	creatorId: Snowflake | null
+	name: string
+	description: string | null
+	scheduledStartTime: string // ISO timestamp
+	scheduledEndTime: string | null // Required for EXTERNAL
+	privacyLevel: GuildScheduledEventPrivacyLevel
+	status: GuildScheduledEventStatus
+	entityType: GuildScheduledEventEntityType
+	entityId: Snowflake | null
+	entityMetadata: MockScheduledEventEntityMetadata | null
+	image: string | null
+	/** User IDs subscribed to this event */
+	subscribers: Set<Snowflake>
+}
+
+/**
+ * Configuration for creating a scheduled event
+ */
+export interface MockScheduledEventConfig {
+	name: string
+	privacyLevel: GuildScheduledEventPrivacyLevel
+	scheduledStartTime: string
+	entityType: GuildScheduledEventEntityType
+	channelId?: Snowflake // Required for STAGE_INSTANCE/VOICE
+	scheduledEndTime?: string // Required for EXTERNAL
+	description?: string
+	entityMetadata?: MockScheduledEventEntityMetadata
+	image?: string
+}
+
+/**
+ * Configuration for updating a scheduled event
+ */
+export interface MockScheduledEventUpdateConfig {
+	name?: string
+	privacyLevel?: GuildScheduledEventPrivacyLevel
+	scheduledStartTime?: string
+	scheduledEndTime?: string | null
+	description?: string | null
+	channelId?: Snowflake | null
+	entityType?: GuildScheduledEventEntityType
+	entityMetadata?: MockScheduledEventEntityMetadata | null
+	status?: GuildScheduledEventStatus
+	image?: string | null
+}
+
+/**
+ * Validation constants for scheduled events
+ * @see https://discord.com/developers/docs/resources/guild-scheduled-event
+ */
+export const ScheduledEventLimits = {
+	/** Maximum name length */
+	MAX_NAME_LENGTH: 100,
+	/** Minimum name length */
+	MIN_NAME_LENGTH: 1,
+	/** Maximum description length */
+	MAX_DESCRIPTION_LENGTH: 1000,
+	/** Maximum location length for external events */
+	MAX_LOCATION_LENGTH: 100,
+	/** Maximum scheduled events per guild */
+	MAX_EVENTS_PER_GUILD: 100
+} as const
+
+/**
+ * Serialized scheduled event for API responses
+ */
+export interface SerializedMockScheduledEvent {
+	id: string
+	guild_id: string
+	channel_id: string | null
+	creator_id: string | null
+	creator?: SerializedMockUser
+	name: string
+	description: string | null
+	scheduled_start_time: string
+	scheduled_end_time: string | null
+	privacy_level: GuildScheduledEventPrivacyLevel
+	status: GuildScheduledEventStatus
+	entity_type: GuildScheduledEventEntityType
+	entity_id: string | null
+	entity_metadata: MockScheduledEventEntityMetadata | null
+	user_count?: number
+	image?: string | null
+}
+
+/**
+ * Scheduled event user (subscriber)
+ */
+export interface MockScheduledEventUser {
+	guildScheduledEventId: Snowflake
+	user: MockUser
+	member?: MockGuildMember
+}
+
+/**
+ * Serialized scheduled event user
+ */
+export interface SerializedMockScheduledEventUser {
+	guild_scheduled_event_id: string
+	user: SerializedMockUser
+	member?: SerializedMockGuildMember
+}
+
+/**
+ * Options for dispatching scheduled event create
+ */
+export interface DispatchScheduledEventCreateOptions {
+	guildId: Snowflake
+	event: MockScheduledEventConfig
+}
+
+/**
+ * Options for dispatching scheduled event update
+ */
+export interface DispatchScheduledEventUpdateOptions {
+	guildId: Snowflake
+	eventId: Snowflake
+	updates: MockScheduledEventUpdateConfig
+}
+
+/**
+ * Options for dispatching scheduled event delete
+ */
+export interface DispatchScheduledEventDeleteOptions {
+	guildId: Snowflake
+	eventId: Snowflake
+}
+
+/**
+ * Options for dispatching scheduled event user add/remove
+ */
+export interface DispatchScheduledEventUserOptions {
+	guildId: Snowflake
+	eventId: Snowflake
+	userId: Snowflake
+}
+
+// ============================================================================
+// Phase 5C: Auto-Moderation Types
+// ============================================================================
+
+/**
+ * Auto-moderation rule event type
+ * @see https://discord.com/developers/docs/resources/auto-moderation#auto-moderation-rule-object-event-types
+ */
+export enum AutoModerationEventType {
+	MessageSend = 1,
+	MemberUpdate = 2
+}
+
+/**
+ * Auto-moderation rule trigger type
+ * @see https://discord.com/developers/docs/resources/auto-moderation#auto-moderation-rule-object-trigger-types
+ */
+export enum AutoModerationTriggerType {
+	Keyword = 1,
+	Spam = 3,
+	KeywordPreset = 4,
+	MentionSpam = 5,
+	MemberProfile = 6
+}
+
+/**
+ * Auto-moderation keyword preset type
+ * @see https://discord.com/developers/docs/resources/auto-moderation#auto-moderation-rule-object-keyword-preset-types
+ */
+export enum AutoModerationKeywordPresetType {
+	Profanity = 1,
+	SexualContent = 2,
+	Slurs = 3
+}
+
+/**
+ * Auto-moderation action type
+ * @see https://discord.com/developers/docs/resources/auto-moderation#auto-moderation-action-object-action-types
+ */
+export enum AutoModerationActionType {
+	BlockMessage = 1,
+	SendAlertMessage = 2,
+	Timeout = 3,
+	BlockMemberInteraction = 4
+}
+
+/**
+ * Auto-moderation trigger metadata
+ * @see https://discord.com/developers/docs/resources/auto-moderation#auto-moderation-rule-object-trigger-metadata
+ */
+export interface MockAutoModTriggerMetadata {
+	keywordFilter?: string[] // Max 1000 entries, each max 60 chars
+	regexPatterns?: string[] // Max 10 patterns, each max 260 chars
+	presets?: AutoModerationKeywordPresetType[]
+	allowList?: string[] // Max 100 entries for keywords, 1000 for presets
+	mentionTotalLimit?: number // Max mentions (0-50)
+	mentionRaidProtectionEnabled?: boolean
+}
+
+/**
+ * Auto-moderation action metadata
+ */
+export interface MockAutoModActionMetadata {
+	channelId?: Snowflake // For SendAlertMessage
+	durationSeconds?: number // For Timeout (max 2419200 = 28 days)
+	customMessage?: string // For BlockMessage (max 150 chars)
+}
+
+/**
+ * Auto-moderation action
+ * @see https://discord.com/developers/docs/resources/auto-moderation#auto-moderation-action-object
+ */
+export interface MockAutoModAction {
+	type: AutoModerationActionType
+	metadata?: MockAutoModActionMetadata
+}
+
+/**
+ * Full auto-moderation rule object
+ * @see https://discord.com/developers/docs/resources/auto-moderation#auto-moderation-rule-object
+ */
+export interface MockAutoModRule {
+	id: Snowflake
+	guildId: Snowflake
+	name: string
+	creatorId: Snowflake
+	eventType: AutoModerationEventType
+	triggerType: AutoModerationTriggerType
+	triggerMetadata: MockAutoModTriggerMetadata
+	actions: MockAutoModAction[]
+	enabled: boolean
+	exemptRoles: Snowflake[]
+	exemptChannels: Snowflake[]
+}
+
+/**
+ * Configuration for creating an auto-mod rule
+ */
+export interface MockAutoModRuleConfig {
+	name: string
+	eventType: AutoModerationEventType
+	triggerType: AutoModerationTriggerType
+	triggerMetadata?: MockAutoModTriggerMetadata
+	actions: MockAutoModAction[]
+	enabled?: boolean
+	exemptRoles?: Snowflake[]
+	exemptChannels?: Snowflake[]
+}
+
+/**
+ * Configuration for updating an auto-mod rule
+ */
+export interface MockAutoModRuleUpdateConfig {
+	name?: string
+	eventType?: AutoModerationEventType
+	triggerMetadata?: MockAutoModTriggerMetadata
+	actions?: MockAutoModAction[]
+	enabled?: boolean
+	exemptRoles?: Snowflake[]
+	exemptChannels?: Snowflake[]
+}
+
+/**
+ * Validation constants for auto-moderation
+ * @see https://discord.com/developers/docs/resources/auto-moderation
+ */
+export const AutoModLimits = {
+	/** Maximum rules per guild (per trigger type) */
+	MAX_RULES_PER_TRIGGER_TYPE: 6,
+	/** Maximum keyword filter entries */
+	MAX_KEYWORD_FILTER: 1000,
+	/** Maximum keyword length */
+	MAX_KEYWORD_LENGTH: 60,
+	/** Maximum regex patterns */
+	MAX_REGEX_PATTERNS: 10,
+	/** Maximum regex pattern length */
+	MAX_REGEX_LENGTH: 260,
+	/** Maximum allow list entries (for keyword rules) */
+	MAX_ALLOW_LIST_KEYWORD: 100,
+	/** Maximum allow list entries (for preset rules) */
+	MAX_ALLOW_LIST_PRESET: 1000,
+	/** Maximum exempt roles */
+	MAX_EXEMPT_ROLES: 20,
+	/** Maximum exempt channels */
+	MAX_EXEMPT_CHANNELS: 50,
+	/** Maximum mention total limit */
+	MAX_MENTION_TOTAL_LIMIT: 50,
+	/** Maximum timeout duration in seconds (28 days) */
+	MAX_TIMEOUT_DURATION: 2419200,
+	/** Maximum custom message length */
+	MAX_CUSTOM_MESSAGE_LENGTH: 150,
+	/** Maximum rule name length */
+	MAX_NAME_LENGTH: 100,
+	/** Minimum rule name length */
+	MIN_NAME_LENGTH: 1
+} as const
+
+/**
+ * Serialized auto-mod rule for API responses
+ */
+export interface SerializedMockAutoModRule {
+	id: string
+	guild_id: string
+	name: string
+	creator_id: string
+	event_type: AutoModerationEventType
+	trigger_type: AutoModerationTriggerType
+	trigger_metadata: {
+		keyword_filter?: string[]
+		regex_patterns?: string[]
+		presets?: AutoModerationKeywordPresetType[]
+		allow_list?: string[]
+		mention_total_limit?: number
+		mention_raid_protection_enabled?: boolean
+	}
+	actions: Array<{
+		type: AutoModerationActionType
+		metadata?: {
+			channel_id?: string
+			duration_seconds?: number
+			custom_message?: string
+		}
+	}>
+	enabled: boolean
+	exempt_roles: string[]
+	exempt_channels: string[]
+}
+
+/**
+ * Auto-moderation action execution data
+ * @see https://discord.com/developers/docs/events/gateway-events#auto-moderation-action-execution
+ */
+export interface MockAutoModActionExecution {
+	guildId: Snowflake
+	action: MockAutoModAction
+	ruleId: Snowflake
+	ruleTriggerType: AutoModerationTriggerType
+	userId: Snowflake
+	channelId?: Snowflake
+	messageId?: Snowflake
+	alertSystemMessageId?: Snowflake
+	content: string
+	matchedKeyword: string | null
+	matchedContent: string | null
+}
+
+/**
+ * Serialized auto-mod action execution for API responses
+ */
+export interface SerializedMockAutoModActionExecution {
+	guild_id: string
+	action: {
+		type: AutoModerationActionType
+		metadata?: {
+			channel_id?: string
+			duration_seconds?: number
+			custom_message?: string
+		}
+	}
+	rule_id: string
+	rule_trigger_type: AutoModerationTriggerType
+	user_id: string
+	channel_id?: string
+	message_id?: string
+	alert_system_message_id?: string
+	content: string
+	matched_keyword: string | null
+	matched_content: string | null
+}
+
+/**
+ * Options for dispatching auto-mod rule create
+ */
+export interface DispatchAutoModRuleCreateOptions {
+	guildId: Snowflake
+	rule: MockAutoModRuleConfig
+}
+
+/**
+ * Options for dispatching auto-mod rule update
+ */
+export interface DispatchAutoModRuleUpdateOptions {
+	guildId: Snowflake
+	ruleId: Snowflake
+	updates: MockAutoModRuleUpdateConfig
+}
+
+/**
+ * Options for dispatching auto-mod rule delete
+ */
+export interface DispatchAutoModRuleDeleteOptions {
+	guildId: Snowflake
+	ruleId: Snowflake
+}
+
+/**
+ * Options for dispatching auto-mod action execution
+ */
+export interface DispatchAutoModActionExecutionOptions {
+	guildId: Snowflake
+	action: MockAutoModAction
+	ruleId: Snowflake
+	ruleTriggerType: AutoModerationTriggerType
+	userId: Snowflake
+	channelId?: Snowflake
+	messageId?: Snowflake
+	content: string
+	matchedKeyword?: string
+	matchedContent?: string
+}
+
+// ============================================================================
+// Phase 5A: Stage WebSocket Protocol Types
+// ============================================================================
+export * from './stage.js'
