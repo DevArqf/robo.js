@@ -31,7 +31,8 @@ export function MainMenu({ onPlay }: MainMenuProps) {
 									width: '200px',
 									color: 'white',
 									height: '50px',
-									fontSize: '24px'
+									fontSize: '16px',
+									fontFamily: "'Press Start 2P', 'Silkscreen', monospace"
 								}}
 							>
 								{item}
@@ -53,10 +54,11 @@ export function MainMenu({ onPlay }: MainMenuProps) {
 								width: '200px',
 								color: 'white',
 								height: '50px',
-								fontSize: '24px',
+								fontSize: '16px',
+								fontFamily: "'Press Start 2P', 'Silkscreen', monospace",
 								display: 'flex',
 								justifyContent: 'center',
-								lineHeight: '1.3'
+								lineHeight: '2'
 							}}
 						>
 							{item}
