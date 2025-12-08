@@ -5,9 +5,9 @@ import { NodeEngine } from '@robojs/server/engines.js'
 import { nanoid } from 'nanoid'
 import { color } from 'robo.js'
 import WebSocket, { WebSocketServer } from 'ws'
-import type { Client, MessagePayload } from '../core/types.js'
+import type { Client, MessagePayload, ServerZone } from '../core/types.js'
 
-export const SyncServer = { getSocketServer, start }
+export const SyncServer = { getSocketServer, getZone, start }
 
 interface Connection<ClientData = unknown> {
 	id: string
@@ -416,4 +416,112 @@ function start() {
 			wss?.emit('connection', ws, req)
 		})
 	})
+}
+
+/**
+ * Get a server-side Zone handle for direct state manipulation.
+ *
+ * @example
+ * const zone = SyncServer.getZone(['game', 'room1'])
+ * zone.setState({ score: 100 })
+ * zone.broadcast({ event: 'powerup' })
+ */
+function getZone<T = unknown>(key: (string | null)[]): ServerZone<T> {
+	const cleanKey = normalizeKey(key)
+	// Filter out nulls for MessagePayload compatibility
+	const keyArray = key.filter((k): k is string => k !== null)
+
+	return {
+		getState(): T | undefined {
+			return _state[cleanKey] as T | undefined
+		},
+
+		setState(data: T): void {
+			_state[cleanKey] = data
+			syncLogger.debug(`Server set state for ${cleanKey}`)
+			broadcastUpdate(cleanKey, data, keyArray)
+		},
+
+		setHost(clientId: string | null): void {
+			if (clientId === null) {
+				// Clear host - next subscriber will become host
+				delete _keyHosts[cleanKey]
+				syncLogger.debug(`Server cleared host for ${cleanKey}`)
+			} else {
+				// Verify client is subscribed before setting as host
+				const subscribers = _keySubscribers[cleanKey] || []
+				if (!subscribers.includes(clientId)) {
+					syncLogger.warn(`Cannot set host to ${clientId} - not subscribed to ${cleanKey}`)
+					return
+				}
+				_keyHosts[cleanKey] = clientId
+				syncLogger.debug(`Server set host to ${clientId} for ${cleanKey}`)
+			}
+
+			// Broadcast updated clients/host info
+			if (_keySubscribers[cleanKey]?.length > 0) {
+				broadcastClientsUpdate(cleanKey)
+			}
+
+			// Send setHost message so clients know it was server-initiated
+			const payload: MessagePayload = {
+				data: { hostId: _keyHosts[cleanKey] || null },
+				key: keyArray,
+				type: 'setHost'
+			}
+			_connections
+				.filter((c) => c.watch.includes(cleanKey))
+				.forEach((c) => {
+					syncLogger.debug(`Sending setHost to ${c.id}`)
+					c.ws.send(JSON.stringify(payload))
+				})
+		},
+
+		getHost(): string | undefined {
+			return _keyHosts[cleanKey]
+		},
+
+		getClients(): Client[] {
+			return getClientsForKey(cleanKey)
+		},
+
+		broadcast(payload: unknown): void {
+			const broadcastPayload: MessagePayload = {
+				data: payload,
+				key: keyArray,
+				type: 'broadcast',
+				fromClientId: '__server__'
+			}
+
+			_connections
+				.filter((c) => c.watch.includes(cleanKey))
+				.forEach((c) => {
+					syncLogger.debug(`Server broadcasting to ${c.id}`)
+					c.ws.send(JSON.stringify(broadcastPayload))
+				})
+		},
+
+		send(clientId: string, payload: unknown): void {
+			const targetConnection = _connections.find((c) => c.id === clientId)
+
+			if (!targetConnection) {
+				syncLogger.warn(`Cannot send to ${clientId} - connection not found`)
+				return
+			}
+
+			if (!targetConnection.watch.includes(cleanKey)) {
+				syncLogger.warn(`Cannot send to ${clientId} - not watching ${cleanKey}`)
+				return
+			}
+
+			const sendPayload: MessagePayload = {
+				data: payload,
+				key: keyArray,
+				type: 'send',
+				fromClientId: '__server__'
+			}
+			syncLogger.debug(`Server sending to ${clientId}`)
+			targetConnection.ws.send(JSON.stringify(sendPayload))
+		}
+	}
 }

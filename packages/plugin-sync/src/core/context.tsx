@@ -227,6 +227,31 @@ function setupSyncState<ClientData = unknown>(clientData?: ClientData): SyncCont
 					break
 				}
 
+				case 'setHost': {
+					// Server-initiated host change
+					const { hostId: newHostId } = payload.data as { hostId: string | null }
+					const cleanKey = normalizeKey(payload.key)
+
+					hostsCache[cleanKey] = newHostId || ''
+
+					// Notify context callbacks about host change
+					if (contextCallbacks[cleanKey]) {
+						const event: ContextEvent = {
+							type: 'clients',
+							clients: clientsCache[cleanKey] || [],
+							hostId: newHostId || ''
+						}
+						contextCallbacks[cleanKey].forEach((callback) => {
+							try {
+								callback(event)
+							} catch (error) {
+								console.error('Context callback error:', error)
+							}
+						})
+					}
+					break
+				}
+
 				case 'broadcast':
 				case 'send': {
 					// Ephemeral message from another client

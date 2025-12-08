@@ -671,4 +671,236 @@ describe('SyncServer', () => {
 			expect(leaveEvents.length).toBe(2)
 		})
 	})
+
+	describe('SyncServer.getZone() API', () => {
+		test('getZone returns zone interface', async () => {
+			const server = await getServer()
+			const zone = server.getZone(['game', 'room1'])
+
+			expect(zone).toBeDefined()
+			expect(typeof zone.getState).toBe('function')
+			expect(typeof zone.setState).toBe('function')
+			expect(typeof zone.setHost).toBe('function')
+			expect(typeof zone.getHost).toBe('function')
+			expect(typeof zone.getClients).toBe('function')
+			expect(typeof zone.broadcast).toBe('function')
+			expect(typeof zone.send).toBe('function')
+		})
+
+		test('getState returns undefined for empty key', async () => {
+			const server = await getServer()
+			const zone = server.getZone(['empty', 'key'])
+
+			expect(zone.getState()).toBeUndefined()
+		})
+
+		test('setState sets state and broadcasts to subscribers', async () => {
+			const server = await getServer()
+			const ws = createConnection()
+
+			ws.simulateMessage(createPayload('on', undefined, ['game', 'room1']))
+			ws.clearSentMessages()
+
+			const zone = server.getZone(['game', 'room1'])
+			zone.setState({ score: 100 })
+
+			// Client should receive update
+			const updateMsg = ws.getSentPayloadsByType('update')[0]
+			expect(updateMsg).toBeDefined()
+			expect(updateMsg.data).toEqual({ score: 100 })
+
+			// State should be retrievable
+			expect(zone.getState()).toEqual({ score: 100 })
+		})
+
+		test('getHost returns current host ID', async () => {
+			const server = await getServer()
+			const ws = createConnection()
+
+			const wsClientId = (ws.getSentPayloadsByType('connected')[0].data as { clientId: string }).clientId
+
+			ws.simulateMessage(createPayload('on', undefined, ['game', 'room1']))
+
+			const zone = server.getZone(['game', 'room1'])
+			expect(zone.getHost()).toBe(wsClientId)
+		})
+
+		test('setHost changes host to valid subscriber', async () => {
+			const server = await getServer()
+			const ws1 = createConnection()
+			const ws2 = createConnection()
+
+			const ws2ClientId = (ws2.getSentPayloadsByType('connected')[0].data as { clientId: string }).clientId
+
+			ws1.simulateMessage(createPayload('on', undefined, ['game', 'room1']))
+			ws2.simulateMessage(createPayload('on', undefined, ['game', 'room1']))
+			ws1.clearSentMessages()
+			ws2.clearSentMessages()
+
+			const zone = server.getZone(['game', 'room1'])
+			zone.setHost(ws2ClientId)
+
+			expect(zone.getHost()).toBe(ws2ClientId)
+
+			// Clients should receive setHost message
+			const setHostMsg1 = ws1.getSentPayloadsByType('setHost')[0]
+			const setHostMsg2 = ws2.getSentPayloadsByType('setHost')[0]
+			expect(setHostMsg1).toBeDefined()
+			expect(setHostMsg2).toBeDefined()
+			expect((setHostMsg1.data as { hostId: string }).hostId).toBe(ws2ClientId)
+		})
+
+		test('setHost with null clears host', async () => {
+			const server = await getServer()
+			const ws = createConnection()
+
+			ws.simulateMessage(createPayload('on', undefined, ['game', 'room1']))
+			ws.clearSentMessages()
+
+			const zone = server.getZone(['game', 'room1'])
+			zone.setHost(null)
+
+			expect(zone.getHost()).toBeUndefined()
+
+			// Client should receive setHost with null
+			const setHostMsg = ws.getSentPayloadsByType('setHost')[0]
+			expect(setHostMsg).toBeDefined()
+			expect((setHostMsg.data as { hostId: string | null }).hostId).toBeNull()
+		})
+
+		test('setHost rejects non-subscriber client', async () => {
+			const server = await getServer()
+			const ws = createConnection()
+
+			const wsClientId = (ws.getSentPayloadsByType('connected')[0].data as { clientId: string }).clientId
+
+			ws.simulateMessage(createPayload('on', undefined, ['game', 'room1']))
+			ws.clearSentMessages()
+
+			const zone = server.getZone(['game', 'room1'])
+
+			// Try to set non-subscriber as host
+			zone.setHost('fake-client-id')
+
+			// Host should remain unchanged
+			expect(zone.getHost()).toBe(wsClientId)
+
+			// No setHost message should be sent
+			expect(ws.getSentPayloadsByType('setHost').length).toBe(0)
+		})
+
+		test('getClients returns all subscribers', async () => {
+			const server = await getServer()
+			const ws1 = createConnection()
+			const ws2 = createConnection()
+
+			const ws1ClientId = (ws1.getSentPayloadsByType('connected')[0].data as { clientId: string }).clientId
+			const ws2ClientId = (ws2.getSentPayloadsByType('connected')[0].data as { clientId: string }).clientId
+
+			ws1.simulateMessage(createPayload('on', undefined, ['game', 'room1']))
+			ws2.simulateMessage(createPayload('on', undefined, ['game', 'room1']))
+
+			const zone = server.getZone(['game', 'room1'])
+			const clients = zone.getClients()
+
+			expect(clients.length).toBe(2)
+			expect(clients.map((c) => c.id)).toContain(ws1ClientId)
+			expect(clients.map((c) => c.id)).toContain(ws2ClientId)
+		})
+
+		test('broadcast sends to all subscribers with __server__ fromClientId', async () => {
+			const server = await getServer()
+			const ws1 = createConnection()
+			const ws2 = createConnection()
+
+			ws1.simulateMessage(createPayload('on', undefined, ['game', 'room1']))
+			ws2.simulateMessage(createPayload('on', undefined, ['game', 'room1']))
+			ws1.clearSentMessages()
+			ws2.clearSentMessages()
+
+			const zone = server.getZone(['game', 'room1'])
+			zone.broadcast({ event: 'game-over' })
+
+			// Both clients should receive
+			const broadcast1 = ws1.getSentPayloadsByType('broadcast')[0]
+			const broadcast2 = ws2.getSentPayloadsByType('broadcast')[0]
+			expect(broadcast1).toBeDefined()
+			expect(broadcast2).toBeDefined()
+			expect(broadcast1.data).toEqual({ event: 'game-over' })
+			expect(broadcast1.fromClientId).toBe('__server__')
+		})
+
+		test('send delivers to specific client with __server__ fromClientId', async () => {
+			const server = await getServer()
+			const ws1 = createConnection()
+			const ws2 = createConnection()
+
+			const ws2ClientId = (ws2.getSentPayloadsByType('connected')[0].data as { clientId: string }).clientId
+
+			ws1.simulateMessage(createPayload('on', undefined, ['game', 'room1']))
+			ws2.simulateMessage(createPayload('on', undefined, ['game', 'room1']))
+			ws1.clearSentMessages()
+			ws2.clearSentMessages()
+
+			const zone = server.getZone(['game', 'room1'])
+			zone.send(ws2ClientId, { message: 'hello' })
+
+			// Only ws2 should receive
+			expect(ws1.getSentPayloadsByType('send').length).toBe(0)
+			const sendMsg = ws2.getSentPayloadsByType('send')[0]
+			expect(sendMsg).toBeDefined()
+			expect(sendMsg.data).toEqual({ message: 'hello' })
+			expect(sendMsg.fromClientId).toBe('__server__')
+		})
+
+		test('send to non-subscriber is ignored', async () => {
+			const server = await getServer()
+			const ws1 = createConnection()
+			const ws2 = createConnection()
+
+			const ws2ClientId = (ws2.getSentPayloadsByType('connected')[0].data as { clientId: string }).clientId
+
+			ws1.simulateMessage(createPayload('on', undefined, ['game', 'room1']))
+			// ws2 subscribes to different room
+			ws2.simulateMessage(createPayload('on', undefined, ['other', 'room']))
+			ws2.clearSentMessages()
+
+			const zone = server.getZone(['game', 'room1'])
+			zone.send(ws2ClientId, { message: 'hello' })
+
+			// ws2 should not receive (not in game.room1)
+			expect(ws2.getSentPayloadsByType('send').length).toBe(0)
+		})
+
+		test('send to non-existent client is ignored', async () => {
+			const server = await getServer()
+			const ws = createConnection()
+
+			ws.simulateMessage(createPayload('on', undefined, ['game', 'room1']))
+			ws.clearSentMessages()
+
+			const zone = server.getZone(['game', 'room1'])
+			// Should not throw
+			zone.send('fake-client-id', { message: 'hello' })
+
+			expect(ws.getSentPayloadsByType('send').length).toBe(0)
+		})
+
+		test('zone operations work with normalized keys', async () => {
+			const server = await getServer()
+			const ws = createConnection()
+
+			// Subscribe using array key
+			ws.simulateMessage(createPayload('on', undefined, ['game', 'level', '1']))
+			ws.clearSentMessages()
+
+			// Get zone using same array key
+			const zone = server.getZone(['game', 'level', '1'])
+			zone.setState({ progress: 50 })
+
+			const updateMsg = ws.getSentPayloadsByType('update')[0]
+			expect(updateMsg).toBeDefined()
+			expect(updateMsg.data).toEqual({ progress: 50 })
+		})
+	})
 })
