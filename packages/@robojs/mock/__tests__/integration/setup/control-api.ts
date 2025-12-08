@@ -311,3 +311,177 @@ export async function setHeartbeatInterval(interval: number): Promise<{ interval
 export async function getHeartbeatInterval(): Promise<{ interval: number; success: boolean }> {
 	return controlAPI('/gateway/heartbeat-interval')
 }
+
+// ============================================================================
+// Recording & Replay API Helpers
+// ============================================================================
+
+/**
+ * Recorded action from the session
+ */
+export interface RecordedAction {
+	id: string
+	type: string
+	data: unknown
+	timestamp: number
+	sequence?: number
+}
+
+/**
+ * Session recording export format
+ */
+export interface SessionRecording {
+	version: number
+	metadata: {
+		sessionId: string
+		sessionName?: string
+		startTime: number
+		endTime: number
+		duration: number
+		actionCount: number
+		botUser: { id: string; username: string }
+		applicationId: string
+		recordedAt: string
+	}
+	initialConfig: unknown
+	actions: RecordedAction[]
+}
+
+/**
+ * Options for replaying a recording
+ */
+export interface ReplayOptions {
+	speed?: number // Speed multiplier (default: 1, 0 = instant)
+	validate?: boolean // Validate bot responses (default: false)
+	validationMode?: 'strict' | 'flexible' | 'type-only' // Validation strictness
+	responseTimeout?: number // Timeout for bot responses in ms
+}
+
+/**
+ * Result from replaying a recording
+ */
+export interface ReplayResult {
+	success: boolean
+	actionsReplayed: number
+	duration: number
+	validation?: {
+		passed: boolean
+		matched: number
+		mismatched: number
+		extra: number
+		missing: number
+		mismatches: Array<{
+			expected: unknown
+			actual: unknown
+			path: string
+		}>
+	}
+}
+
+/**
+ * Export a session recording
+ *
+ * @param sessionId - Session ID to export recording from
+ * @returns The complete session recording
+ */
+export async function getSessionRecording(sessionId: string): Promise<SessionRecording> {
+	return controlAPI(`/sessions/${sessionId}/recording`)
+}
+
+/**
+ * Replay a recording into a session
+ *
+ * @param sessionId - Session ID to replay into
+ * @param recording - The recording to replay
+ * @param options - Replay options
+ * @returns Replay result
+ */
+export async function replayRecording(
+	sessionId: string,
+	recording: SessionRecording,
+	options?: ReplayOptions
+): Promise<ReplayResult> {
+	return controlAPI(`/sessions/${sessionId}/replay`, {
+		method: 'POST',
+		body: { recording, options }
+	})
+}
+
+/**
+ * Get the full session state
+ *
+ * @param sessionId - Session ID
+ * @returns Full session state including all guilds, channels, users, etc.
+ */
+export async function getFullSessionState(sessionId: string): Promise<SessionState> {
+	return controlAPI(`/sessions/${sessionId}/state`)
+}
+
+// ============================================================================
+// State Inspection API Helpers
+// ============================================================================
+
+/**
+ * Detailed session status response
+ */
+export interface DetailedSessionStatus {
+	session_id: string
+	name?: string
+	connected: boolean
+	connection_count: number
+	guild_count: number
+	channel_count: number
+	user_count: number
+	message_count: number
+	interaction_count: number
+	action_count: number
+	sequence: number
+	is_expired: boolean
+	created_at: number
+	expires_at: number
+}
+
+/**
+ * Get detailed session status
+ *
+ * @param sessionId - Session ID
+ * @returns Detailed status including counts
+ */
+export async function getDetailedSessionStatus(sessionId: string): Promise<DetailedSessionStatus> {
+	return controlAPI(`/sessions/${sessionId}/status`)
+}
+
+/**
+ * Make a raw request to the mock server REST API
+ * Useful for testing API endpoints directly
+ *
+ * @param token - Bot token for authentication
+ * @param endpoint - API endpoint (e.g., "/guilds/123")
+ * @param options - Request options
+ * @returns Response data
+ */
+export async function mockRestAPI<T = unknown>(
+	token: string,
+	endpoint: string,
+	options: {
+		method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
+		body?: unknown
+	} = {}
+): Promise<T> {
+	const url = `${MOCK_CONFIG.REST_URL}${endpoint}`
+	const response = await fetch(url, {
+		method: options.method ?? 'GET',
+		headers: {
+			Authorization: `Bot ${token}`,
+			...(options.body ? { 'Content-Type': 'application/json' } : {})
+		},
+		body: options.body ? serializeBody(options.body) : undefined
+	})
+
+	if (!response.ok) {
+		const text = await response.text()
+		throw new Error(`REST API error: ${response.status} - ${text}`)
+	}
+
+	return response.json() as Promise<T>
+}

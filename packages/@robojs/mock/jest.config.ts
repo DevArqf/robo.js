@@ -33,7 +33,8 @@ const config: Config = {
 	projects: [
 		{
 			displayName: 'unit',
-			testMatch: ['<rootDir>/__tests__/**/*.test.ts', '!<rootDir>/__tests__/integration/**'],
+			testMatch: ['<rootDir>/__tests__/**/*.test.ts'],
+			testPathIgnorePatterns: ['<rootDir>/__tests__/integration/'],
 			transform: {
 				'^.+\\.ts$': ['ts-jest', tsJestConfig]
 			},

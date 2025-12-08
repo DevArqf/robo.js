@@ -36,8 +36,8 @@ async function startServer() {
 
 		proc.stdout?.on('data', (data) => {
 			output += data.toString()
-			// Server is ready when we see the gateway message
-			if (output.includes('Gateway WebSocket server ready') || output.includes('Ready!')) {
+			// Server is ready when we see the gateway message or server ready message
+			if (output.includes('Gateway WebSocket server ready') || output.includes('Ready!') || output.includes('Server is live')) {
 				clearTimeout(timeout)
 				console.log('[Global Setup] Mock server started successfully')
 				resolve(proc)

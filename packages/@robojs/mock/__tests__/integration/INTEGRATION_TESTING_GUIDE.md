@@ -48,6 +48,17 @@ Tests are organized into phases matching the mock server implementation:
 | Phase 2C | Reconnection | `phase-2/reconnection.test.ts` |
 | Phase 2D | REST API | `phase-2/rest-api.test.ts` |
 | Phase 2E-2H | Intents | `phase-2/intents.test.ts` |
+| Phase 3 | Messages, Channels, Threads, Webhooks | `phase-3/*.test.ts` |
+| Phase 4 | Members, Roles, Bans, Permissions | `phase-4/*.test.ts` |
+| Phase 5 | Interactions, AutoMod, Stickers, etc. | `phase-5/*.test.ts` |
+| Phase 6A | Recording Export | `phase-6/recording-export.test.ts` |
+| Phase 6B | Recording Replay | `phase-6/recording-replay.test.ts` |
+| Phase 6C | State Inspection API | `phase-6/state-api.test.ts` |
+| Phase 6E | File Uploads & Attachments | `phase-6/attachments.test.ts` |
+| Phase 6F | Components V2 | `phase-6/components-v2.test.ts` |
+| Phase 6H | Forum Channels Deep | `phase-6/forum-channels.test.ts` |
+| Phase 6 | Guild Settings | `phase-6/guild-settings.test.ts` |
+| Phase 6 | Message Completeness | `phase-6/message-completeness.test.ts` |
 
 ---
 
@@ -68,12 +79,39 @@ __tests__/integration/
 │   └── helpers.ts                  # Test utility functions
 ├── phase-1/
 │   └── connection.test.ts          # Basic connection tests
-└── phase-2/
-    ├── gateway.test.ts             # Gateway tests
-    ├── heartbeat.test.ts           # Heartbeat tests
-    ├── reconnection.test.ts        # Reconnection tests
-    ├── rest-api.test.ts            # REST API tests
-    └── intents.test.ts             # Intent filtering tests
+├── phase-2/
+│   ├── gateway.test.ts             # Gateway tests
+│   ├── heartbeat.test.ts           # Heartbeat tests
+│   ├── reconnection.test.ts        # Reconnection tests
+│   ├── rest-api.test.ts            # REST API tests
+│   └── intents.test.ts             # Intent filtering tests
+├── phase-3/
+│   ├── channels.test.ts            # Channel CRUD tests
+│   ├── messages.test.ts            # Message tests
+│   ├── threads.test.ts             # Thread tests
+│   └── webhooks.test.ts            # Webhook tests
+├── phase-4/
+│   ├── members.test.ts             # Member operations
+│   ├── roles.test.ts               # Role CRUD tests
+│   ├── bans.test.ts                # Ban management tests
+│   └── permissions.test.ts         # Permission tests
+├── phase-5/
+│   ├── interactions.test.ts        # Interaction tests
+│   ├── automod.test.ts             # Auto moderation tests
+│   ├── stickers.test.ts            # Sticker tests
+│   ├── emojis.test.ts              # Emoji tests
+│   ├── invites.test.ts             # Invite tests
+│   ├── scheduled-events.test.ts    # Scheduled events
+│   └── ... (additional tests)
+└── phase-6/
+    ├── recording-export.test.ts    # Recording export tests
+    ├── recording-replay.test.ts    # Recording replay tests
+    ├── state-api.test.ts           # State inspection API tests
+    ├── attachments.test.ts         # File upload tests
+    ├── components-v2.test.ts       # Components V2 tests
+    ├── forum-channels.test.ts      # Forum channel tests
+    ├── guild-settings.test.ts      # Guild CRUD tests
+    └── message-completeness.test.ts # Message validation tests
 ```
 
 ### Server Lifecycle
@@ -273,6 +311,15 @@ invalidateSession(sessionId)            // Invalidate session for fresh READY
 
 // Action Recording
 getSessionActions(sessionId, options?)  // Get recorded actions
+
+// Recording & Replay (Phase 6)
+getSessionRecording(sessionId)          // Export session recording
+replayRecording(sessionId, recording, options?)  // Replay a recording
+getFullSessionState(sessionId)          // Get full session state
+getDetailedSessionStatus(sessionId)     // Get detailed status with counts
+
+// Direct REST API
+mockRestAPI(token, endpoint, options?)  // Make direct REST API requests
 ```
 
 ### `setup/test-client.ts`
