@@ -384,6 +384,123 @@ body {
 	opacity: 0.6;
 }
 
+/* Cursors */
+.cursors-container {
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	overflow: hidden;
+	z-index: 999;
+}
+
+.remote-cursor {
+	position: absolute;
+	pointer-events: none;
+	transform: translate(-2px, -2px);
+	transition: left 0.05s linear, top 0.05s linear;
+	z-index: 1000;
+}
+
+.cursor-icon {
+	filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+.cursor-label {
+	position: absolute;
+	top: 20px;
+	left: 14px;
+	font-size: 0.7rem;
+	padding: 0.15rem 0.4rem;
+	border-radius: 4px;
+	color: white;
+	white-space: nowrap;
+	font-weight: 500;
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Cursor toggle in header */
+.cursor-toggle {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	font-size: 0.85rem;
+	cursor: pointer;
+	user-select: none;
+	padding: 0.25rem 0.5rem;
+	border-radius: 6px;
+	background: rgba(255, 255, 255, 0.1);
+	transition: background 0.2s;
+}
+
+.cursor-toggle:hover {
+	background: rgba(255, 255, 255, 0.15);
+}
+
+.cursor-toggle input {
+	accent-color: #5865f2;
+	width: 16px;
+	height: 16px;
+	cursor: pointer;
+}
+
+/* Sync Balls */
+.sync-balls-container {
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	z-index: 50;
+}
+
+.sync-ball {
+	position: absolute;
+	width: 48px;
+	height: 48px;
+	border-radius: 50%;
+	background: linear-gradient(145deg, #5865f2, #4752c4);
+	box-shadow:
+		0 4px 12px rgba(0, 0, 0, 0.3),
+		0 0 0 3px transparent,
+		0 0 20px var(--glow-color, transparent);
+	pointer-events: auto;
+	transition:
+		transform 0.15s ease-out,
+		box-shadow 0.2s ease-out,
+		left 0.08s linear,
+		top 0.08s linear;
+	user-select: none;
+}
+
+.sync-ball::before {
+	content: '';
+	position: absolute;
+	top: 8px;
+	left: 10px;
+	width: 12px;
+	height: 8px;
+	background: rgba(255, 255, 255, 0.4);
+	border-radius: 50%;
+	transform: rotate(-30deg);
+}
+
+.sync-ball.hovered {
+	box-shadow:
+		0 4px 12px rgba(0, 0, 0, 0.3),
+		0 0 0 3px var(--glow-color),
+		0 0 30px var(--glow-color);
+}
+
+.sync-ball.dragging {
+	box-shadow:
+		0 8px 24px rgba(0, 0, 0, 0.4),
+		0 0 0 4px var(--glow-color),
+		0 0 40px var(--glow-color);
+	z-index: 100;
+}
+
+.sync-ball:hover:not(.dragging) {
+	transform: translate(-50%, -50%) scale(1.08);
+}
+
 /* Responsive */
 @media (max-width: 480px) {
 	.main h1 {
@@ -397,5 +514,10 @@ body {
 	.header {
 		flex-direction: column;
 		gap: 0.5rem;
+	}
+
+	.sync-ball {
+		width: 36px;
+		height: 36px;
 	}
 }

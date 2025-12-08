@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react'
 import { useSyncState, useSyncContext, useSyncBroadcast } from '@robojs/sync'
 import { useDiscordSdk } from '../hooks/useDiscordSdk'
+import { Cursors } from './Cursors'
+import { SyncBalls } from './SyncBalls'
 import type { Client } from '@robojs/sync'
 
 interface UserData {
@@ -28,6 +30,7 @@ export const Activity = () => {
 	const { discordSdk, session } = useDiscordSdk()
 	const [notifications, setNotifications] = useState<string[]>([])
 	const [reactions, setReactions] = useState<Reaction[]>([])
+	const [showCursors, setShowCursors] = useState(true)
 
 	// Use actual channel ID in Discord, fixed demo room for browser testing
 	// (Mock SDK generates random channel IDs per browser, which would put each tab in separate rooms)
@@ -113,6 +116,12 @@ export const Activity = () => {
 
 	return (
 		<div className="activity">
+			{/* Synced cursors */}
+			{showCursors && <Cursors roomKey={roomKey} />}
+
+			{/* Draggable synced balls */}
+			<SyncBalls roomKey={roomKey} />
+
 			{/* Floating reactions */}
 			{reactions.map((reaction) => (
 				<div
@@ -133,6 +142,10 @@ export const Activity = () => {
 						{context.clients.length} {context.clients.length === 1 ? 'player' : 'players'}
 					</div>
 					{context.isHost && <span className="host-badge">HOST</span>}
+					<label className="cursor-toggle">
+						<input type="checkbox" checked={showCursors} onChange={(e) => setShowCursors(e.target.checked)} />
+						Cursors
+					</label>
 				</div>
 				<div className="client-id">You: {session?.user?.username ?? context.clientId.slice(0, 8)}</div>
 			</header>
