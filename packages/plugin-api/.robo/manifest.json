@@ -16,8 +16,8 @@
       "description": "Example API route and index page"
     },
     "type": "plugin",
-    "updatedAt": "2025-06-03T01:24:59.861Z",
-    "version": "0.10.30"
+    "updatedAt": "2025-12-06T21:39:45.511Z",
+    "version": "0.10.32"
   },
   "api": {},
   "commands": {},
@@ -28,17 +28,17 @@
   "events": {
     "_restart": [
       {
-        "__path": "\\.robo\\build\\events\\_restart.js"
+        "__path": "/.robo/build/events/_restart.js"
       }
     ],
     "_start": [
       {
-        "__path": "\\.robo\\build\\events\\_start.js"
+        "__path": "/.robo/build/events/_start.js"
       }
     ],
     "_stop": [
       {
-        "__path": "\\.robo\\build\\events\\_stop.js"
+        "__path": "/.robo/build/events/_stop.js"
       }
     ]
   },

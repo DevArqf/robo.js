@@ -1,0 +1,191 @@
+@font-face {
+	font-family: 'Silkscreen';
+	src: url('/fonts/Silkscreen-Regular.woff2') format('woff2');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+
+.character-card {
+	position: relative;
+	width: 160px;
+	cursor: pointer;
+	transition: transform 0.1s ease;
+}
+
+.character-card:hover,
+.character-card.hovered {
+	transform: translateY(-4px);
+}
+
+.character-card.locked {
+	cursor: not-allowed;
+	opacity: 0.6;
+}
+
+.character-card-inner {
+	position: relative;
+	background: #2a2a4a;
+	border: 3px solid #4a4a7a;
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 12px;
+	transition: all 0.1s ease;
+}
+
+.character-card:hover .character-card-inner,
+.character-card.hovered .character-card-inner {
+	background: #3a3a5a;
+	border-color: #6a6a9a;
+}
+
+.character-card.selected .character-card-inner {
+	background: #3a3a5a;
+	border-color: #ffd700;
+	box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+}
+
+/* Sprite container */
+.character-sprite-container {
+	position: relative;
+	width: 72px;
+	height: 72px;
+	background: #1a1a2a;
+	border: 2px solid #3a3a5a;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.character-sprite {
+	image-rendering: pixelated;
+	image-rendering: -moz-crisp-edges;
+	image-rendering: crisp-edges;
+}
+
+.lock-overlay {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background: rgba(0, 0, 0, 0.7);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 24px;
+}
+
+/* Character info */
+.character-info {
+	text-align: center;
+	width: 100%;
+}
+
+.character-name {
+	font-family: 'Silkscreen', monospace;
+	font-size: 14px;
+	font-weight: 700;
+	color: #fff;
+	margin: 0 0 4px 0;
+	text-shadow: 2px 2px 0 #000;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+}
+
+.character-description {
+	font-family: 'Silkscreen', monospace;
+	font-size: 10px;
+	color: #8a8aaa;
+	margin: 0;
+	text-shadow: 1px 1px 0 #000;
+	line-height: 1.4;
+}
+
+/* Selected indicator */
+.selected-indicator {
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	color: #ffd700;
+	font-size: 16px;
+	text-shadow: 2px 2px 0 #000;
+	animation: blink 1s ease-in-out infinite;
+}
+
+@keyframes blink {
+	0%,
+	50%,
+	100% {
+		opacity: 1;
+	}
+	25%,
+	75% {
+		opacity: 0.3;
+	}
+}
+
+/* Card effects */
+.card-border {
+	position: absolute;
+	top: -3px;
+	left: -3px;
+	right: -3px;
+	bottom: -3px;
+	border: 1px solid transparent;
+	pointer-events: none;
+	transition: border-color 0.1s ease;
+}
+
+.character-card:hover .card-border,
+.character-card.hovered .card-border {
+	border-color: rgba(255, 255, 255, 0.1);
+}
+
+.card-glow {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	width: 120%;
+	height: 120%;
+	background: radial-gradient(circle, rgba(255, 215, 0, 0.1) 0%, transparent 70%);
+	opacity: 0;
+	transition: opacity 0.2s ease;
+	pointer-events: none;
+}
+
+.character-card.selected .card-glow {
+	opacity: 1;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+	.character-card {
+		width: 140px;
+	}
+
+	.character-card-inner {
+		padding: 12px;
+	}
+
+	.character-sprite-container {
+		width: 64px;
+		height: 64px;
+	}
+
+	.character-sprite {
+		width: 64px;
+		height: 64px;
+	}
+
+	.character-name {
+		font-size: 12px;
+	}
+
+	.character-description {
+		font-size: 9px;
+	}
+}
