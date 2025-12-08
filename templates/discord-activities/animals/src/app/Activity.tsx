@@ -24,12 +24,26 @@ export function Activity() {
 	const [selectedCharacter, setSelectedCharacter] = useState<CharacterId>('weasel')
 
 	// Discord SDK - always initialized
-	const { session } = useDiscordSdk()
+	const { discordSdk, session, status } = useDiscordSdk()
 	const userId = session?.user?.id
 	const username = session?.user?.username || 'Player'
 
+	// Debug: log Discord SDK state
+	useEffect(() => {
+		console.log('[Activity] Discord SDK status:', status)
+		console.log('[Activity] channelId:', discordSdk?.channelId)
+		console.log('[Activity] userId:', userId)
+		console.log('[Activity] username:', username)
+	}, [status, discordSdk?.channelId, userId, username])
+
 	// Player sync - uses channelId directly from discordSdk
 	const { players, initializePlayer, updatePosition, removePlayer } = usePlayerSync(userId)
+
+	// Debug: log players
+	useEffect(() => {
+		console.log('[Activity] players from sync:', players)
+		console.log('[Activity] player keys:', Object.keys(players))
+	}, [players])
 
 	// Only initialize game systems when in game
 	const isInGame = screen === 'game'
@@ -61,8 +75,19 @@ export function Activity() {
 
 	// Initialize player in sync state when entering game
 	useEffect(() => {
+		console.log(
+			'[Activity] initializePlayer effect - isInGame:',
+			isInGame,
+			'playerReady:',
+			playerReady,
+			'player:',
+			!!player,
+			'userId:',
+			userId
+		)
 		if (isInGame && playerReady && player && userId) {
 			const pos = player.getPosition()
+			console.log('[Activity] Calling initializePlayer with pos:', pos)
 			initializePlayer(pos.x, pos.y, selectedCharacter, username)
 		}
 	}, [isInGame, playerReady, player, userId, selectedCharacter, username, initializePlayer])
