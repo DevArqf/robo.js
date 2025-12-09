@@ -1,0 +1,131 @@
+.container {
+	width: var(--member-list-width);
+	background: var(--background-secondary);
+	overflow-y: auto;
+	padding: 24px 8px;
+}
+
+.group {
+	margin-bottom: 24px;
+}
+
+.groupHeader {
+	padding: 0 8px;
+	margin: 0 0 4px;
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	color: var(--channel-icon);
+}
+
+.member {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 6px 8px;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition: background 0.1s ease;
+}
+
+.member:hover {
+	background: var(--background-modifier-hover);
+}
+
+.avatar {
+	position: relative;
+	width: 32px;
+	height: 32px;
+	flex-shrink: 0;
+}
+
+.avatarImage {
+	width: 100%;
+	height: 100%;
+	border-radius: 50%;
+	object-fit: cover;
+}
+
+.defaultAvatar {
+	width: 100%;
+	height: 100%;
+	border-radius: 50%;
+	background: var(--brand-500);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: white;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.statusDot {
+	position: absolute;
+	bottom: -2px;
+	right: -2px;
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	border: 3px solid var(--background-secondary);
+}
+
+.statusDot.online {
+	background: var(--status-online);
+}
+
+.statusDot.idle {
+	background: var(--status-idle);
+}
+
+.statusDot.dnd {
+	background: var(--status-dnd);
+}
+
+.statusDot.offline {
+	background: var(--status-offline);
+}
+
+.info {
+	min-width: 0;
+	flex: 1;
+}
+
+.name {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--channel-icon);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.member:hover .name {
+	color: var(--interactive-hover);
+}
+
+.name.bot {
+	color: var(--text-normal);
+}
+
+.botTag {
+	padding: 1px 4px;
+	background: var(--brand-500);
+	border-radius: 3px;
+	font-size: 10px;
+	font-weight: 600;
+	color: white;
+	flex-shrink: 0;
+}
+
+.empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 32px 16px;
+	color: var(--text-muted);
+	font-size: 14px;
+	text-align: center;
+}

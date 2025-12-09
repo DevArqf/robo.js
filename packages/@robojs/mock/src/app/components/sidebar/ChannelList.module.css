@@ -1,0 +1,95 @@
+.container {
+	flex: 1;
+	overflow-y: auto;
+	padding: 0 8px 8px;
+}
+
+.category {
+	margin-top: 16px;
+}
+
+.category:first-child {
+	margin-top: 8px;
+}
+
+.categoryHeader {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 0 4px;
+	width: 100%;
+	color: var(--channel-icon);
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+	transition: color 0.1s ease;
+}
+
+.categoryHeader:hover {
+	color: var(--interactive-hover);
+}
+
+.collapseIcon {
+	flex-shrink: 0;
+	transition: transform 0.15s ease;
+}
+
+.collapseIcon.collapsed {
+	transform: rotate(-90deg);
+}
+
+.categoryName {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.categoryChannels {
+	margin-top: 4px;
+}
+
+.channel {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	padding: 6px 8px;
+	border-radius: var(--radius-sm);
+	color: var(--channel-icon);
+	font-size: 16px;
+	font-weight: 500;
+	transition: background 0.1s ease, color 0.1s ease;
+}
+
+.channel:hover {
+	background: var(--background-modifier-hover);
+	color: var(--interactive-hover);
+}
+
+.channel.selected {
+	background: var(--background-modifier-selected);
+	color: var(--interactive-active);
+}
+
+.channelIcon {
+	flex-shrink: 0;
+	width: 20px;
+	height: 20px;
+}
+
+.channelName {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 32px 16px;
+	color: var(--text-muted);
+	font-size: 14px;
+	text-align: center;
+}

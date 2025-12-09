@@ -1,0 +1,104 @@
+.container {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	padding: 12px 0;
+	width: 100%;
+}
+
+.serverWrapper {
+	position: relative;
+	display: flex;
+	align-items: center;
+	width: 100%;
+	justify-content: center;
+}
+
+.pill {
+	position: absolute;
+	left: 0;
+	width: 4px;
+	height: 8px;
+	background: var(--header-primary);
+	border-radius: 0 4px 4px 0;
+	opacity: 0;
+	transition: height 0.15s ease, opacity 0.15s ease;
+}
+
+.serverWrapper:hover .pill {
+	opacity: 1;
+	height: 20px;
+}
+
+.serverWrapper.selected .pill {
+	opacity: 1;
+	height: 40px;
+}
+
+.homeButton,
+.serverIcon {
+	width: 48px;
+	height: 48px;
+	border-radius: 50%;
+	background: var(--background-primary);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	overflow: hidden;
+	transition: border-radius 0.15s ease, background 0.15s ease;
+	color: var(--green-360);
+}
+
+.homeButton:hover,
+.serverWrapper:hover .serverIcon,
+.serverWrapper.selected .serverIcon {
+	border-radius: 16px;
+	background: var(--brand-500);
+	color: white;
+}
+
+.serverWrapper.selected .serverIcon {
+	background: var(--brand-500);
+}
+
+.iconImage {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.serverAcronym {
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--header-primary);
+}
+
+.serverWrapper:hover .serverAcronym,
+.serverWrapper.selected .serverAcronym {
+	color: white;
+}
+
+.separator {
+	width: 32px;
+	height: 2px;
+	background: var(--background-modifier-accent);
+	border-radius: 1px;
+	margin: 4px 0;
+}
+
+.addButton {
+	background: var(--background-primary);
+	color: var(--green-360);
+}
+
+.addButton:hover {
+	background: var(--green-360);
+	color: white;
+}
+
+.plus {
+	font-size: 24px;
+	font-weight: 400;
+	line-height: 1;
+}

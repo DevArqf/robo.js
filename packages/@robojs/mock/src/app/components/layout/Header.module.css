@@ -1,0 +1,80 @@
+.header {
+	height: 48px;
+	min-height: 48px;
+	padding: 0 16px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	border-bottom: 1px solid var(--background-modifier-accent);
+	background: var(--background-primary);
+}
+
+.channelInfo {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	flex: 1;
+}
+
+.hash {
+	font-size: 24px;
+	font-weight: 500;
+	color: var(--channel-icon);
+}
+
+.channelName {
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--header-primary);
+	margin: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.divider {
+	width: 1px;
+	height: 24px;
+	background: var(--background-modifier-accent);
+	flex-shrink: 0;
+}
+
+.topic {
+	font-size: 14px;
+	color: var(--header-secondary);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.placeholder {
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--text-muted);
+}
+
+.actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.iconButton {
+	width: 24px;
+	height: 24px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--interactive-normal);
+	border-radius: var(--radius-sm);
+	transition: color 0.15s ease;
+}
+
+.iconButton:hover {
+	color: var(--interactive-hover);
+}
+
+.iconButton.active {
+	color: var(--interactive-active);
+}

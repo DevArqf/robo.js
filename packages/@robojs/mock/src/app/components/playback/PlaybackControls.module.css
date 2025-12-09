@@ -1,0 +1,108 @@
+.container {
+	height: 40px;
+	min-height: 40px;
+	padding: 0 16px;
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	background: var(--background-secondary);
+	border-top: 1px solid var(--background-modifier-accent);
+}
+
+.controls {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.controlButton {
+	width: 28px;
+	height: 28px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: var(--radius-sm);
+	color: var(--interactive-normal);
+	transition: color 0.1s ease, background 0.1s ease;
+}
+
+.controlButton:hover:not(:disabled) {
+	color: var(--interactive-hover);
+	background: var(--background-modifier-hover);
+}
+
+.controlButton:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.timeline {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.time {
+	font-size: 11px;
+	font-family: var(--font-code);
+	color: var(--text-muted);
+	min-width: 36px;
+}
+
+.progressBar {
+	flex: 1;
+	height: 4px;
+	background: var(--background-accent);
+	border-radius: 2px;
+	overflow: hidden;
+}
+
+.progress {
+	height: 100%;
+	background: var(--brand-500);
+	border-radius: 2px;
+	transition: width 0.1s ease;
+}
+
+.actions {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.speed {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-muted);
+	min-width: 24px;
+}
+
+.recordButton {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	border-radius: var(--radius-sm);
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--text-muted);
+	transition: color 0.1s ease, background 0.1s ease;
+}
+
+.recordButton:hover:not(:disabled) {
+	color: var(--red-400);
+	background: var(--background-modifier-hover);
+}
+
+.recordButton:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.recordDot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: currentColor;
+}

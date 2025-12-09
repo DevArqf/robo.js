@@ -1,16 +1,17 @@
-import './App.css'
+import { useSession } from './hooks/useSession'
+import { AppShell } from './components/layout/AppShell'
+import { ConnectionScreen } from './components/layout/ConnectionScreen'
+import './styles/discord-theme.css'
+import './styles/globals.css'
 
 export default function App() {
-	return (
-		<div>
-			<h1>@robojs/mock</h1>
-			<section>
-				<p>Discord Gateway Mock Server</p>
-				<p>Dashboard coming soon...</p>
-			</section>
-			<small className="powered-by">
-				Powered by <a href="https://roboplay.dev/docs">Robo.js</a>
-			</small>
-		</div>
-	)
+	const { isConnected, sessionId } = useSession()
+
+	// Show connection screen if not connected
+	if (!isConnected || !sessionId) {
+		return <ConnectionScreen />
+	}
+
+	// Show main app shell when connected
+	return <AppShell />
 }

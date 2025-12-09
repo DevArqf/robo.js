@@ -30,7 +30,8 @@
 		"typescript"
 	],
 	"scripts": {
-		"build": "robo build plugin",
+		"build": "npm run build:stage && robo build plugin",
+		"build:stage": "vite build --config config/vite.stage.mjs",
 		"deploy": "robo deploy",
 		"dev": "robo build plugin --watch",
 		"doctor": "sage doctor",

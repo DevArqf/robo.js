@@ -154,6 +154,9 @@ export interface MockGuild {
 	icon?: string | null
 	splash?: string | null
 	banner?: string | null
+	discoverySplash?: string | null // Phase 7: Discovery splash image hash
+	premiumTier?: number // Phase 7: Server boost level (0-3)
+	features?: string[] // Phase 7: Guild features array
 }
 
 /**
@@ -176,6 +179,7 @@ export interface MockChannel {
 	guildId?: Snowflake
 	name: string
 	type: number
+	position?: number
 	parentId?: Snowflake | null
 	permissionOverwrites?: MockChannelOverwrite[] // Phase 4L
 	topic?: string | null
@@ -184,6 +188,28 @@ export interface MockChannel {
 	userLimit?: number
 	rateLimitPerUser?: number
 	status?: string | null // Voice channel status
+	rtcRegion?: string | null // Voice channel region
+	videoQualityMode?: number | null // Voice channel video quality (1 = auto, 2 = full)
+	defaultAutoArchiveDuration?: number // Default thread auto-archive duration
+}
+
+/**
+ * Mock voice state data (Phase 7)
+ */
+export interface MockVoiceState {
+	guild_id: Snowflake
+	channel_id: Snowflake | null
+	user_id: Snowflake
+	member?: MockGuildMember
+	session_id?: string
+	deaf?: boolean
+	mute?: boolean
+	self_deaf?: boolean
+	self_mute?: boolean
+	self_stream?: boolean
+	self_video?: boolean
+	suppress?: boolean
+	request_to_speak_timestamp?: string | null
 }
 
 // ============================================================================

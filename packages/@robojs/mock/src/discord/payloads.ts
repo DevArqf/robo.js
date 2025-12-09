@@ -513,7 +513,7 @@ export function mockChannelToAPIChannel(channel: MockChannel): APIChannel {
 		type: channel.type as ChannelType,
 		guild_id: channel.guildId,
 		name: channel.name,
-		position: 0,
+		position: channel.position ?? 0,
 		permission_overwrites: channel.permissionOverwrites
 			? channel.permissionOverwrites.map((ow) => ({
 					id: ow.id,
@@ -529,12 +529,20 @@ export function mockChannelToAPIChannel(channel: MockChannel): APIChannel {
 		parent_id: channel.parentId ?? null
 	} as APIChannel
 
+	// Add text channel specific fields
+	if (channel.type === 0) {
+		// GuildText
+		;(result as any).default_auto_archive_duration = channel.defaultAutoArchiveDuration ?? 1440
+	}
+
 	// Add voice channel specific fields
 	if (channel.type === 2) {
 		// GuildVoice
 		;(result as any).bitrate = channel.bitrate ?? 64000
 		;(result as any).user_limit = channel.userLimit ?? 0
 		;(result as any).status = channel.status ?? null
+		;(result as any).rtc_region = channel.rtcRegion ?? null
+		;(result as any).video_quality_mode = channel.videoQualityMode ?? null
 	}
 
 	return result
@@ -745,7 +753,7 @@ export function buildGuildCreatePayload(options: GuildCreatePayloadOptions): Gat
 		icon: guild.icon ?? null,
 		icon_hash: null,
 		splash: guild.splash ?? null,
-		discovery_splash: null,
+		discovery_splash: guild.discoverySplash ?? null,
 		owner_id: guild.ownerId,
 		afk_channel_id: guild.afkChannelId ?? null,
 		afk_timeout: guild.afkTimeout ?? 300,
@@ -759,7 +767,7 @@ export function buildGuildCreatePayload(options: GuildCreatePayloadOptions): Gat
 			.map((id) => sessionState.emojis.get(id))
 			.filter((e): e is MockEmoji => e !== undefined)
 			.map(mockEmojiToAPIEmoji),
-		features: [],
+		features: guild.features ?? [],
 		mfa_level: guild.mfaLevel ?? GuildMFALevel.None,
 		application_id: null,
 		system_channel_id: guild.systemChannelId ?? null,
@@ -770,7 +778,7 @@ export function buildGuildCreatePayload(options: GuildCreatePayloadOptions): Gat
 		vanity_url_code: null,
 		description: guild.description ?? null,
 		banner: guild.banner ?? null,
-		premium_tier: GuildPremiumTier.None,
+		premium_tier: guild.premiumTier ?? GuildPremiumTier.None,
 		premium_subscription_count: 0,
 		preferred_locale: 'en-US',
 		public_updates_channel_id: null,
@@ -789,7 +797,20 @@ export function buildGuildCreatePayload(options: GuildCreatePayloadOptions): Gat
 		large: false,
 		unavailable: false,
 		member_count: members.length,
-		voice_states: [],
+		voice_states: Array.from(sessionState.voiceStates.values())
+			.filter((vs) => vs.guild_id === guild.id && vs.channel_id !== null)
+			.map((vs) => ({
+				guild_id: vs.guild_id,
+				channel_id: vs.channel_id,
+				user_id: vs.user_id,
+				session_id: vs.session_id ?? '',
+				deaf: vs.deaf ?? false,
+				mute: vs.mute ?? false,
+				self_deaf: vs.self_deaf ?? false,
+				self_mute: vs.self_mute ?? false,
+				suppress: vs.suppress ?? false,
+				request_to_speak_timestamp: vs.request_to_speak_timestamp ?? null
+			})),
 		members,
 		channels,
 		threads,

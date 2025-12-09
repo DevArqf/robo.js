@@ -71,7 +71,9 @@ import type {
 	// Phase 5C: Auto-Moderation
 	MockAutoModRule,
 	MockAutoModRuleConfig,
-	MockAutoModRuleUpdateConfig
+	MockAutoModRuleUpdateConfig,
+	// Phase 7: Voice States
+	MockVoiceState
 } from '../types/index.js'
 import { ComponentsV2Limits, ComponentTypeV2, PollLayoutType, ForumLayoutType, ForumSortOrderType, StickerType, StickerFormatType, StickerLimits, WebhookType, WebhookLimits, EmojiLimits, RoleLimits, BanLimits, ApplicationCommandType, CommandLimits, InviteLimits, ScheduledEventLimits, GuildScheduledEventPrivacyLevel, GuildScheduledEventStatus, GuildScheduledEventEntityType, AutoModLimits, AutoModerationEventType } from '../types/index.js'
 import { generateSnowflake } from '../utils/snowflake.js'
@@ -116,6 +118,7 @@ export class MockServerState implements SessionState {
 	readonly invites: Map<string, MockInvite> // Phase 5A: code -> invite
 	readonly scheduledEvents: Map<string, MockScheduledEvent> // Phase 5B: `${guildId}:${eventId}` -> event
 	readonly autoModRules: Map<string, MockAutoModRule> // Phase 5C: `${guildId}:${ruleId}` -> rule
+	readonly voiceStates: Map<string, MockVoiceState> // Phase 7: `${guildId}:${userId}` -> voice state
 	readonly botUser: MockUser
 	readonly applicationId: Snowflake
 
@@ -160,6 +163,7 @@ export class MockServerState implements SessionState {
 		this.invites = new Map()
 		this.scheduledEvents = new Map()
 		this.autoModRules = new Map()
+		this.voiceStates = new Map()
 		this.interactionsByToken = new Map()
 		this.webhooksByToken = new Map()
 		this.maxMessages = options?.maxMessages ?? DEFAULT_MAX_MESSAGES
