@@ -5,3 +5,17 @@ export { SyncZone, ZoneContext, useZoneContext, useZoneKey } from './.robo/build
 export { useSyncBroadcast } from './.robo/build/core/useSyncBroadcast.js'
 export { useSyncContext } from './.robo/build/core/useSyncContext.js'
 export { useSyncState } from './.robo/build/core/useSyncState.js'
+export { useSyncCall } from './.robo/build/core/useSyncCall.js'
+export type { CallResult, SyncCallFunction } from './.robo/build/core/useSyncCall.js'
+
+// High-level sync primitives
+export { useSyncPresence } from './.robo/build/core/useSyncPresence.js'
+export type { PresenceOptions, Participant, PresenceResult } from './.robo/build/core/useSyncPresence.js'
+export { useSyncCursor } from './.robo/build/core/useSyncCursor.js'
+export type { CursorOptions, CursorPosition, RemoteCursor, CursorResult } from './.robo/build/core/useSyncCursor.js'
+export { SyncCursors } from './.robo/build/core/SyncCursors.js'
+export type { SyncCursorsProps } from './.robo/build/core/SyncCursors.js'
+export { useSyncDrag } from './.robo/build/core/useSyncDrag.js'
+export type { DragBounds, DragOptions, DragState, DragResult } from './.robo/build/core/useSyncDrag.js'
+export { SyncDraggable } from './.robo/build/core/SyncDraggable.js'
+export type { SyncDraggableProps, SyncDraggableRenderProps } from './.robo/build/core/SyncDraggable.js'

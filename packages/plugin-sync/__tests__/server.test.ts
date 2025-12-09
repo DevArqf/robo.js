@@ -65,6 +65,11 @@ async function waitForDebounce(ms = 160): Promise<void> {
 	await new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+// Wait for async handler processing to complete
+async function waitForAsyncProcessing(): Promise<void> {
+	await new Promise((resolve) => setImmediate(resolve))
+}
+
 // Create a fresh mock WSS for each test
 let mockWss: EventEmitter & { handleUpgrade: jest.Mock }
 let idCounter = 0
@@ -195,6 +200,7 @@ describe('SyncServer', () => {
 
 			ws1.simulateMessage(createPayload('on', undefined, ['game-room']))
 			ws1.simulateMessage(createPayload('update', { count: 42 }, ['game-room']))
+			await waitForAsyncProcessing()
 
 			const ws2 = createConnection()
 			ws2.clearSentMessages()
@@ -281,6 +287,7 @@ describe('SyncServer', () => {
 			ws2.clearSentMessages()
 
 			ws1.simulateMessage(createPayload('update', { score: 100 }, ['game-room']))
+			await waitForAsyncProcessing()
 
 			expect(ws1.getSentPayloadsByType('update').length).toBe(1)
 			expect(ws2.getSentPayloadsByType('update').length).toBe(1)
@@ -306,6 +313,7 @@ describe('SyncServer', () => {
 
 			ws1.simulateMessage(createPayload('on', undefined, ['game-room']))
 			ws1.simulateMessage(createPayload('update', { level: 5 }, ['game-room']))
+			await waitForAsyncProcessing()
 
 			const ws2 = createConnection()
 			ws2.clearSentMessages()
@@ -324,6 +332,7 @@ describe('SyncServer', () => {
 
 			ws1.simulateMessage(createPayload('on', undefined, ['game-room']))
 			ws1.simulateMessage(createPayload('update', { health: 100 }, ['game-room']))
+			await waitForAsyncProcessing()
 
 			const ws2 = createConnection()
 			ws2.clearSentMessages()
@@ -438,6 +447,7 @@ describe('SyncServer', () => {
 			ws2.clearSentMessages()
 
 			ws1.simulateMessage(createPayload('update', { data: 'room-a' }, ['room-a']))
+			await waitForAsyncProcessing()
 
 			expect(ws1.getSentPayloadsByType('update').length).toBe(1)
 			expect(ws2.getSentPayloadsByType('update').length).toBe(0)
@@ -455,6 +465,7 @@ describe('SyncServer', () => {
 			ws1.clearSentMessages()
 
 			ws2.simulateMessage(createPayload('update', { data: 'from-ws2' }, ['room-a']))
+			await waitForAsyncProcessing()
 
 			expect(ws1.getSentPayloadsByType('update').length).toBe(1)
 		})

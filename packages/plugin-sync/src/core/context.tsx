@@ -2,6 +2,16 @@ import { normalizeKey } from './utils.js'
 import React, { createContext, useEffect, useRef, useState } from 'react'
 import type { BroadcastCallback, Client, ContextCallback, ContextEvent, MessagePayload } from './types.js'
 
+/**
+ * Callback for validation errors from server.
+ */
+export type ValidationErrorCallback = (reason: string, details?: unknown) => void
+
+/**
+ * Callback for RPC call results.
+ */
+export type CallResultCallback = (result: { success: boolean; result?: unknown; error?: string }) => void
+
 interface SyncContextValue {
 	cache: Record<string, unknown>
 	clientId: string
@@ -11,9 +21,12 @@ interface SyncContextValue {
 	registerBroadcastCallback: (key: (string | null)[], callback: BroadcastCallback) => string
 	registerCallback: (key: (string | null)[], callback: UpdateCallback) => string
 	registerContextCallback: (key: (string | null)[], callback: ContextCallback) => string
+	registerValidationErrorCallback: (key: (string | null)[], callback: ValidationErrorCallback) => string
+	registerCallResultCallback: (callId: string, callback: CallResultCallback) => void
 	unregisterBroadcastCallback: (callbackId: string) => void
 	unregisterCallback: (callbackId: string) => void
 	unregisterContextCallback: (callbackId: string) => void
+	unregisterValidationErrorCallback: (callbackId: string) => void
 	ws: WebSocket | null
 }
 
@@ -26,6 +39,10 @@ export const SyncContext = createContext<SyncContextValue>({
 	registerBroadcastCallback: () => '',
 	registerCallback: () => '',
 	registerContextCallback: () => '',
+	registerValidationErrorCallback: () => '',
+	registerCallResultCallback: () => {
+		/* no-op */
+	},
 	unregisterBroadcastCallback: () => {
 		/* no-op */
 	},
@@ -33,6 +50,9 @@ export const SyncContext = createContext<SyncContextValue>({
 		/* no-op */
 	},
 	unregisterContextCallback: () => {
+		/* no-op */
+	},
+	unregisterValidationErrorCallback: () => {
 		/* no-op */
 	},
 	ws: null as WebSocket | null
@@ -58,6 +78,7 @@ export function SyncContextProvider<ClientData = unknown>(props: SyncContextProv
 type CallbackEntry = { key: string; callback: UpdateCallback; originalKey: (string | null)[] }
 type ContextCallbackEntry = { key: string; callback: ContextCallback; originalKey: (string | null)[] }
 type BroadcastCallbackEntry = { key: string; callback: BroadcastCallback; originalKey: (string | null)[] }
+type ValidationErrorCallbackEntry = { key: string; callback: ValidationErrorCallback; originalKey: (string | null)[] }
 type UpdateCallback = (data: unknown, key: (string | null)[]) => void
 
 let IdCounter = 0
@@ -82,6 +103,12 @@ function setupSyncState<ClientData = unknown>(clientData?: ClientData): SyncCont
 
 	const broadcastCallbacks = useRef<Record<string, BroadcastCallback[]>>({}).current
 	const broadcastCallbackMap = useRef<Record<string, BroadcastCallbackEntry>>({}).current
+
+	const validationErrorCallbacks = useRef<Record<string, ValidationErrorCallback[]>>({}).current
+	const validationErrorCallbackMap = useRef<Record<string, ValidationErrorCallbackEntry>>({}).current
+
+	// Call result callbacks are keyed by callId (one-shot)
+	const callResultCallbacks = useRef<Record<string, CallResultCallback>>({}).current
 
 	const isRunning = useRef(false)
 	const pendingMetadata = useRef<ClientData | undefined>(clientData)
@@ -297,6 +324,52 @@ function setupSyncState<ClientData = unknown>(clientData?: ClientData): SyncCont
 					cache[cleanKey] = data
 					break
 				}
+
+				case 'validation_error': {
+					// Server rejected an update
+					const { key, reason, details } = payload as unknown as {
+						key: string[]
+						reason: string
+						details?: unknown
+					}
+					const cleanKey = normalizeKey(key)
+
+					// Notify validation error callbacks
+					if (validationErrorCallbacks[cleanKey]) {
+						validationErrorCallbacks[cleanKey].forEach((callback) => {
+							try {
+								callback(reason, details)
+							} catch (error) {
+								console.error('Validation error callback error:', error)
+							}
+						})
+					}
+					break
+				}
+
+				case 'call_result': {
+					// RPC call result
+					const { callId, result, error } = payload as unknown as {
+						callId: string
+						result?: unknown
+						error?: string
+					}
+
+					const callback = callResultCallbacks[callId]
+					if (callback) {
+						delete callResultCallbacks[callId]
+						try {
+							callback({
+								success: error === undefined,
+								result,
+								error
+							})
+						} catch (err) {
+							console.error('Call result callback error:', err)
+						}
+					}
+					break
+				}
 			}
 
 			if (response) {
@@ -438,6 +511,41 @@ function setupSyncState<ClientData = unknown>(clientData?: ClientData): SyncCont
 		unsubscribe(entry.key, entry.originalKey)
 	}
 
+	const registerValidationErrorCallback = (key: (string | null)[], callback: ValidationErrorCallback) => {
+		const cleanKey = normalizeKey(key)
+		const callbackId = '' + IdCounter++
+
+		// Add the callback to indices
+		if (!validationErrorCallbacks[cleanKey]) {
+			validationErrorCallbacks[cleanKey] = []
+		}
+
+		validationErrorCallbacks[cleanKey].push(callback)
+		validationErrorCallbackMap[callbackId] = {
+			key: cleanKey,
+			callback,
+			originalKey: key
+		}
+
+		return callbackId
+	}
+
+	const unregisterValidationErrorCallback = (callbackId: string) => {
+		const entry = validationErrorCallbackMap[callbackId]
+		if (!entry) return
+
+		const index = validationErrorCallbacks[entry.key].findIndex((cb) => cb === entry.callback)
+
+		if (index > -1) {
+			validationErrorCallbacks[entry.key].splice(index, 1)
+		}
+		delete validationErrorCallbackMap[callbackId]
+	}
+
+	const registerCallResultCallback = (callId: string, callback: CallResultCallback) => {
+		callResultCallbacks[callId] = callback
+	}
+
 	return {
 		cache,
 		clientId,
@@ -446,10 +554,13 @@ function setupSyncState<ClientData = unknown>(clientData?: ClientData): SyncCont
 		hostsCache,
 		registerBroadcastCallback,
 		registerCallback,
+		registerCallResultCallback,
 		registerContextCallback,
+		registerValidationErrorCallback,
 		unregisterBroadcastCallback,
 		unregisterCallback,
 		unregisterContextCallback,
+		unregisterValidationErrorCallback,
 		ws
 	}
 }

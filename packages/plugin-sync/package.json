@@ -18,6 +18,23 @@
 		"web"
 	],
 	"main": ".robo/build/index.js",
+	"exports": {
+		".": {
+			"types": "./.robo/build/index.d.ts",
+			"import": "./.robo/build/index.js",
+			"default": "./.robo/build/index.js"
+		},
+		"./client": {
+			"types": "./client.d.ts",
+			"import": "./client.js",
+			"default": "./client.js"
+		},
+		"./server": {
+			"types": "./server.d.ts",
+			"import": "./server.js",
+			"default": "./server.js"
+		}
+	},
 	"license": "MIT",
 	"author": "WavePlay <dev@waveplay.com> (waveplay.com)",
 	"contributors": [

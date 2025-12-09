@@ -157,12 +157,13 @@ useSyncContext(
 
 ### `useSyncBroadcast<ClientData>(handler, key)`
 
-Send ephemeral messages that don't persist.
+Send and receive ephemeral messages that don't persist.
 
 ```tsx
 const { broadcast, send, context } = useSyncBroadcast(
 	(payload, { client }) => {
 		// Handle incoming message
+		// client.id === '__server__' for server-sent broadcasts
 	},
 	['room']
 )
@@ -170,6 +171,52 @@ const { broadcast, send, context } = useSyncBroadcast(
 broadcast(data) // Send to all clients
 send(clientId, data) // Send to specific client
 ```
+
+### `useSyncCall(key)`
+
+Make RPC calls to server-side sync handlers. Returns a typed call function.
+
+```tsx
+const call = useSyncCall(['game', roomId])
+
+// Basic call
+const result = await call('methodName', payload)
+
+// Typed call
+const result = await call<PayloadType, ResultType>('methodName', payload)
+
+// Result shape
+interface CallResult<T> {
+  success: boolean      // true if call succeeded
+  result?: T            // Return value from server handler
+  error?: string        // Error message if failed
+}
+```
+
+**Usage with server handlers:**
+
+```tsx
+// Server: src/sync/game/[roomId]/state.ts
+export async function move(payload: { x: number; y: number }, ctx) {
+  // Validate and update state
+  return { success: true, newPosition: { x: payload.x, y: payload.y } }
+}
+
+// Client
+const call = useSyncCall(['game', roomId, 'state'])
+const result = await call<
+  { x: number; y: number },
+  { success: boolean; newPosition?: { x: number; y: number } }
+>('move', { x: 10, y: 20 })
+
+if (result.success && result.result?.success) {
+  console.log('Moved to:', result.result.newPosition)
+}
+```
+
+| Return | Type | Description |
+|--------|------|-------------|
+| `call` | `(method, payload?) => Promise<CallResult>` | Function to call server RPC methods |
 
 ### `SyncContext`
 
@@ -700,6 +747,486 @@ interface SyncDraggableRenderProps<T> {
 	isDragging: boolean   // You are dragging
 	isBeingDragged: boolean // Anyone is dragging
 	canInteract: boolean  // Not locked by others
+}
+```
+
+---
+
+## Server-Side Sync Handlers
+
+For **server-authoritative** state management, create handler files in `/src/sync/`. These handlers enable validation, transformation, and RPC methods that run on the server.
+
+### File Structure
+
+```
+src/
+  sync/
+    activity/
+      [channelId]/
+        game.ts          # Handler for 'activity.[channelId].game'
+        coins.ts         # Handler for 'activity.[channelId].coins'
+      middleware.ts      # Middleware for 'activity/*' keys
+    lobby.ts             # Handler for 'lobby'
+```
+
+File paths map to sync keys:
+- `src/sync/lobby.ts` → `['lobby']`
+- `src/sync/activity/[channelId]/game.ts` → `['activity', channelId, 'game']`
+
+### Handler Exports
+
+Handlers can export any combination of these:
+
+```ts
+// src/sync/game/[roomId]/state.ts
+import type { SyncUpdateContext, SyncCallContext, BuiltInSchema } from '@robojs/sync/server'
+
+// ===========================================
+// Schema - Validates state structure
+// ===========================================
+
+export const schema: BuiltInSchema = {
+  score: { type: 'number' },
+  players: { type: 'object' },
+  phase: { type: 'string', enum: ['lobby', 'playing', 'ended'] },
+  winner: { type: 'string', nullable: true, optional: true }
+}
+
+// ===========================================
+// Validate - Block or allow direct updates
+// ===========================================
+
+/**
+ * Return true to allow, false or string to reject.
+ * Returning a string provides a custom rejection reason.
+ */
+export function validate(ctx: SyncUpdateContext<GameState>): boolean | string {
+  // Block all direct updates - force clients to use RPC
+  return 'use_rpc_methods'
+
+  // Or conditionally allow
+  if (ctx.client.id === ctx.getHost?.()) {
+    return true // Host can update directly
+  }
+  return 'only_host_can_update'
+}
+
+// ===========================================
+// Transform - Modify state before broadcast
+// ===========================================
+
+/**
+ * Transform state before it's broadcast to clients.
+ * Useful for adding server timestamps, sanitizing data, etc.
+ */
+export function transform(ctx: SyncUpdateContext<GameState>): GameState {
+  return {
+    ...ctx.newState,
+    updatedAt: Date.now(),
+    updatedBy: ctx.client.id
+  }
+}
+
+// ===========================================
+// onUpdate - Side effects after broadcast
+// ===========================================
+
+/**
+ * Runs AFTER state is successfully broadcast.
+ * Useful for logging, analytics, triggering external systems.
+ */
+export function onUpdate(ctx: SyncUpdateContext<GameState>): void {
+  console.log(`[Game] State updated by ${ctx.client.id}`)
+
+  // Check for game-ending conditions
+  if (ctx.newState.winner && !ctx.oldState?.winner) {
+    console.log(`[Game] Winner: ${ctx.newState.winner}`)
+  }
+}
+
+// ===========================================
+// RPC Methods - Server-side game logic
+// ===========================================
+
+/**
+ * Any exported async function becomes an RPC method.
+ * Call from client via: call('startGame', { difficulty: 'hard' })
+ */
+export async function startGame(
+  payload: { difficulty: string },
+  ctx: SyncCallContext<GameState>
+): Promise<{ success: boolean; error?: string }> {
+  // Only host can start
+  if (ctx.client.id !== ctx.getHost()) {
+    return { success: false, error: 'only_host_can_start' }
+  }
+
+  ctx.setState({
+    ...ctx.getState(),
+    phase: 'playing',
+    difficulty: payload.difficulty
+  })
+
+  return { success: true }
+}
+```
+
+### SyncUpdateContext
+
+Available in `validate`, `transform`, and `onUpdate`:
+
+```ts
+interface SyncUpdateContext<T, ClientData = unknown> {
+  newState: T                    // New state from client or RPC
+  oldState: T | undefined        // Previous state
+  client: {                      // Client making the update
+    id: string
+    data?: ClientData            // From SyncContextProvider clientData
+  }
+  params: Record<string, string> // Dynamic route params (e.g., { roomId: '123' })
+  key: string[]                  // Key array (e.g., ['game', '123', 'state'])
+  cleanKey: string               // Normalized key (e.g., 'game.123.state')
+}
+```
+
+### SyncCallContext
+
+Available in RPC methods:
+
+```ts
+interface SyncCallContext<T, ClientData = unknown> {
+  client: {                      // Client making the call
+    id: string
+    data?: ClientData
+  }
+  params: Record<string, string> // Dynamic route params
+  key: string[]                  // Key array
+  cleanKey: string               // Normalized key
+
+  // State access
+  getState(): T | undefined      // Get current state
+  setState(data: T): void        // Update state (broadcasts automatically)
+
+  // Room info
+  getHost(): string | undefined  // Get host client ID
+  getClients(): Client[]         // Get all connected clients
+
+  // Ephemeral messaging
+  broadcast(payload: unknown): void           // Send to ALL clients
+  send(clientId: string, payload: unknown): void  // Send to specific client
+}
+```
+
+### Client-Side: useSyncCall
+
+Call server RPC methods from the client:
+
+```tsx
+import { useSyncCall } from '@robojs/sync'
+
+function GameControls() {
+  const call = useSyncCall(['game', roomId, 'state'])
+
+  const handleStart = async () => {
+    const result = await call<
+      { difficulty: string },           // Payload type
+      { success: boolean; error?: string } // Result type
+    >('startGame', { difficulty: 'hard' })
+
+    if (!result.success) {
+      console.error('Failed:', result.error || result.result?.error)
+    }
+  }
+
+  return <button onClick={handleStart}>Start Game</button>
+}
+```
+
+### Middleware
+
+Create `middleware.ts` (or `_middleware.ts`) in any sync directory to intercept all operations in that scope:
+
+```ts
+// src/sync/game/middleware.ts
+import type { SyncMiddlewareContext, MiddlewareResult } from '@robojs/sync/server'
+
+/**
+ * Runs BEFORE handler validation.
+ * Can reject the request or allow it to continue.
+ */
+export function before(ctx: SyncMiddlewareContext): MiddlewareResult {
+  console.log(`[Sync] ${ctx.messageType} on "${ctx.cleanKey}" by ${ctx.client.id}`)
+
+  // Rate limiting example
+  if (isRateLimited(ctx.client.id)) {
+    return { reject: true, reason: 'rate_limited' }
+  }
+
+  return { continue: true }
+}
+
+/**
+ * Runs AFTER successful state broadcast.
+ * Useful for logging, analytics, cleanup.
+ */
+export function after(ctx: SyncMiddlewareContext): void {
+  console.log(`[Sync] Completed ${ctx.messageType} on "${ctx.cleanKey}"`)
+}
+```
+
+Middleware Context:
+
+```ts
+interface SyncMiddlewareContext<T = unknown, ClientData = unknown> {
+  state: T                       // Current state
+  client: { id: string; data?: ClientData }
+  params: Record<string, string>
+  key: string[]
+  cleanKey: string
+  messageType: 'update' | 'call' // Type of operation
+}
+
+type MiddlewareResult =
+  | { continue: true }           // Allow operation
+  | { reject: true; reason?: string }  // Block operation
+```
+
+### Schema Types
+
+Built-in schema validation:
+
+```ts
+import type { BuiltInSchema } from '@robojs/sync/server'
+
+export const schema: BuiltInSchema = {
+  // Primitives
+  name: { type: 'string' },
+  count: { type: 'number' },
+  active: { type: 'boolean' },
+
+  // Optional fields
+  nickname: { type: 'string', optional: true },
+
+  // Nullable fields
+  winner: { type: 'string', nullable: true },
+
+  // Enums
+  status: { type: 'string', enum: ['pending', 'active', 'complete'] },
+
+  // Nested objects (validated as 'object' type)
+  players: { type: 'object' },
+
+  // Arrays (validated as 'array' type)
+  history: { type: 'array' }
+}
+```
+
+### Receiving Server Broadcasts
+
+Server calls to `ctx.broadcast()` and `ctx.send()` are received by clients via `useSyncBroadcast`:
+
+```tsx
+import { useSyncBroadcast } from '@robojs/sync'
+
+function Game() {
+  useSyncBroadcast(
+    (payload, { client }) => {
+      // Server broadcasts have client.id === '__server__'
+      if (client.id === '__server__') {
+        console.log('Server notification:', payload)
+      } else {
+        console.log(`Player ${client.id} broadcast:`, payload)
+      }
+    },
+    ['game', roomId]
+  )
+
+  // ...
+}
+```
+
+### Server Type Exports
+
+All types available from `@robojs/sync/server`:
+
+```ts
+import type {
+  // Context types
+  SyncUpdateContext,      // For validate, transform, onUpdate
+  SyncCallContext,        // For RPC methods
+  SyncMiddlewareContext,  // For middleware before/after
+
+  // Handler function types (for explicit typing)
+  ValidateHandler,
+  TransformHandler,
+  OnUpdateHandler,
+  CallHandler,
+  MiddlewareBeforeHandler,
+  MiddlewareAfterHandler,
+  MiddlewareResult,
+
+  // Client info
+  HandlerClient,
+
+  // Schema
+  BuiltInSchema,
+  SchemaField,
+  SchemaValidationResult,
+
+  // Module types (advanced)
+  SyncHandlerModule,
+  SyncMiddlewareModule,
+  SyncHandlerRecord,
+  SyncMiddlewareRecord
+} from '@robojs/sync/server'
+```
+
+### Handling Validation Errors
+
+When `validate()` returns `false` or a string, or when schema validation fails:
+
+1. **For RPC calls** - Errors are returned directly in the result:
+
+```tsx
+const call = useSyncCall(['game', roomId])
+
+const result = await call('action', payload)
+if (!result.success) {
+  console.log('Error:', result.error) // Contains the rejection reason
+}
+```
+
+2. **For direct state updates** - The update is rejected and the client's state reverts to the server state. For advanced error handling, you can access the raw context:
+
+```tsx
+import { useContext, useEffect } from 'react'
+// Import SyncContext directly from context module
+import { SyncContext } from '@robojs/sync/dist/core/context.js'
+
+function MyComponent() {
+  const { registerValidationErrorCallback, unregisterValidationErrorCallback } = useContext(SyncContext)
+
+  useEffect(() => {
+    const callbackId = registerValidationErrorCallback(
+      ['game', roomId],
+      (reason, details) => {
+        console.log('Validation rejected:', reason, details)
+      }
+    )
+    return () => unregisterValidationErrorCallback(callbackId)
+  }, [roomId])
+}
+```
+
+> **Note:** For server-authoritative handlers that block all direct updates (like the coin game example), validation errors only occur if a client attempts to bypass RPC. Most apps should use RPC methods exclusively for server-authoritative state.
+
+### Complete Example
+
+**Server handler** (`src/sync/activity/[channelId]/coins.ts`):
+
+```ts
+import type { SyncCallContext, BuiltInSchema } from '@robojs/sync/server'
+
+interface CoinGameState {
+  coins: Record<string, { id: string; x: number; y: number; value: number; collected: boolean }>
+  scores: Record<string, number>
+}
+
+export const schema: BuiltInSchema = {
+  coins: { type: 'object' },
+  scores: { type: 'object' }
+}
+
+// Block direct client updates - must use RPC
+export function validate(): string {
+  return 'use_rpc_to_collect'
+}
+
+// Add server timestamp
+export function transform(ctx) {
+  return { ...ctx.newState, updatedAt: Date.now() }
+}
+
+// RPC: Collect a coin
+export async function collect(
+  payload: { coinId: string },
+  ctx: SyncCallContext<CoinGameState>
+) {
+  const state = ctx.getState() ?? { coins: {}, scores: {} }
+  const coin = state.coins[payload.coinId]
+
+  if (!coin || coin.collected) {
+    return { success: false, error: 'invalid_coin' }
+  }
+
+  const playerId = ctx.client.id
+  const newScore = (state.scores[playerId] ?? 0) + coin.value
+
+  ctx.setState({
+    ...state,
+    coins: {
+      ...state.coins,
+      [payload.coinId]: { ...coin, collected: true }
+    },
+    scores: { ...state.scores, [playerId]: newScore }
+  })
+
+  // Notify the collector privately
+  ctx.send(playerId, {
+    type: 'collected',
+    points: coin.value,
+    total: newScore
+  })
+
+  // Notify everyone
+  ctx.broadcast({
+    type: 'coin_collected',
+    playerId,
+    coinId: payload.coinId
+  })
+
+  return { success: true, points: coin.value }
+}
+```
+
+**Client** (`src/app/Game.tsx`):
+
+```tsx
+import { useSyncState, useSyncCall, useSyncBroadcast } from '@robojs/sync'
+
+function CoinGame({ channelId }) {
+  const coinKey = ['activity', channelId, 'coins']
+
+  const [gameState] = useSyncState({ coins: {}, scores: {} }, coinKey)
+  const call = useSyncCall(coinKey)
+
+  useSyncBroadcast((payload, { client }) => {
+    if (client.id === '__server__') {
+      // Handle server notifications
+      console.log(payload.type, payload)
+    }
+  }, coinKey)
+
+  const collectCoin = async (coinId: string) => {
+    const result = await call('collect', { coinId })
+    if (!result.success) {
+      console.error(result.error)
+    }
+  }
+
+  return (
+    <div>
+      {Object.values(gameState.coins).map(coin => (
+        <button
+          key={coin.id}
+          onClick={() => collectCoin(coin.id)}
+          disabled={coin.collected}
+        >
+          {coin.value} points
+        </button>
+      ))}
+    </div>
+  )
 }
 ```
 

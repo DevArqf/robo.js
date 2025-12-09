@@ -1,5 +1,15 @@
 export * from './.robo/build/core/types.js'
 export { SyncContextProvider } from './.robo/build/core/context.js'
+export { SyncBox } from './.robo/build/core/SyncBox.js'
+export { SyncZone, ZoneContext, useZoneContext, useZoneKey } from './.robo/build/core/SyncZone.js'
 export { useSyncBroadcast } from './.robo/build/core/useSyncBroadcast.js'
 export { useSyncContext } from './.robo/build/core/useSyncContext.js'
 export { useSyncState } from './.robo/build/core/useSyncState.js'
+export { useSyncCall } from './.robo/build/core/useSyncCall.js'
+
+// High-level sync primitives
+export { useSyncPresence } from './.robo/build/core/useSyncPresence.js'
+export { useSyncCursor } from './.robo/build/core/useSyncCursor.js'
+export { SyncCursors } from './.robo/build/core/SyncCursors.js'
+export { useSyncDrag } from './.robo/build/core/useSyncDrag.js'
+export { SyncDraggable } from './.robo/build/core/SyncDraggable.js'

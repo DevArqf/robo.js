@@ -16,6 +16,10 @@ export type MessageType =
 	| 'leave'
 	// Server-initiated types
 	| 'setHost'
+	// RPC and validation types
+	| 'call'
+	| 'call_result'
+	| 'validation_error'
 
 export interface MessagePayload<T = unknown | undefined> {
 	data: T

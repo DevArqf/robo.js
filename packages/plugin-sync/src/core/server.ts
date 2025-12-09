@@ -1,11 +1,13 @@
 import { syncLogger } from './logger.js'
 import { normalizeKey } from './utils.js'
+import { processUpdate, processCall, runPostUpdateHooks } from '../server/handlers.js'
 import { getServerEngine } from '@robojs/server'
 import { NodeEngine } from '@robojs/server/engines.js'
 import { nanoid } from 'nanoid'
 import { color } from 'robo.js'
 import WebSocket, { WebSocketServer } from 'ws'
 import type { Client, MessagePayload, ServerZone } from '../core/types.js'
+import type { HandlerClient, CallResultMessage, ValidationErrorMessage } from '../server/types.js'
 
 export const SyncServer = { getSocketServer, getZone, start }
 
@@ -270,9 +272,42 @@ function handleMessage(connection: Connection, message: string) {
 		}
 
 		case 'update': {
-			_state[cleanKey] = data
-			syncLogger.debug(`State updated for ${cleanKey}. Broadcasting...`)
-			broadcastUpdate(cleanKey, data, key)
+			// Process through handlers (validation, transform, etc.)
+			const client: HandlerClient = { id: connection.id, data: connection.data }
+			const oldState = _state[cleanKey]
+			// key is validated above to exist for 'update' type
+			const keyArray = key!
+
+			processUpdate(cleanKey, keyArray, data, oldState, client)
+				.then((result) => {
+					if (result.accepted) {
+						// Update state with potentially transformed data
+						_state[cleanKey] = result.state
+						syncLogger.debug(`State updated for ${cleanKey}. Broadcasting...`)
+						broadcastUpdate(cleanKey, result.state, keyArray)
+
+						// Run post-update hooks (onUpdate, middleware after)
+						runPostUpdateHooks(result).catch((err) => {
+							syncLogger.error('Post-update hook error:', err)
+						})
+					} else {
+						// Send validation error back to client
+						syncLogger.debug(`Update rejected for ${cleanKey}: ${result.reason}`)
+						const errorPayload: ValidationErrorMessage = {
+							type: 'validation_error',
+							key: keyArray,
+							reason: result.reason || 'validation_failed',
+							details: result.errors
+						}
+						connection.ws.send(JSON.stringify(errorPayload))
+					}
+				})
+				.catch((err) => {
+					syncLogger.error('Handler processing error:', err)
+					// On handler error, fall back to allowing update (backward compat)
+					_state[cleanKey] = data
+					broadcastUpdate(cleanKey, data, keyArray)
+				})
 			break
 		}
 
@@ -314,6 +349,42 @@ function handleMessage(connection: Connection, message: string) {
 			} else {
 				syncLogger.warn(`Target client ${targetClientId} not found or not watching key ${cleanKey}`)
 			}
+			break
+		}
+
+		case 'call': {
+			// RPC call to server handler
+			const { callId, method } = payload as { callId?: string; method?: string }
+
+			if (!callId || !method) {
+				syncLogger.error('Call message missing callId or method!')
+				return
+			}
+
+			// key is validated above to exist for 'call' type
+			const keyArray = key!
+			const client: HandlerClient = { id: connection.id, data: connection.data }
+			const zone = getZone(keyArray)
+
+			processCall(cleanKey, keyArray, method, data, client, zone)
+				.then((result) => {
+					const resultPayload: CallResultMessage = {
+						type: 'call_result',
+						callId,
+						result: result.success ? result.result : undefined,
+						error: result.success ? undefined : result.error
+					}
+					connection.ws.send(JSON.stringify(resultPayload))
+				})
+				.catch((err) => {
+					syncLogger.error('Call processing error:', err)
+					const errorPayload: CallResultMessage = {
+						type: 'call_result',
+						callId,
+						error: err instanceof Error ? err.message : 'internal_error'
+					}
+					connection.ws.send(JSON.stringify(errorPayload))
+				})
 			break
 		}
 

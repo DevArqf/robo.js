@@ -5,6 +5,8 @@ export { SyncZone, ZoneContext, useZoneContext, useZoneKey } from './core/SyncZo
 export { useSyncBroadcast } from './core/useSyncBroadcast.js'
 export { useSyncContext } from './core/useSyncContext.js'
 export { useSyncState } from './core/useSyncState.js'
+export { useSyncCall } from './core/useSyncCall.js'
+export type { CallResult, SyncCallFunction } from './core/useSyncCall.js'
 
 // High-level sync primitives
 export { useSyncPresence } from './core/useSyncPresence.js'
