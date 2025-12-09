@@ -36,14 +36,14 @@
 	},
 	"dependencies": {
 		"@discord/embedded-app-sdk": "^2.4.0",
-		"@robojs/server": "workspace:*",
-		"@robojs/sync": "workspace:*",
+		"@robojs/server": "https://pkg.pr.new/Wave-Play/robo.js/@robojs/server@8a27bcd",
+		"@robojs/sync": "https://pkg.pr.new/Wave-Play/robo.js/@robojs/sync@8a27bcd",
 		"animals": "link:",
 		"matter-js": "^0.20.0",
 		"pixi.js": "^8.14.3",
 		"react": "^19.2.1",
 		"react-dom": "^19.2.1",
-		"robo.js": "workspace:*"
+		"robo.js": "https://pkg.pr.new/Wave-Play/robo.js@8a27bcd"
 	},
 	"devDependencies": {
 		"@swc/core": "^1.15.3",
@@ -52,7 +52,6 @@
 		"@types/react": "^19.2.7",
 		"@types/react-dom": "^19.2.3",
 		"@vitejs/plugin-react-swc": "^4.2.2",
-		"discord.js": "^14.25.1",
 		"eslint-plugin-react-hooks": "^7.0.1",
 		"prettier": "^3.7.4",
 		"typescript": "^5.9.3",
