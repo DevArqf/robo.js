@@ -51,6 +51,15 @@ export function usePhysics(screenWidth: number, screenHeight: number): UsePhysic
 
 		Matter.World.add(engine.world, floorBody)
 
+		// Debug: log all collisions
+		Matter.Events.on(engine, 'collisionStart', (event) => {
+			for (const pair of event.pairs) {
+				if (pair.bodyA.label === 'cloud-platform' || pair.bodyB.label === 'cloud-platform') {
+					console.log('[Physics] Cloud collision detected!', pair.bodyA.label, '<->', pair.bodyB.label)
+				}
+			}
+		})
+
 		engineRef.current = engine
 		runnerRef.current = runner
 		floorBodyRef.current = floorBody
