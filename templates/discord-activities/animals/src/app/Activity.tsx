@@ -7,7 +7,6 @@ import { usePhysics } from '../hooks/usePhysics'
 import { useScene } from '../hooks/useScene'
 import { usePlayer } from '../hooks/usePlayer'
 import { useGameLoop } from '../hooks/useGameLoop'
-import { usePlayerSync } from '../hooks/usePlayerSync'
 import { useRemotePlayers } from '../hooks/useRemotePlayers'
 
 import { MainMenu } from '../components/MainMenu'
@@ -28,22 +27,17 @@ export function Activity() {
 	const userId = session?.user?.id
 	const username = session?.user?.username || 'Player'
 
+	// For local testing, generate a stable client ID
+	const localClientId = useRef(`local-${Math.random().toString(36).substring(7)}`)
+	const clientId = userId || localClientId.current
+
 	// Debug: log Discord SDK state
 	useEffect(() => {
 		console.log('[Activity] Discord SDK status:', status)
 		console.log('[Activity] channelId:', discordSdk?.channelId)
-		console.log('[Activity] userId:', userId)
+		console.log('[Activity] clientId:', clientId)
 		console.log('[Activity] username:', username)
-	}, [status, discordSdk?.channelId, userId, username])
-
-	// Player sync - uses channelId directly from discordSdk
-	const { players, initializePlayer, updatePosition, removePlayer } = usePlayerSync(userId)
-
-	// Debug: log players
-	useEffect(() => {
-		console.log('[Activity] players from sync:', players)
-		console.log('[Activity] player keys:', Object.keys(players))
-	}, [players])
+	}, [status, discordSdk?.channelId, clientId, username])
 
 	// Only initialize game systems when in game
 	const isInGame = screen === 'game'
@@ -71,35 +65,7 @@ export function Activity() {
 	)
 
 	// Remote players - render other players from sync state
-	useRemotePlayers(gameContainer, players, userId)
-
-	// Initialize player in sync state when entering game
-	useEffect(() => {
-		console.log(
-			'[Activity] initializePlayer effect - isInGame:',
-			isInGame,
-			'playerReady:',
-			playerReady,
-			'player:',
-			!!player,
-			'userId:',
-			userId
-		)
-		if (isInGame && playerReady && player && userId) {
-			const pos = player.getPosition()
-			console.log('[Activity] Calling initializePlayer with pos:', pos)
-			initializePlayer(pos.x, pos.y, selectedCharacter, username)
-		}
-	}, [isInGame, playerReady, player, userId, selectedCharacter, username, initializePlayer])
-
-	// Remove player when leaving game
-	useEffect(() => {
-		return () => {
-			if (userId) {
-				removePlayer()
-			}
-		}
-	}, [userId, removePlayer])
+	const setPlayers = useRemotePlayers(gameContainer, clientId)
 
 	// Navigation handlers
 	const handlePlay = useCallback(() => {
@@ -114,16 +80,50 @@ export function Activity() {
 	// Game loop
 	const gameLoopEnabled = isInGame && pixiReady && inputReady && physicsReady && sceneLoaded && playerReady && !!player
 
+	// Debug: log game loop state
+	useEffect(() => {
+		console.log('[Activity] Game loop conditions:', {
+			isInGame,
+			pixiReady,
+			inputReady,
+			physicsReady,
+			sceneLoaded,
+			playerReady,
+			hasPlayer: !!player,
+			gameLoopEnabled
+		})
+	}, [isInGame, pixiReady, inputReady, physicsReady, sceneLoaded, playerReady, player, gameLoopEnabled])
+
 	const handleGameLoop = useCallback(() => {
-		if (!player) return
+		if (!player || !clientId) {
+			console.log('[Activity] Game loop skipped - missing player or clientId:', { hasPlayer: !!player, clientId })
+			return
+		}
 
 		// Update player with input
 		player.update(input, width, floorY)
 
-		// Sync position for multiplayer
+		// Sync position and player data for multiplayer
 		const pos = player.getPosition()
-		updatePosition(pos.x, pos.y)
-	}, [player, input, width, floorY, updatePosition])
+		console.log('[Activity] Updating player position:', clientId, pos)
+		console.log('[Activity] About to call setPlayers, type:', typeof setPlayers)
+
+		setPlayers((prev) => {
+			console.log('[Activity] Inside setPlayers callback, prev:', prev)
+			const newState = {
+				...prev,
+				[clientId]: {
+					x: pos.x,
+					y: pos.y,
+					characterId: selectedCharacter,
+					username
+				}
+			}
+			console.log('[Activity] New players state:', newState)
+			console.log('[Activity] Returning new state to sync')
+			return newState
+		})
+	}, [player, input, width, floorY, clientId, selectedCharacter, username, setPlayers])
 
 	useGameLoop(app, handleGameLoop, gameLoopEnabled)
 
