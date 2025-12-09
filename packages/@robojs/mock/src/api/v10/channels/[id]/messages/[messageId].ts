@@ -133,6 +133,7 @@ async function handlePatch(
 		embeds?: unknown[]
 		components?: unknown[]
 		attachments?: (AttachmentPayload | { id: string })[] // Can include existing attachment IDs or new file metadata
+		flags?: number // Phase 7: Message flags (e.g., SuppressEmbeds)
 	}
 
 	const newAttachments: MockAttachment[] = []
@@ -246,7 +247,8 @@ async function handlePatch(
 	const updatedMessage = session.state.updateMessage(messageId, {
 		content: body.content ?? message.content,
 		embeds: body.embeds ?? message.embeds,
-		attachments: finalAttachments
+		attachments: finalAttachments,
+		flags: body.flags ?? message.flags
 	})
 
 	if (!updatedMessage) {

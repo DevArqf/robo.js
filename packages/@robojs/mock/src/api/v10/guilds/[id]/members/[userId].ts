@@ -1,5 +1,6 @@
 import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../../../core/manager.js'
+import { getGatewayServer } from '../../../../../core/gateway.js'
 import { parseMockToken } from '../../../../../utils/id.js'
 import { mockGuildMemberToAPIMember } from '../../../../../discord/payloads.js'
 import { enforcePermissions } from '../../../../../utils/permission-check.js'
@@ -83,7 +84,17 @@ export default async (request: RoboRequest) => {
 
 	// Handle GET - Get member
 	if (request.method === 'GET') {
-		return new Response(JSON.stringify(mockGuildMemberToAPIMember(member, user)), {
+		const apiMember = mockGuildMemberToAPIMember(member, user)
+
+		// Look up voice state for current deaf/mute values (Phase 7)
+		// Voice state deaf/mute are server-side values that can be modified via voice.setMute/setDeaf
+		const voiceState = session.state.voiceStates.get(`${guildId}:${targetUserId}`)
+		if (voiceState) {
+			apiMember.deaf = voiceState.deaf ?? member.deaf
+			apiMember.mute = voiceState.mute ?? member.mute
+		}
+
+		return new Response(JSON.stringify(apiMember), {
 			status: 200,
 			headers: { 'Content-Type': 'application/json' }
 		})
@@ -161,6 +172,56 @@ export default async (request: RoboRequest) => {
 				status: 400,
 				headers: { 'Content-Type': 'application/json' }
 			})
+		}
+
+		// Phase 7: Update voice state if mute, deaf, or channel_id are being modified
+		const voiceStateKey = `${guildId}:${targetUserId}`
+		const existingVoiceState = session.state.voiceStates.get(voiceStateKey)
+		if (body.mute !== undefined || body.deaf !== undefined || body.channel_id !== undefined) {
+			if (existingVoiceState) {
+				// Update existing voice state
+				if (body.mute !== undefined) existingVoiceState.mute = body.mute
+				if (body.deaf !== undefined) existingVoiceState.deaf = body.deaf
+				if (body.channel_id !== undefined) existingVoiceState.channelId = body.channel_id
+			} else if (body.channel_id !== null) {
+				// Create new voice state if connecting to a channel
+				session.state.voiceStates.set(voiceStateKey, {
+					guildId,
+					channelId: body.channel_id || null,
+					userId: targetUserId,
+					sessionId: `voice_${targetUserId}_${Date.now()}`,
+					deaf: body.deaf ?? false,
+					mute: body.mute ?? false,
+					selfDeaf: false,
+					selfMute: false,
+					selfStream: false,
+					selfVideo: false,
+					suppress: false,
+					requestToSpeakTimestamp: null
+				})
+			}
+
+			// If channel_id is null, remove from voice (disconnect)
+			if (body.channel_id === null && existingVoiceState) {
+				session.state.voiceStates.delete(voiceStateKey)
+			}
+
+			// Dispatch VOICE_STATE_UPDATE event
+			const voiceState = session.state.voiceStates.get(voiceStateKey)
+			getGatewayServer().dispatchToSession(session.id, 'VOICE_STATE_UPDATE', {
+				guild_id: guildId,
+				channel_id: voiceState?.channelId || null,
+				user_id: targetUserId,
+				session_id: voiceState?.sessionId || `voice_${targetUserId}_${Date.now()}`,
+				deaf: voiceState?.deaf ?? body.deaf ?? false,
+				mute: voiceState?.mute ?? body.mute ?? false,
+				self_deaf: voiceState?.selfDeaf ?? false,
+				self_mute: voiceState?.selfMute ?? false,
+				self_stream: voiceState?.selfStream ?? false,
+				self_video: voiceState?.selfVideo ?? false,
+				suppress: voiceState?.suppress ?? false,
+				request_to_speak_timestamp: voiceState?.requestToSpeakTimestamp || null
+			}, guildId)
 		}
 
 		// Record action

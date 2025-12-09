@@ -49,8 +49,9 @@ export default async (request: RoboRequest) => {
 		})
 	}
 
-	// 2. Extract params from URL
-	const { app_id: webhookOrAppId, token, messageId } = request.params as { app_id: string; token: string; messageId: string }
+	// 2. Extract params from URL (decode messageId since @ may be URL-encoded as %40)
+	const { app_id: webhookOrAppId, token, messageId: rawMessageId } = request.params as { app_id: string; token: string; messageId: string }
+	const messageId = decodeURIComponent(rawMessageId)
 
 	// 3. Try to find a regular webhook first (by looking up the token)
 	const webhookResult = findWebhookByToken(token)
@@ -116,23 +117,42 @@ export default async (request: RoboRequest) => {
 		)
 	}
 
-	// 7. Validate messageId is a followup message for this interaction
-	const isFollowup = interaction.followupMessageIds?.includes(messageId) ?? false
-	if (!isFollowup) {
-		return new Response(
-			JSON.stringify({
-				error: 'Unknown Message',
-				code: 10008
-			}),
-			{
-				status: 404,
-				headers: { 'Content-Type': 'application/json' }
-			}
-		)
+	// 7. Handle @original as a special case (original interaction response)
+	let actualMessageId = messageId
+	if (messageId === '@original') {
+		// @original refers to the original interaction response
+		if (!interaction.responseMessageId) {
+			return new Response(
+				JSON.stringify({
+					error: 'Unknown Message',
+					code: 10008
+				}),
+				{
+					status: 404,
+					headers: { 'Content-Type': 'application/json' }
+				}
+			)
+		}
+		actualMessageId = interaction.responseMessageId
+	} else {
+		// For other messageIds, validate it's a followup message
+		const isFollowup = interaction.followupMessageIds?.includes(messageId) ?? false
+		if (!isFollowup) {
+			return new Response(
+				JSON.stringify({
+					error: 'Unknown Message',
+					code: 10008
+				}),
+				{
+					status: 404,
+					headers: { 'Content-Type': 'application/json' }
+				}
+			)
+		}
 	}
 
 	// 8. Get the message
-	const message = session.state.getMessage(messageId)
+	const message = session.state.getMessage(actualMessageId)
 	if (!message) {
 		return new Response(
 			JSON.stringify({
@@ -146,13 +166,14 @@ export default async (request: RoboRequest) => {
 		)
 	}
 
-	// 9. Handle based on method
+	// 9. Handle based on method (pass actualMessageId for @original handling)
+	const isOriginal = messageId === '@original'
 	if (request.method === 'GET') {
 		return handleGet(session, message)
 	} else if (request.method === 'PATCH') {
-		return handlePatch(request, session, interaction, message, webhookOrAppId, token, messageId)
+		return handlePatch(request, session, interaction, message, webhookOrAppId, token, actualMessageId, isOriginal)
 	} else {
-		return handleDelete(session, interaction, message, webhookOrAppId, token, messageId)
+		return handleDelete(session, interaction, message, webhookOrAppId, token, actualMessageId, isOriginal)
 	}
 }
 
@@ -460,7 +481,8 @@ async function handlePatch(
 	message: MockMessage,
 	appId: string,
 	token: string,
-	messageId: string
+	messageId: string,
+	isOriginal = false
 ) {
 	const channelId = message.channelId
 
@@ -663,7 +685,8 @@ function handleDelete(
 	message: MockMessage,
 	appId: string,
 	token: string,
-	messageId: string
+	messageId: string,
+	isOriginal = false
 ) {
 	// Get channel before deleting for dispatch
 	const channel = session.state.getChannel(message.channelId)

@@ -154,6 +154,11 @@ export default async (request: RoboRequest) => {
 		permission_overwrites?: Array<{ id: string; type: number; allow: string; deny: string }>
 		bitrate?: number
 		user_limit?: number
+		// Voice channel fields
+		rtc_region?: string | null
+		video_quality_mode?: number | null
+		// Text channel fields
+		default_auto_archive_duration?: number
 	}
 
 	try {
@@ -223,6 +228,24 @@ export default async (request: RoboRequest) => {
 		}
 		if (body.user_limit !== undefined && channel.type === 2) {
 			channel.userLimit = body.user_limit
+		}
+		// Voice channel specific fields
+		if (body.rtc_region !== undefined && channel.type === 2) {
+			channel.rtcRegion = body.rtc_region
+		}
+		if (body.video_quality_mode !== undefined && channel.type === 2) {
+			channel.videoQualityMode = body.video_quality_mode
+		}
+		// Position and parent (all channel types)
+		if (body.position !== undefined) {
+			channel.position = body.position
+		}
+		if (body.parent_id !== undefined) {
+			channel.parentId = body.parent_id
+		}
+		// Text channel specific fields
+		if (body.default_auto_archive_duration !== undefined && channel.type === 0) {
+			channel.defaultAutoArchiveDuration = body.default_auto_archive_duration
 		}
 
 		// Handle permission_overwrites (for lockPermissions and direct updates)

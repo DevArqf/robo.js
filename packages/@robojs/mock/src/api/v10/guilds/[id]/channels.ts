@@ -10,13 +10,14 @@ import { enforcePermissions } from '../../../../utils/permission-check.js'
 /**
  * GET /api/v10/guilds/:id/channels - Fetch guild channels
  * POST /api/v10/guilds/:id/channels - Create a channel in the guild
+ * PATCH /api/v10/guilds/:id/channels - Modify channel positions (bulk update)
  *
- * Returns an array of channel objects for the guild (GET)
+ * Returns an array of channel objects for the guild (GET, PATCH)
  * or a single channel object (POST).
  */
 export default async (request: RoboRequest) => {
 	// Validate method
-	if (request.method !== 'GET' && request.method !== 'POST') {
+	if (request.method !== 'GET' && request.method !== 'POST' && request.method !== 'PATCH') {
 		return new Response(JSON.stringify({ error: 'Method not allowed' }), {
 			status: 405,
 			headers: { 'Content-Type': 'application/json' }
@@ -149,6 +150,77 @@ export default async (request: RoboRequest) => {
 
 		// Return the channel object directly (Robo.js server will serialize it)
 		return apiChannel
+	}
+
+	// PATCH - Modify channel positions (bulk update)
+	if (request.method === 'PATCH') {
+		// Check permissions
+		const permError = enforcePermissions(session, 'PATCH', `/guilds/${guildId}/channels`, undefined, guildId)
+		if (permError) return permError
+
+		let body: Array<{
+			id: string
+			position?: number | null
+			lock_permissions?: boolean | null
+			parent_id?: string | null
+		}>
+
+		try {
+			body = await request.json()
+		} catch {
+			return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		if (!Array.isArray(body)) {
+			return new Response(JSON.stringify({ error: 'Body must be an array' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// Update each channel's position and/or parent
+		for (const update of body) {
+			const channel = session.state.channels.get(update.id)
+			if (channel && channel.guildId === guildId) {
+				if (update.position !== undefined && update.position !== null) {
+					channel.position = update.position
+				}
+				if (update.parent_id !== undefined) {
+					channel.parentId = update.parent_id
+				}
+
+				// Dispatch CHANNEL_UPDATE for each updated channel
+				const apiChannel = mockChannelToAPIChannel(channel)
+				getGatewayServer().dispatchToSession(session.id, 'CHANNEL_UPDATE', apiChannel, guildId)
+			}
+		}
+
+		// Record action
+		session.recordAction(
+			'channels_positions_updated',
+			{
+				guild_id: guildId,
+				updates: body
+			},
+			{
+				endpoint: `PATCH /guilds/${guildId}/channels`,
+				method: 'PATCH'
+			}
+		)
+
+		// Return all channels for this guild
+		const channels = []
+		for (const channelId of guild.channels) {
+			const channel = session.state.channels.get(channelId)
+			if (channel) {
+				channels.push(mockChannelToAPIChannel(channel))
+			}
+		}
+
+		return channels
 	}
 
 	// GET - Get all channels for this guild

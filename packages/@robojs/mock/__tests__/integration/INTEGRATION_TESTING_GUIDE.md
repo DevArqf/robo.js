@@ -59,6 +59,12 @@ Tests are organized into phases matching the mock server implementation:
 | Phase 6H | Forum Channels Deep | `phase-6/forum-channels.test.ts` |
 | Phase 6 | Guild Settings | `phase-6/guild-settings.test.ts` |
 | Phase 6 | Message Completeness | `phase-6/message-completeness.test.ts` |
+| Phase 7 | Interaction Response Lifecycle | `phase-7/interaction-lifecycle.test.ts` |
+| Phase 7 | Channel Helper Methods | `phase-7/channel-helpers.test.ts` |
+| Phase 7 | Message Helper Methods | `phase-7/message-helpers.test.ts` |
+| Phase 7 | Member Voice Methods | `phase-7/member-voice.test.ts` |
+| Phase 7 | Guild Asset Methods | `phase-7/guild-assets.test.ts` |
+| Phase 7 | Webhook Thread Operations | `phase-7/webhook-threads.test.ts` |
 
 ---
 
@@ -112,6 +118,13 @@ __tests__/integration/
     ├── forum-channels.test.ts      # Forum channel tests
     ├── guild-settings.test.ts      # Guild CRUD tests
     └── message-completeness.test.ts # Message validation tests
+└── phase-7/
+    ├── interaction-lifecycle.test.ts # Interaction response lifecycle
+    ├── channel-helpers.test.ts      # Channel helper methods
+    ├── message-helpers.test.ts      # Message helper methods
+    ├── member-voice.test.ts         # Member voice state methods
+    ├── guild-assets.test.ts         # Guild asset methods
+    └── webhook-threads.test.ts      # Webhook thread operations
 ```
 
 ### Server Lifecycle

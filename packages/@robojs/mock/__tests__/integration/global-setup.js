@@ -16,14 +16,14 @@ async function startServer() {
 	return new Promise((resolve, reject) => {
 		console.log('\n[Global Setup] Starting mock server...')
 
-		const proc = spawn('npx', ['robo', 'start'], {
+		// Use 'robo dev' for development mode
+		const proc = spawn('npx', ['robo', 'dev'], {
 			cwd: __dirname.replace('/__tests__/integration', ''),
 			stdio: ['pipe', 'pipe', 'pipe'],
 			env: {
 				...process.env,
 				PORT: String(SERVER_PORT),
-				FORCE_COLOR: '0',
-				NODE_ENV: 'production'
+				FORCE_COLOR: '0'
 			},
 			shell: true
 		})

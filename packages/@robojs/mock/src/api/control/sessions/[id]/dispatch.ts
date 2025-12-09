@@ -164,6 +164,14 @@ export default async (request: RoboRequest) => {
 	// Handle INTERACTION_CREATE specially for slash commands, button clicks, select menus, and autocomplete
 	if (body.event === 'INTERACTION_CREATE') {
 		const data = body.data as {
+			// Raw INTERACTION_CREATE payload fields (Phase 7)
+			id?: string
+			type?: number
+			application_id?: string
+			token?: string
+			data?: unknown
+			member?: unknown
+			message?: unknown
 			// Slash command fields
 			command_name?: string
 			options?: Record<string, string | number | boolean>
@@ -182,7 +190,7 @@ export default async (request: RoboRequest) => {
 			// Context menu fields (Phase 3G)
 			target_id?: string
 			context_menu_type?: 2 | 3
-			// Common fields
+			// Common fields (structured format)
 			user?: {
 				id?: string
 				username?: string
@@ -190,6 +198,55 @@ export default async (request: RoboRequest) => {
 			}
 			channel_id?: string
 			guild_id?: string
+		}
+
+		// Phase 7: Handle raw INTERACTION_CREATE payload (from integration tests)
+		// Raw payloads have: id, type, application_id, token, data (not command_name at root level)
+		if (data.id && data.type !== undefined && data.application_id && data.token) {
+			// This is a raw Discord-format INTERACTION_CREATE payload
+			// Store the interaction in state so callback endpoint can find it
+			const interactionData = data.data as { name?: string; custom_id?: string; values?: string[] } | undefined
+			const member = data.member as { user?: { id?: string } } | undefined
+			const userId = member?.user?.id || data.user?.id || session.state.botUser.id
+
+			// Create interaction in state
+			session.state.addInteraction({
+				id: data.id,
+				applicationId: data.application_id,
+				type: data.type,
+				token: data.token,
+				channelId: data.channel_id || session.state.channels.values().next().value?.id || '',
+				guildId: data.guild_id,
+				userId,
+				commandName: interactionData?.name,
+				customId: interactionData?.custom_id,
+				values: interactionData?.values,
+				messageId: (data.message as { id?: string })?.id,
+				createdAt: Date.now(),
+				expiresAt: Date.now() + 15 * 60 * 1000 // 15 minutes
+			})
+
+			// Ensure required fields are present for discord.js compatibility
+			const enrichedPayload = {
+				...body.data,
+				// Discord.js requires entitlements array (even if empty)
+				entitlements: (body.data as Record<string, unknown>).entitlements ?? [],
+				// Ensure app_permissions is present
+				app_permissions: (body.data as Record<string, unknown>).app_permissions ?? '0',
+				// Ensure locale fields are present
+				locale: (body.data as Record<string, unknown>).locale ?? 'en-US',
+				guild_locale: (body.data as Record<string, unknown>).guild_locale ?? 'en-US'
+			}
+
+			// Dispatch the enriched payload to gateway
+			await session.dispatch(body.event, enrichedPayload)
+
+			return {
+				success: true,
+				dispatched: session.connections.size,
+				interaction_id: data.id,
+				interaction_token: data.token
+			}
 		}
 
 		// Select menu interaction (Phase 3D) - check BEFORE button since both have custom_id

@@ -81,11 +81,10 @@ export default async (request: RoboRequest) => {
 		// Get messages for channel
 		let messages = session.state.getMessagesForChannel(channelId)
 
-		// Sort by timestamp descending (newest first)
+		// Sort by snowflake ID descending (newest first)
+		// Discord snowflake IDs contain a timestamp component, so larger ID = newer message
 		messages.sort((a, b) => {
-			const timeA = new Date(a.timestamp).getTime()
-			const timeB = new Date(b.timestamp).getTime()
-			return timeB - timeA
+			return BigInt(b.id) > BigInt(a.id) ? 1 : BigInt(b.id) < BigInt(a.id) ? -1 : 0
 		})
 
 		// Apply pagination

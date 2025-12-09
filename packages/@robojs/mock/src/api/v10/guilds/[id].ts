@@ -1,7 +1,23 @@
 import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../core/manager.js'
+import { getGatewayServer } from '../../../core/gateway.js'
 import { parseMockToken } from '../../../utils/id.js'
 import { buildGuildCreatePayload } from '../../../discord/payloads.js'
+
+/**
+ * Generate a fake Discord CDN image hash
+ * Discord uses hex strings for image hashes, with 'a_' prefix for animated images
+ */
+function generateImageHash(dataUrl: string | null): string | null {
+	if (dataUrl === null) {
+		return null
+	}
+	// Check if animated (gif)
+	const isAnimated = dataUrl.includes('image/gif')
+	// Generate a random hex hash (32 chars like Discord)
+	const hash = Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('')
+	return isAnimated ? `a_${hash}` : hash
+}
 
 /**
  * GET /api/v10/guilds/:id - Fetch guild
@@ -97,14 +113,25 @@ export default async (request: RoboRequest) => {
 		if (body.mfa_level !== undefined) {
 			guild.mfaLevel = Number(body.mfa_level)
 		}
+		// Handle image fields - generate hashes from data URLs (Phase 7)
 		if (body.icon !== undefined) {
-			guild.icon = body.icon as string | null
+			guild.icon = generateImageHash(body.icon as string | null)
 		}
 		if (body.splash !== undefined) {
-			guild.splash = body.splash as string | null
+			guild.splash = generateImageHash(body.splash as string | null)
 		}
 		if (body.banner !== undefined) {
-			guild.banner = body.banner as string | null
+			guild.banner = generateImageHash(body.banner as string | null)
+		}
+		if (body.discovery_splash !== undefined) {
+			guild.discoverySplash = generateImageHash(body.discovery_splash as string | null)
+		}
+		// Handle premium tier and features (Phase 7)
+		if (body.premium_tier !== undefined) {
+			guild.premiumTier = Number(body.premium_tier)
+		}
+		if (body.features !== undefined) {
+			guild.features = body.features as string[]
 		}
 
 		// Dispatch GUILD_UPDATE event
@@ -115,16 +142,8 @@ export default async (request: RoboRequest) => {
 			sequence: session.state.sequence
 		})
 
-		// Change the event type to GUILD_UPDATE
-		const updatePayload = {
-			op: payload.op,
-			s: payload.s,
-			t: 'GUILD_UPDATE',
-			d: payload.d
-		}
-
-		// Dispatch to connected clients
-		session.dispatchToAllConnections(updatePayload)
+		// Dispatch GUILD_UPDATE to connected clients
+		getGatewayServer().dispatchToSession(session.id, 'GUILD_UPDATE', payload.d, guildId)
 
 		// Record the action
 		session.recordAction('GUILD_UPDATE', {

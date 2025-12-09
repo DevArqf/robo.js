@@ -265,8 +265,26 @@ export default async (request: RoboRequest) => {
 	}
 	interaction.respondedAt = now
 
-	// 10b. Create message for type 4 (ChannelMessageWithSource) or type 7 (UpdateMessage) - Phase 3H
-	if (body.type === 4 && responseData) {
+	// 10b. Create message for type 4 (ChannelMessageWithSource), type 5 (DeferredChannelMessageWithSource),
+	// type 6 (DeferredUpdateMessage), or type 7 (UpdateMessage) - Phase 3H/7
+	if (body.type === 5) {
+		// Type 5: Deferred reply - create an empty placeholder message for editReply() to update later
+		const message = session.state.createMessage({
+			id: messageId,
+			channelId: interaction.channelId,
+			guildId: interaction.guildId,
+			authorId: session.state.botUser.id,
+			content: '',
+			embeds: [],
+			tts: false,
+			// Ephemeral deferred replies have the ephemeral flag
+			flags: responseData?.flags
+		})
+		interaction.responseMessageId = message.id
+	} else if (body.type === 6 && interaction.messageId) {
+		// Type 6: Deferred update - point to the original component message
+		interaction.responseMessageId = interaction.messageId
+	} else if (body.type === 4 && responseData) {
 		// Type 4: Create a new message as the response
 		// Phase 3I: Get the user who triggered the interaction for interaction_metadata
 		const interactionUser = session.state.getUser(interaction.userId)

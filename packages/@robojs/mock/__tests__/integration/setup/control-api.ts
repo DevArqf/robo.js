@@ -468,7 +468,8 @@ export async function mockRestAPI<T = unknown>(
 		body?: unknown
 	} = {}
 ): Promise<T> {
-	const url = `${MOCK_CONFIG.REST_URL}${endpoint}`
+	// Note: discord.js automatically adds /v10 to REST_URL, so we need to add it here too
+	const url = `${MOCK_CONFIG.REST_URL}/v10${endpoint}`
 	const response = await fetch(url, {
 		method: options.method ?? 'GET',
 		headers: {
