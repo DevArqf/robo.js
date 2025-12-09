@@ -21,6 +21,7 @@ export type LogLevel = 'trace' | 'debug' | 'info' | 'wait' | 'other' | 'event' |
 interface CustomLevel {
 	label: string
 	priority: number
+	color?: keyof typeof colorMap
 }
 
 export interface LoggerOptions {
@@ -524,7 +525,8 @@ export class Logger {
 	public setup(options?: LoggerOptions) {
 		const { customLevels, drain = consoleDrain, enabled = true, level, parent, prefix } = options ?? {}
 
-		this._customLevels = customLevels
+		// Preserve existing customLevels if new ones aren't provided
+		this._customLevels = customLevels ?? this._customLevels
 		this._drain = drain
 		this._enabled = enabled
 		this._parent = parent
@@ -566,12 +568,18 @@ export class Logger {
 
 		// Format the message all pretty and stuff
 		if (level !== 'other') {
-			const label = this._customLevels ? this._customLevels[level]?.label : colorizedLogLevels[level]
-			let levelLabel = (label ?? level.padEnd(5)) + ' -'
+			const customLevel = this._customLevels?.[level]
+			const levelColor = (customLevel?.color ? colorMap[customLevel.color] : colorMap[level]) ?? ((s: string) => s)
+
+			// Apply color to label if custom level has a color, otherwise use pre-colorized label
+			let levelLabel =
+				(customLevel?.color
+					? levelColor(customLevel.label.padEnd(9))
+					: customLevel?.label ?? colorizedLogLevels[level] ?? level.padEnd(5)) + ' -'
 
 			// Add the prefix if specified
 			if (prefix) {
-				levelLabel = color.bold(colorMap[level](prefix + ':')) + levelLabel
+				levelLabel = color.bold(levelColor(prefix + ':')) + levelLabel
 			}
 
 			data.unshift(levelLabel)

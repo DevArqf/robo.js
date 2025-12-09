@@ -1,3 +1,4 @@
+import { color } from '../../core/color.js'
 import { IS_BUN_RUNTIME } from '../utils/runtime-utils.js'
 import { compilerLogger } from '../utils/loggers.js'
 import { existsSync } from 'node:fs'
@@ -46,7 +47,7 @@ export async function buildDeclarationFiles(tsOptions?: CompilerOptions) {
 	allDiagnostics.forEach((diagnostic) => {
 		switch (diagnostic.category) {
 			case ts.DiagnosticCategory.Error:
-				compilerLogger.error(formatDiagnostic(diagnostic))
+				compilerLogger.custom('typeerror', color.red(formatDiagnostic(diagnostic)))
 				break
 			case ts.DiagnosticCategory.Warning:
 				compilerLogger.warn(formatDiagnostic(diagnostic))
