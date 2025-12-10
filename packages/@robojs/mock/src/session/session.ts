@@ -24,7 +24,8 @@ import type {
 	DispatchContextMenuOptions,
 	DispatchThreadCreateOptions,
 	SessionRecording,
-	SessionConfig
+	SessionConfig,
+	SeedMessageConfig
 } from '../types/index.js'
 import { AutoModerationTriggerType } from '../types/index.js'
 import { generateSessionId, createMockToken, generateInteractionToken } from '../utils/id.js'
@@ -94,6 +95,10 @@ export class Session implements ISession {
 	private ending = false
 	private autoArchiveInterval: ReturnType<typeof setInterval> | null = null
 
+	// Rate limit simulation state
+	private _simulateRateLimit = false
+	private _rateLimitRetryAfter = 1 // seconds
+
 	constructor(options?: CreateSessionOptions) {
 		this.id = generateSessionId()
 		this.token = createMockToken(this.id)
@@ -133,6 +138,11 @@ export class Session implements ISession {
 							type: channelConfig.type ?? 0
 						})
 						this.state.addChannelToGuild(guild.id, channel)
+
+						// Create seed messages if provided
+						if (channelConfig.messages) {
+							this.createSeedMessages(channel.id, guild.id, channelConfig.messages)
+						}
 					}
 				} else {
 					// Create default general channel if no channels specified
@@ -144,6 +154,24 @@ export class Session implements ISession {
 					this.state.addChannelToGuild(guild.id, channel)
 				}
 			}
+		} else {
+			// No guilds configured - create a default guild with just a general channel
+			const defaultGuild = createMockGuild({
+				name: 'Test Server',
+				ownerId: this.state.botUser.id
+			})
+			this.state.addGuild(defaultGuild)
+
+			// Create only the general channel by default
+			// Additional channels can be added via test data
+			const generalChannel = createMockChannel({
+				guildId: defaultGuild.id,
+				name: 'general',
+				type: 0, // GUILD_TEXT
+				topic: 'Chat about anything and everything here',
+				position: 0
+			})
+			this.state.addChannelToGuild(defaultGuild.id, generalChannel)
 		}
 
 		// Create commands from config (for Stage UI testing)
@@ -168,6 +196,52 @@ export class Session implements ISession {
 	 */
 	get isEnding(): boolean {
 		return this.ending
+	}
+
+	/**
+	 * Create seed messages with optional reactions
+	 * Used during session initialization
+	 */
+	private createSeedMessages(channelId: string, guildId: string, messages: SeedMessageConfig[]): void {
+		for (const msgConfig of messages) {
+			// Get or create the author
+			let author: MockUser
+			if (msgConfig.authorUsername) {
+				// Look for existing user with this username
+				const existingUser = Array.from(this.state.users.values()).find(
+					(u) => u.username === msgConfig.authorUsername
+				)
+				if (existingUser) {
+					author = existingUser
+				} else {
+					author = createMockUser({ username: msgConfig.authorUsername })
+					this.state.users.set(author.id, author)
+				}
+			} else {
+				// Use a default test user
+				author = this.state.getOrCreateTestUser()
+			}
+
+			// Create the message
+			const message = this.state.createMessage({
+				channelId,
+				guildId,
+				authorId: author.id,
+				content: msgConfig.content
+			})
+
+			// Add reactions if specified
+			if (msgConfig.reactions) {
+				for (const reactionConfig of msgConfig.reactions) {
+					const count = reactionConfig.count ?? 1
+					// Add reactions from test users
+					for (let i = 0; i < count; i++) {
+						const reactUser = i === 0 ? author : this.state.getOrCreateTestUser(`TestUser${i}`)
+						this.state.addReaction(message.id, reactUser.id, { id: null, name: reactionConfig.emoji })
+					}
+				}
+			}
+		}
 	}
 
 	/**
@@ -219,6 +293,14 @@ export class Session implements ISession {
 		components?: unknown[]
 		/** User IDs that are mentioned in this message */
 		mentions?: string[]
+		/** Reactions to apply to the message after creation */
+		reactions?: Array<{
+			emoji: { id: string | null; name: string }
+			count: number
+			me: boolean
+		}>
+		/** Message type (default 0 = DEFAULT, 7 = USER_JOIN, 8 = GUILD_BOOST, etc.) */
+		type?: number
 	}): Promise<MockMessage> {
 		if (this.ending) {
 			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
@@ -265,8 +347,21 @@ export class Session implements ISession {
 			embeds: options.embeds ?? [],
 			attachments: options.attachments ?? [],
 			components: options.components ?? [],
-			mentions: options.mentions ?? []
+			mentions: options.mentions ?? [],
+			type: options.type
 		})
+
+		// Apply reactions if provided
+		if (options.reactions && options.reactions.length > 0) {
+			for (const reaction of options.reactions) {
+				const count = reaction.count ?? 1
+				for (let i = 0; i < count; i++) {
+					// Use author for first reaction, create test users for additional
+					const reactUser = i === 0 ? author : this.state.getOrCreateTestUser(`ReactUser${i}`)
+					this.state.addReaction(message.id, reactUser.id, reaction.emoji)
+				}
+			}
+		}
 
 		// Build the MESSAGE_CREATE payload
 		const payload = buildMessageCreatePayload({
@@ -332,6 +427,50 @@ export class Session implements ISession {
 		// Dispatch to connections
 		const eventName = options.action === 'add' ? 'MESSAGE_POLL_VOTE_ADD' : 'MESSAGE_POLL_VOTE_REMOVE'
 		await this.dispatch(eventName, (payload as GatewayPayload).d)
+
+		return true
+	}
+
+	/**
+	 * Dispatch a MESSAGE_REACTION_ADD or MESSAGE_REACTION_REMOVE event
+	 * Updates state and dispatches to connected bots and Stage UI
+	 *
+	 * @param options - Reaction options
+	 * @returns true if successful, false if message not found
+	 */
+	async dispatchReaction(options: {
+		action: 'add' | 'remove'
+		messageId: string
+		channelId: string
+		userId: string
+		emoji: { id: string | null; name: string }
+		guildId?: string
+	}): Promise<boolean> {
+		if (this.ending) {
+			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
+		}
+
+		// Update state
+		const reactions = options.action === 'add'
+			? this.state.addReaction(options.messageId, options.userId, options.emoji)
+			: this.state.removeReaction(options.messageId, options.userId, options.emoji)
+
+		if (reactions === undefined) {
+			return false
+		}
+
+		// Build the payload for Discord gateway
+		const gatewayEvent = options.action === 'add' ? 'MESSAGE_REACTION_ADD' : 'MESSAGE_REACTION_REMOVE'
+		const payload = {
+			user_id: options.userId,
+			channel_id: options.channelId,
+			message_id: options.messageId,
+			guild_id: options.guildId,
+			emoji: options.emoji
+		}
+
+		// Dispatch to connections
+		await this.dispatch(gatewayEvent, payload)
 
 		return true
 	}
@@ -1871,6 +2010,40 @@ export class Session implements ISession {
 	 */
 	get actionCount(): number {
 		return this.recorder.length
+	}
+
+	// ============================================================================
+	// Rate Limit Simulation (Phase 13)
+	// ============================================================================
+
+	/**
+	 * Enable rate limit simulation for testing
+	 * When enabled, the next API request will return a 429 response
+	 */
+	setRateLimitSimulation(enabled: boolean, retryAfter = 1): void {
+		this._simulateRateLimit = enabled
+		this._rateLimitRetryAfter = retryAfter
+	}
+
+	/**
+	 * Check if rate limit simulation is enabled
+	 * If enabled, returns the retry-after value and disables simulation
+	 * Returns null if not simulating rate limit
+	 */
+	checkRateLimit(): { retryAfter: number } | null {
+		if (this._simulateRateLimit) {
+			const retryAfter = this._rateLimitRetryAfter
+			this._simulateRateLimit = false // One-shot simulation
+			return { retryAfter }
+		}
+		return null
+	}
+
+	/**
+	 * Check if rate limit simulation is currently active (without consuming it)
+	 */
+	get isRateLimitSimulationActive(): boolean {
+		return this._simulateRateLimit
 	}
 
 	// ============================================================================

@@ -158,14 +158,24 @@ export function ServerList({ guilds, selectedId, onSelect, unreadGuildIds, sessi
 				embeds?: unknown[]
 				attachments?: unknown[]
 				components?: unknown[]
+				reactions?: Array<{ emoji: { id: null; name: string }; count: number; me: boolean }>
 			}> = [
 				{
 					content: 'Hello! Welcome to the test server. 👋',
-					author: { id: '100000000000000001', username: 'TestUser', bot: false }
+					author: { id: '100000000000000001', username: 'TestUser', bot: false },
+					reactions: [
+						{ emoji: { id: null, name: '👋' }, count: 3, me: false },
+						{ emoji: { id: null, name: '🎉' }, count: 2, me: true }
+					]
 				},
 				{
 					content: 'Hi there! I am a bot responding to your message.',
-					author: { id: '100000000000000002', username: 'MockBot', bot: true }
+					author: { id: '100000000000000002', username: 'MockBot', bot: true },
+					reactions: [
+						{ emoji: { id: null, name: '👍' }, count: 5, me: false },
+						{ emoji: { id: null, name: '❤️' }, count: 2, me: true },
+						{ emoji: { id: null, name: '🔥' }, count: 1, me: false }
+					]
 				},
 				{
 					content: 'This second message should be grouped with my first one!',
@@ -278,8 +288,9 @@ export function ServerList({ guilds, selectedId, onSelect, unreadGuildIds, sessi
 								{
 									type: 2, // Button
 									style: 1, // Primary (blurple)
-									label: 'Primary',
-									custom_id: 'btn_primary'
+									label: 'Open Modal',
+									emoji: { name: '📝' },
+									custom_id: 'test_modal' // Triggers test modal response
 								},
 								{
 									type: 2,
@@ -391,7 +402,8 @@ export function ServerList({ guilds, selectedId, onSelect, unreadGuildIds, sessi
 							author: msg.author,
 							embeds: msg.embeds || [],
 							attachments: msg.attachments || [],
-							components: msg.components || []
+							components: msg.components || [],
+							reactions: msg.reactions || []
 						}
 					})
 				})
@@ -433,38 +445,47 @@ export function ServerList({ guilds, selectedId, onSelect, unreadGuildIds, sessi
 	const hasNoGuilds = guilds.length === 0
 
 	return (
-		<nav className={styles.container}>
+		<nav className={styles.container} aria-label="Server list">
 			{/* Home/DM button */}
 			<div className={styles.serverWrapper}>
 				<div className={styles.pill} />
-				<button className={styles.homeButton} title="Direct Messages">
+				<button className={styles.homeButton} title="Direct Messages" aria-label="Direct Messages">
 					<DiscordLogo />
 				</button>
 			</div>
 
-			<div className={styles.separator} />
+			<div className={styles.separator} role="separator" />
 
 			{/* Guild icons */}
-			{guilds.map((guild) => {
-				const isSelected = selectedId === guild.id
-				const hasUnread = unreadGuildIds?.has(guild.id) && !isSelected
+			<div role="listbox" aria-label="Servers">
+				{guilds.map((guild) => {
+					const isSelected = selectedId === guild.id
+					const hasUnread = unreadGuildIds?.has(guild.id) && !isSelected
 
-				return (
-					<div
-						key={guild.id}
-						className={`${styles.serverWrapper} ${isSelected ? styles.selected : ''} ${hasUnread ? styles.unread : ''}`}
-					>
-						<div className={styles.pill} />
-						<button className={styles.serverIcon} onClick={() => onSelect(guild.id)} title={guild.name}>
-							{guild.icon ? (
-								<img src={getGuildIconUrl(guild)} alt={guild.name} className={styles.iconImage} />
-							) : (
-								<span className={styles.serverAcronym}>{getGuildAcronym(guild.name)}</span>
-							)}
-						</button>
-					</div>
-				)
-			})}
+					return (
+						<div
+							key={guild.id}
+							className={`${styles.serverWrapper} ${isSelected ? styles.selected : ''} ${hasUnread ? styles.unread : ''}`}
+							role="option"
+							aria-selected={isSelected}
+						>
+							<div className={styles.pill} />
+							<button
+								className={styles.serverIcon}
+								onClick={() => onSelect(guild.id)}
+								title={guild.name}
+								aria-label={`${guild.name}${hasUnread ? ' (has unread messages)' : ''}`}
+							>
+								{guild.icon ? (
+									<img src={getGuildIconUrl(guild)} alt="" className={styles.iconImage} />
+								) : (
+									<span className={styles.serverAcronym} aria-hidden="true">{getGuildAcronym(guild.name)}</span>
+								)}
+							</button>
+						</div>
+					)
+				})}
+			</div>
 
 			{/* Add server / Seed data button */}
 			<div className={styles.serverWrapper}>
@@ -474,12 +495,13 @@ export function ServerList({ guilds, selectedId, onSelect, unreadGuildIds, sessi
 					onClick={hasNoGuilds ? handleSeedData : undefined}
 					disabled={isSeeding}
 					title={hasNoGuilds ? 'Seed Test Data' : 'Add a Server'}
+					aria-label={hasNoGuilds ? 'Seed Test Data' : 'Add a Server'}
 				>
-					{isSeeding ? <span className={styles.spinner} /> : <span className={styles.plus}>+</span>}
+					{isSeeding ? <span className={styles.spinner} aria-label="Loading" /> : <span className={styles.plus} aria-hidden="true">+</span>}
 				</button>
 			</div>
 
-			{seedError && <div className={styles.seedError}>{seedError}</div>}
+			{seedError && <div className={styles.seedError} role="alert">{seedError}</div>}
 		</nav>
 	)
 }

@@ -545,6 +545,14 @@ export function mockChannelToAPIChannel(channel: MockChannel): APIChannel {
 		;(result as any).video_quality_mode = channel.videoQualityMode ?? null
 	}
 
+	// Add stage channel specific fields (type 13 = GuildStageVoice)
+	if (channel.type === 13) {
+		// Stage channels are voice-based and need bitrate for Discord.js isVoiceBased()
+		;(result as any).bitrate = channel.bitrate ?? 64000
+		;(result as any).user_limit = channel.userLimit ?? 0
+		;(result as any).rtc_region = channel.rtcRegion ?? null
+	}
+
 	return result
 }
 
@@ -780,7 +788,7 @@ export function buildGuildCreatePayload(options: GuildCreatePayloadOptions): Gat
 		banner: guild.banner ?? null,
 		premium_tier: guild.premiumTier ?? GuildPremiumTier.None,
 		premium_subscription_count: 0,
-		preferred_locale: 'en-US',
+		preferred_locale: guild.preferredLocale ?? 'en-US',
 		public_updates_channel_id: null,
 		max_video_channel_users: 25,
 		max_stage_video_channel_users: 50,
@@ -789,7 +797,7 @@ export function buildGuildCreatePayload(options: GuildCreatePayloadOptions): Gat
 			.map((id) => sessionState.stickers.get(id))
 			.filter((s): s is MockSticker => s !== undefined)
 			.map(mockStickerToAPISticker),
-		premium_progress_bar_enabled: false,
+		premium_progress_bar_enabled: guild.premiumProgressBarEnabled ?? false,
 		safety_alerts_channel_id: null,
 
 		// GUILD_CREATE specific fields
@@ -1216,7 +1224,8 @@ export function mockMessageToAPIMessage(message: MockMessage, author: MockUser):
 		attachments: message.attachments as APIMessage['attachments'],
 		embeds: message.embeds as APIMessage['embeds'],
 		pinned: message.pinned,
-		type: message.type as MessageType
+		type: message.type as MessageType,
+		nonce: message.nonce ?? undefined
 	}
 
 	// Phase 3B: Add reactions (always include to ensure Discord.js cache is updated)

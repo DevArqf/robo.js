@@ -9,6 +9,7 @@ export type {
 	StageUser,
 	StageMember,
 	StageRole,
+	StageReaction,
 	StageMessage,
 	StageApplicationCommand,
 	StageApplicationCommandOption,
@@ -27,7 +28,9 @@ export type {
 	StageSelectOptionData,
 	StageSubmitModalData,
 	StageAddReactionData,
+	StageRemoveReactionData,
 	StageStartTypingData,
 	StageSubscribeChannelData,
-	StageSetPlaybackData
+	StageSetPlaybackData,
+	StageRESTCallData
 } from '../../types/stage.js'

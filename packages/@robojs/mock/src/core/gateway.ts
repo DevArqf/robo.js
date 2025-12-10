@@ -498,6 +498,16 @@ export class GatewayServer {
 			return (connState.intents & requiredIntent) !== 0
 		}
 
+		// Guild scheduled event user add/remove require GuildScheduledEvents intent
+		if (event === 'GUILD_SCHEDULED_EVENT_USER_ADD' || event === 'GUILD_SCHEDULED_EVENT_USER_REMOVE') {
+			return (connState.intents & GatewayIntentBits.GuildScheduledEvents) !== 0
+		}
+
+		// Guild scheduled event CRUD events require GuildScheduledEvents intent
+		if (event.startsWith('GUILD_SCHEDULED_EVENT_')) {
+			return (connState.intents & GatewayIntentBits.GuildScheduledEvents) !== 0
+		}
+
 		// Guild events require GUILDS intent
 		if (event.startsWith('GUILD_') || event.startsWith('CHANNEL_')) {
 			return (connState.intents & GatewayIntentBits.Guilds) !== 0

@@ -18,6 +18,8 @@ export type StageEventType =
 	| 'message_create'         // New message (from user or bot)
 	| 'message_update'         // Message edited
 	| 'message_delete'         // Message deleted
+	| 'message_reaction_add'   // Reaction added to message
+	| 'message_reaction_remove' // Reaction removed from message
 
 	// Interaction events
 	| 'interaction_create'     // Slash command, button, etc. invoked
@@ -37,16 +39,21 @@ export type StageEventType =
 	| 'heartbeat'              // Keep-alive (every 30s)
 	| 'error'                  // Error occurred
 
+	// REST API (Phase 5K)
+	| 'rest_call'              // REST API call made by bot
+
 /**
  * Command types sent from stage clients to server
  */
 export type StageCommandType =
 	| 'send_message'           // Send a message as a user
 	| 'invoke_command'         // Invoke slash command
+	| 'invoke_context_command' // Invoke context menu command (right-click)
 	| 'click_button'           // Click a button
 	| 'select_option'          // Select from dropdown
 	| 'submit_modal'           // Submit modal form
 	| 'add_reaction'           // Add reaction to message
+	| 'remove_reaction'        // Remove reaction from message
 	| 'start_typing'           // Show typing indicator
 	| 'request_state'          // Request current state
 	| 'set_playback'           // Control playback (play/pause/seek)
@@ -157,6 +164,18 @@ export interface StageRole {
 }
 
 /**
+ * Reaction data for stage clients (matches Discord API structure)
+ */
+export interface StageReaction {
+	count: number
+	me: boolean
+	emoji: {
+		id: string | null
+		name: string | null
+	}
+}
+
+/**
  * Simplified message data for stage clients
  */
 export interface StageMessage {
@@ -170,7 +189,8 @@ export interface StageMessage {
 	embeds: unknown[]
 	components: unknown[]
 	attachments: unknown[]
-	reactions?: unknown[]
+	reactions?: StageReaction[]
+	flags?: number  // Message flags (64 = EPHEMERAL)
 }
 
 // ============================================================================
@@ -272,6 +292,30 @@ export interface StageCommandResponseData {
 	error?: string
 }
 
+/**
+ * Data payload for rest_call events (Phase 5K)
+ */
+export interface StageRESTCallData {
+	/** HTTP method */
+	method: string
+	/** Request path (e.g., /api/v10/channels/123/messages) */
+	path: string
+	/** HTTP status code */
+	statusCode: number
+	/** Request duration in milliseconds */
+	duration: number
+	/** Request body (for POST/PATCH/PUT) */
+	requestBody?: unknown
+	/** Response body */
+	responseBody?: unknown
+	/** Timestamp when request started */
+	timestamp: number
+	/** Friendly endpoint name (e.g., "POST /channels/:id/messages") */
+	endpoint?: string
+	/** Error message if request failed */
+	error?: string
+}
+
 // ============================================================================
 // Stage Command Payloads
 // ============================================================================
@@ -313,6 +357,21 @@ export interface StageInvokeCommandData {
 		id?: Snowflake
 		username?: string
 	}
+}
+
+/**
+ * Data for invoke_context_command command (Phase 5N)
+ */
+export interface StageInvokeContextCommandData {
+	channel_id: Snowflake
+	command_name: string
+	/** 2 = USER, 3 = MESSAGE */
+	command_type: 2 | 3
+	target_id: Snowflake
+	/** For message commands, the target message */
+	message?: StageMessage
+	/** For user commands, the target user */
+	user?: StageUser
 }
 
 /**
@@ -358,6 +417,19 @@ export interface StageSubmitModalData {
  * Data for add_reaction command
  */
 export interface StageAddReactionData {
+	channel_id: Snowflake
+	message_id: Snowflake
+	emoji: string  // Unicode emoji or custom emoji string
+	user?: {
+		id?: Snowflake
+		username?: string
+	}
+}
+
+/**
+ * Data for remove_reaction command
+ */
+export interface StageRemoveReactionData {
 	channel_id: Snowflake
 	message_id: Snowflake
 	emoji: string  // Unicode emoji or custom emoji string

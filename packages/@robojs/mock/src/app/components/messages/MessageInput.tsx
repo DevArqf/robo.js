@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, type KeyboardEvent, type ChangeEvent } from 'react'
 import { useSession } from '../../hooks/useSession'
 import { CommandAutocomplete } from './CommandAutocomplete'
+import { EmojiPicker } from '../common/EmojiPicker'
 import type { StageApplicationCommand } from '../../types/stage'
 import styles from './MessageInput.module.css'
 
@@ -13,6 +14,7 @@ export function MessageInput({ channelId, channelName }: MessageInputProps) {
 	const { sendMessage, invokeCommand, slashCommands } = useSession()
 	const [value, setValue] = useState('')
 	const [showCommands, setShowCommands] = useState(false)
+	const [showEmojiPicker, setShowEmojiPicker] = useState(false)
 	const [commandSearch, setCommandSearch] = useState('')
 	const [isLoading, setIsLoading] = useState(false)
 	const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -97,6 +99,25 @@ export function MessageInput({ channelId, channelName }: MessageInputProps) {
 		setShowCommands(false)
 	}, [])
 
+	const handleEmojiSelect = useCallback((emoji: string) => {
+		// Insert emoji at cursor position
+		const textarea = inputRef.current
+		if (textarea) {
+			const start = textarea.selectionStart
+			const end = textarea.selectionEnd
+			const newValue = value.slice(0, start) + emoji + value.slice(end)
+			setValue(newValue)
+			// Move cursor after inserted emoji
+			requestAnimationFrame(() => {
+				textarea.selectionStart = textarea.selectionEnd = start + emoji.length
+				textarea.focus()
+			})
+		} else {
+			setValue(value + emoji)
+		}
+		setShowEmojiPicker(false)
+	}, [value])
+
 	return (
 		<div className={styles.container}>
 			{showCommands && slashCommands.length > 0 && (
@@ -125,6 +146,7 @@ export function MessageInput({ channelId, channelName }: MessageInputProps) {
 					rows={1}
 					disabled={isLoading}
 					aria-label={`Message #${channelName}`}
+					data-command-input
 				/>
 
 				<div className={styles.buttons}>
@@ -144,14 +166,27 @@ export function MessageInput({ channelId, channelName }: MessageInputProps) {
 							<path d="M12.0002 0.00195312C5.37264 0.00195312 0.00195312 5.3727 0.00195312 12.0002C0.00195312 18.6277 5.37264 24.0015 12.0002 24.0015C18.6277 24.0015 24.0015 18.6277 24.0015 12.0002C24.0015 5.3727 18.6277 0.00195312 12.0002 0.00195312ZM8.00164 14.9997C7.44797 14.9997 7.00168 14.5534 7.00168 13.9997V10.0003C7.00168 9.44656 7.44797 9.00028 8.00164 9.00028C8.55531 9.00028 9.00159 9.44656 9.00159 10.0003V13.9997C9.00159 14.5534 8.55531 14.9997 8.00164 14.9997ZM11.0015 18.0011C10.4478 18.0011 10.0015 17.5548 10.0015 17.0012V7.00188C10.0015 6.44821 10.4478 6.00193 11.0015 6.00193C11.5551 6.00193 12.0014 6.44821 12.0014 7.00188V17.0012C12.0014 17.5548 11.5551 18.0011 11.0015 18.0011ZM14.0013 14.9997C13.4476 14.9997 13.0014 14.5534 13.0014 13.9997V10.0003C13.0014 9.44656 13.4476 9.00028 14.0013 9.00028C14.555 9.00028 15.0013 9.44656 15.0013 10.0003V13.9997C15.0013 14.5534 14.555 14.9997 14.0013 14.9997ZM17.0012 14.9997C16.4475 14.9997 16.0012 14.5534 16.0012 13.9997V10.0003C16.0012 9.44656 16.4475 9.00028 17.0012 9.00028C17.5548 9.00028 18.0011 9.44656 18.0011 10.0003V13.9997C18.0011 14.5534 17.5548 14.9997 17.0012 14.9997Z" />
 						</svg>
 					</button>
-					<button className={styles.iconButton} type="button" aria-label="Select emoji">
-						<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-							<path d="M12 2C6.486 2 2 6.487 2 12C2 17.515 6.486 22 12 22C17.514 22 22 17.515 22 12C22 6.487 17.514 2 12 2ZM12 20C7.589 20 4 16.411 4 12C4 7.589 7.589 4 12 4C16.411 4 20 7.589 20 12C20 16.411 16.411 20 12 20Z" />
-							<path d="M14.5 11C15.3284 11 16 10.3284 16 9.5C16 8.67157 15.3284 8 14.5 8C13.6716 8 13 8.67157 13 9.5C13 10.3284 13.6716 11 14.5 11Z" />
-							<path d="M9.5 11C10.3284 11 11 10.3284 11 9.5C11 8.67157 10.3284 8 9.5 8C8.67157 8 8 8.67157 8 9.5C8 10.3284 8.67157 11 9.5 11Z" />
-							<path d="M12 18C14.28 18 16.22 16.34 17 14H7C7.78 16.34 9.72 18 12 18Z" />
-						</svg>
-					</button>
+					<div className={styles.emojiButtonWrapper}>
+						<button
+							className={`${styles.iconButton} ${showEmojiPicker ? styles.active : ''}`}
+							type="button"
+							aria-label="Select emoji"
+							onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+						>
+							<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+								<path d="M12 2C6.486 2 2 6.487 2 12C2 17.515 6.486 22 12 22C17.514 22 22 17.515 22 12C22 6.487 17.514 2 12 2ZM12 20C7.589 20 4 16.411 4 12C4 7.589 7.589 4 12 4C16.411 4 20 7.589 20 12C20 16.411 16.411 20 12 20Z" />
+								<path d="M14.5 11C15.3284 11 16 10.3284 16 9.5C16 8.67157 15.3284 8 14.5 8C13.6716 8 13 8.67157 13 9.5C13 10.3284 13.6716 11 14.5 11Z" />
+								<path d="M9.5 11C10.3284 11 11 10.3284 11 9.5C11 8.67157 10.3284 8 9.5 8C8.67157 8 8 8.67157 8 9.5C8 10.3284 8.67157 11 9.5 11Z" />
+								<path d="M12 18C14.28 18 16.22 16.34 17 14H7C7.78 16.34 9.72 18 12 18Z" />
+							</svg>
+						</button>
+						{showEmojiPicker && (
+							<EmojiPicker
+								onSelect={handleEmojiSelect}
+								onClose={() => setShowEmojiPicker(false)}
+							/>
+						)}
+					</div>
 				</div>
 			</div>
 		</div>

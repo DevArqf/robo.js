@@ -1,0 +1,113 @@
+.container {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-top: 4px;
+}
+
+/* Subtle visibility when no reactions exist */
+.empty {
+	opacity: 0;
+	transition: opacity 0.15s ease;
+}
+
+.reaction {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 2px 6px;
+	min-height: 24px;
+	font-size: 14px;
+	font-family: inherit;
+	background: var(--background-modifier-hover);
+	border: 1px solid transparent;
+	border-radius: 8px;
+	cursor: pointer;
+	transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.reaction:hover:not(.loading) {
+	background: var(--background-modifier-active);
+}
+
+.reaction:focus {
+	outline: none;
+}
+
+.reaction:focus-visible {
+	outline: 2px solid var(--brand-500);
+	outline-offset: 1px;
+}
+
+.reacted {
+	background: rgba(88, 101, 242, 0.15);
+	border-color: var(--brand-500);
+}
+
+.reacted:hover:not(.loading) {
+	background: rgba(88, 101, 242, 0.25);
+}
+
+.loading {
+	opacity: 0.6;
+	cursor: wait;
+}
+
+.emoji {
+	display: flex;
+	align-items: center;
+	font-size: 16px;
+	line-height: 1;
+}
+
+.emojiImage {
+	width: 16px;
+	height: 16px;
+	object-fit: contain;
+}
+
+.count {
+	color: var(--text-normal);
+	font-size: 12px;
+	font-weight: 500;
+	min-width: 12px;
+	text-align: center;
+}
+
+.reacted .count {
+	color: var(--brand-500);
+}
+
+.addButtonWrapper {
+	position: relative;
+}
+
+.addButton {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	background: transparent;
+	border: 1px dashed var(--interactive-muted);
+	border-radius: 8px;
+	cursor: pointer;
+	color: var(--interactive-muted);
+	transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.addButton:hover {
+	background: var(--background-modifier-hover);
+	border-color: var(--interactive-normal);
+	color: var(--interactive-normal);
+}
+
+.addButton:focus {
+	outline: none;
+}
+
+.addButton:focus-visible {
+	outline: 2px solid var(--brand-500);
+	outline-offset: 1px;
+}

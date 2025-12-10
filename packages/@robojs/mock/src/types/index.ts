@@ -42,6 +42,8 @@ export interface SessionState {
 	invites: Map<string, MockInvite> // Phase 5A: Invite storage (key = code)
 	scheduledEvents: Map<string, MockScheduledEvent> // Phase 5B: key = `${guildId}:${eventId}`
 	autoModRules: Map<string, MockAutoModRule> // Phase 5C: key = `${guildId}:${ruleId}`
+	stageInstances: Map<Snowflake, MockStageInstance> // Phase 11: Stage instances by channel ID
+	commandPermissions: Map<string, MockCommandPermission[]> // Phase 11: key = `${guildId}:${commandId}`
 	botUser: MockUser
 	applicationId: Snowflake
 	sequence: number
@@ -159,6 +161,8 @@ export interface MockGuild {
 	discoverySplash?: string | null // Phase 7: Discovery splash image hash
 	premiumTier?: number // Phase 7: Server boost level (0-3)
 	features?: string[] // Phase 7: Guild features array
+	premiumProgressBarEnabled?: boolean // Phase 11: Whether premium progress bar is enabled
+	preferredLocale?: string // Phase 11: Guild's preferred locale
 }
 
 /**
@@ -417,6 +421,8 @@ export interface MockMessage {
 	embeds: unknown[]
 	pinned: boolean
 	type: number
+	// Phase 13: Message nonce support
+	nonce?: string | number | null
 	// Phase 3B: Reactions
 	reactions?: MockReaction[]
 	// Phase 3I: APIMessage completeness fields
@@ -860,6 +866,7 @@ export interface MockRoleConfig {
 	position?: number
 	managed?: boolean
 	tags?: MockRoleTags
+	reason?: string // Audit log reason
 }
 
 /**
@@ -1368,6 +1375,8 @@ export interface MockMessageConfig {
 	attachments?: MockAttachment[]
 	tts?: boolean
 	type?: number
+	/** Message nonce for deduplication */
+	nonce?: string | number | null
 	/** User IDs that are mentioned in this message */
 	mentions?: Snowflake[]
 	// Phase 3I: APIMessage completeness config fields
@@ -1398,6 +1407,22 @@ export interface MockChannelConfig {
 	name?: string
 	type?: number
 	parentId?: Snowflake | null
+	/** Seed messages to create in this channel */
+	messages?: SeedMessageConfig[]
+}
+
+/**
+ * Configuration for seed messages (Phase 5I)
+ */
+export interface SeedMessageConfig {
+	content: string
+	/** Author username (creates or finds a test user) */
+	authorUsername?: string
+	/** Reactions to add to this message */
+	reactions?: Array<{
+		emoji: string
+		count?: number
+	}>
 }
 
 /**
@@ -2888,6 +2913,184 @@ export interface DispatchAutoModActionExecutionOptions {
 	matchedKeyword?: string
 	matchedContent?: string
 }
+
+// ============================================================================
+// Phase 11: Stage Instance Types
+// ============================================================================
+
+/**
+ * Stage instance privacy level
+ * @see https://discord.com/developers/docs/resources/stage-instance#stage-instance-object-privacy-level
+ */
+export enum StageInstancePrivacyLevel {
+	/** The Stage instance is visible publicly (deprecated) */
+	Public = 1,
+	/** The Stage instance is visible to only guild members */
+	GuildOnly = 2
+}
+
+/**
+ * Mock stage instance data
+ * @see https://discord.com/developers/docs/resources/stage-instance#stage-instance-object
+ */
+export interface MockStageInstance {
+	id: Snowflake
+	guildId: Snowflake
+	channelId: Snowflake
+	topic: string
+	privacyLevel: StageInstancePrivacyLevel
+	discoverableDisabled: boolean
+	guildScheduledEventId?: Snowflake | null
+}
+
+/**
+ * Configuration for creating a stage instance
+ */
+export interface MockStageInstanceConfig {
+	channelId: Snowflake
+	topic: string
+	privacyLevel?: StageInstancePrivacyLevel
+	sendStartNotification?: boolean
+	guildScheduledEventId?: Snowflake
+}
+
+// ============================================================================
+// Phase 11: Command Permissions Types
+// ============================================================================
+
+/**
+ * Application command permission type
+ * @see https://discord.com/developers/docs/interactions/application-commands#application-command-permissions-object-application-command-permission-type
+ */
+export enum ApplicationCommandPermissionType {
+	Role = 1,
+	User = 2,
+	Channel = 3
+}
+
+/**
+ * Mock command permission entry
+ * @see https://discord.com/developers/docs/interactions/application-commands#application-command-permissions-object
+ */
+export interface MockCommandPermission {
+	/** ID of the role, user, or channel */
+	id: Snowflake
+	/** Type of permission (role, user, or channel) */
+	type: ApplicationCommandPermissionType
+	/** Whether this permission grants or denies access */
+	permission: boolean
+}
+
+// ============================================================================
+// Phase 14: Audit Log Types
+// ============================================================================
+
+/**
+ * Audit log action types
+ * @see https://discord.com/developers/docs/resources/audit-log#audit-log-entry-object-audit-log-events
+ */
+export enum AuditLogEvent {
+	GuildUpdate = 1,
+	ChannelCreate = 10,
+	ChannelUpdate = 11,
+	ChannelDelete = 12,
+	ChannelOverwriteCreate = 13,
+	ChannelOverwriteUpdate = 14,
+	ChannelOverwriteDelete = 15,
+	MemberKick = 20,
+	MemberPrune = 21,
+	MemberBanAdd = 22,
+	MemberBanRemove = 23,
+	MemberUpdate = 24,
+	MemberRoleUpdate = 25,
+	MemberMove = 26,
+	MemberDisconnect = 27,
+	BotAdd = 28,
+	RoleCreate = 30,
+	RoleUpdate = 31,
+	RoleDelete = 32,
+	InviteCreate = 40,
+	InviteUpdate = 41,
+	InviteDelete = 42,
+	WebhookCreate = 50,
+	WebhookUpdate = 51,
+	WebhookDelete = 52,
+	EmojiCreate = 60,
+	EmojiUpdate = 61,
+	EmojiDelete = 62,
+	MessageDelete = 72,
+	MessageBulkDelete = 73,
+	MessagePin = 74,
+	MessageUnpin = 75,
+	IntegrationCreate = 80,
+	IntegrationUpdate = 81,
+	IntegrationDelete = 82,
+	StageInstanceCreate = 83,
+	StageInstanceUpdate = 84,
+	StageInstanceDelete = 85,
+	StickerCreate = 90,
+	StickerUpdate = 91,
+	StickerDelete = 92,
+	GuildScheduledEventCreate = 100,
+	GuildScheduledEventUpdate = 101,
+	GuildScheduledEventDelete = 102,
+	ThreadCreate = 110,
+	ThreadUpdate = 111,
+	ThreadDelete = 112,
+	AutoModerationRuleCreate = 140,
+	AutoModerationRuleUpdate = 141,
+	AutoModerationRuleDelete = 142,
+	AutoModerationBlockMessage = 143,
+	AutoModerationFlagToChannel = 144,
+	AutoModerationUserCommunicationDisabled = 145
+}
+
+/**
+ * Audit log change object
+ * @see https://discord.com/developers/docs/resources/audit-log#audit-log-change-object
+ */
+export interface MockAuditLogChange {
+	key: string
+	old_value?: unknown
+	new_value?: unknown
+}
+
+/**
+ * Mock audit log entry
+ * @see https://discord.com/developers/docs/resources/audit-log#audit-log-entry-object
+ */
+export interface MockAuditLogEntry {
+	id: Snowflake
+	target_id: Snowflake | null
+	user_id: Snowflake | null
+	action_type: AuditLogEvent
+	changes?: MockAuditLogChange[]
+	options?: Record<string, unknown>
+	reason?: string
+	guild_id: Snowflake
+	created_at: string
+}
+
+/**
+ * Configuration for creating an audit log entry
+ */
+export interface MockAuditLogEntryConfig {
+	targetId?: Snowflake | null
+	userId?: Snowflake | null
+	actionType: AuditLogEvent
+	changes?: MockAuditLogChange[]
+	options?: Record<string, unknown>
+	reason?: string
+}
+
+/**
+ * Audit log limits
+ */
+export const AuditLogLimits = {
+	MAX_ENTRIES_PER_GUILD: 1000,
+	MAX_FETCH_LIMIT: 100,
+	DEFAULT_FETCH_LIMIT: 50
+} as const
 
 // ============================================================================
 // Phase 5A: Stage WebSocket Protocol Types

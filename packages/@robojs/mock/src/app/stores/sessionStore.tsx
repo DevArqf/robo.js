@@ -10,8 +10,36 @@ import type {
 	StateSyncPayload,
 	StageMessageCreateData,
 	StageEvent,
-	StageCommand
+	StageCommand,
+	StageInteractionResponseData
 } from '../types/stage'
+import type { ModalData } from '../components/modals/Modal'
+import { usePlaybackDispatch, type RecordedEvent } from './playbackStore'
+
+// Pending interaction for "Bot is thinking..." indicator
+export interface PendingInteraction {
+	id: string
+	channelId: string
+	botName: string
+	botAvatar?: string | null
+	botId?: string
+	createdAt: number
+}
+
+// Pending message for "sending" / "failed" states (Phase 5O)
+export interface PendingMessage {
+	id: string
+	content: string
+	channelId: string
+	state: 'sending' | 'failed'
+	error?: string
+	author: {
+		id: string
+		username: string
+		avatar: string | null
+	}
+	createdAt: number
+}
 
 // Session state shape
 export interface SessionState {
@@ -39,6 +67,15 @@ export interface SessionState {
 	// Typing indicators (Phase 5H)
 	typingUsers: Record<string, { userId: string; username: string; expiresAt: number }[]>
 
+	// Modal state (Phase 5M)
+	activeModal: { modal: ModalData; sourceInteractionId: string } | null
+
+	// Pending interactions for "Bot is thinking..." (Phase 5O)
+	pendingInteractions: PendingInteraction[]
+
+	// Pending messages being sent (Phase 5O)
+	pendingMessages: PendingMessage[]
+
 	// Stats
 	eventCount: number
 	lastHeartbeat: number | null
@@ -54,6 +91,8 @@ type SessionAction =
 	| { type: 'HANDLE_MESSAGE_CREATE'; payload: StageMessageCreateData }
 	| { type: 'HANDLE_MESSAGE_UPDATE'; payload: { channelId: string; message: StageMessage } }
 	| { type: 'HANDLE_MESSAGE_DELETE'; payload: { channelId: string; messageId: string } }
+	| { type: 'HANDLE_REACTION_ADD'; payload: { channel_id: string; message_id: string; user_id: string; emoji: { id: string | null; name: string } } }
+	| { type: 'HANDLE_REACTION_REMOVE'; payload: { channel_id: string; message_id: string; user_id: string; emoji: { id: string | null; name: string } } }
 	| { type: 'HANDLE_TYPING_START'; payload: { channelId: string; userId: string; username: string } }
 	| { type: 'SELECT_GUILD'; payload: string | null }
 	| { type: 'SELECT_CHANNEL'; payload: string | null }
@@ -61,6 +100,16 @@ type SessionAction =
 	| { type: 'INCREMENT_EVENT_COUNT' }
 	| { type: 'SET_HEARTBEAT'; payload: number }
 	| { type: 'RESET' }
+	| { type: 'INJECT_MESSAGES'; payload: { channelId: string; messages: StageMessage[] } }
+	| { type: 'INJECT_MEMBERS'; payload: StageMember[] }
+	| { type: 'INJECT_CHANNELS'; payload: StageChannel[] }
+	| { type: 'SHOW_MODAL'; payload: { modal: ModalData; sourceInteractionId: string } }
+	| { type: 'CLOSE_MODAL' }
+	| { type: 'ADD_PENDING_INTERACTION'; payload: PendingInteraction }
+	| { type: 'REMOVE_PENDING_INTERACTION'; payload: { id?: string; channelId?: string; botId?: string } }
+	| { type: 'ADD_PENDING_MESSAGE'; payload: PendingMessage }
+	| { type: 'MARK_MESSAGE_FAILED'; payload: { id: string; error?: string } }
+	| { type: 'REMOVE_PENDING_MESSAGE'; payload: string }
 
 // Initial state
 const initialState: SessionState = {
@@ -80,6 +129,9 @@ const initialState: SessionState = {
 	selectedChannelId: null,
 	showMembers: true,
 	typingUsers: {},
+	activeModal: null,
+	pendingInteractions: [],
+	pendingMessages: [],
 	eventCount: 0,
 	lastHeartbeat: null
 }
@@ -102,7 +154,10 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 		case 'HANDLE_STATE_SYNC': {
 			const { session, guilds, channels, members, roles, messages, users, commands } = action.payload
 			const firstGuild = guilds[0]
-			const firstChannel = firstGuild ? channels.find((c) => c.guild_id === firstGuild.id) : null
+			// Find first text channel (type 0) or announcement channel (type 5), not categories (type 4) or voice (type 2)
+			const firstChannel = firstGuild
+				? channels.find((c) => c.guild_id === firstGuild.id && (c.type === 0 || c.type === 5))
+				: null
 
 			return {
 				...state,
@@ -163,6 +218,78 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 			}
 		}
 
+		case 'HANDLE_REACTION_ADD': {
+			const { channel_id, message_id, emoji } = action.payload
+			const existingMessages = state.messages[channel_id] || []
+			const emojiKey = emoji.id || emoji.name
+
+			return {
+				...state,
+				messages: {
+					...state.messages,
+					[channel_id]: existingMessages.map((m) => {
+						if (m.id !== message_id) return m
+
+						const reactions = m.reactions || []
+						const existingReaction = reactions.find(
+							(r) => (r.emoji.id || r.emoji.name) === emojiKey
+						)
+
+						if (existingReaction) {
+							// Increment count on existing reaction
+							return {
+								...m,
+								reactions: reactions.map((r) =>
+									(r.emoji.id || r.emoji.name) === emojiKey
+										? { ...r, count: r.count + 1, me: true }
+										: r
+								)
+							}
+						} else {
+							// Add new reaction
+							return {
+								...m,
+								reactions: [
+									...reactions,
+									{ count: 1, me: true, emoji: { id: emoji.id, name: emoji.name } }
+								]
+							}
+						}
+					})
+				},
+				eventCount: state.eventCount + 1
+			}
+		}
+
+		case 'HANDLE_REACTION_REMOVE': {
+			const { channel_id, message_id, emoji } = action.payload
+			const existingMessages = state.messages[channel_id] || []
+			const emojiKey = emoji.id || emoji.name
+
+			return {
+				...state,
+				messages: {
+					...state.messages,
+					[channel_id]: existingMessages.map((m) => {
+						if (m.id !== message_id) return m
+
+						const reactions = m.reactions || []
+						const updatedReactions = reactions
+							.map((r) => {
+								if ((r.emoji.id || r.emoji.name) !== emojiKey) return r
+								const newCount = r.count - 1
+								if (newCount <= 0) return null // Remove reaction entirely
+								return { ...r, count: newCount, me: false }
+							})
+							.filter((r): r is NonNullable<typeof r> => r !== null)
+
+						return { ...m, reactions: updatedReactions }
+					})
+				},
+				eventCount: state.eventCount + 1
+			}
+		}
+
 		case 'HANDLE_TYPING_START': {
 			const { channelId, userId, username } = action.payload
 			const existingTyping = state.typingUsers[channelId] || []
@@ -184,8 +311,10 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 
 		case 'SELECT_GUILD': {
 			const guildId = action.payload
-			// When selecting a guild, auto-select first text channel
-			const firstChannel = guildId ? state.channels.find((c) => c.guild_id === guildId && c.type === 0) : null
+			// When selecting a guild, auto-select first text or announcement channel
+			const firstChannel = guildId
+				? state.channels.find((c) => c.guild_id === guildId && (c.type === 0 || c.type === 5))
+				: null
 
 			return {
 				...state,
@@ -208,6 +337,86 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 
 		case 'RESET':
 			return { ...initialState, sessionId: state.sessionId }
+
+		case 'INJECT_MESSAGES': {
+			const { channelId, messages } = action.payload
+			const existingMessages = state.messages[channelId] || []
+			return {
+				...state,
+				messages: {
+					...state.messages,
+					[channelId]: [...existingMessages, ...messages].slice(-100)
+				}
+			}
+		}
+
+		case 'INJECT_MEMBERS': {
+			// Merge with existing members, avoiding duplicates by user_id
+			const existingIds = new Set(state.members.map((m) => m.user.id))
+			const newMembers = action.payload.filter((m) => !existingIds.has(m.user.id))
+			return {
+				...state,
+				members: [...state.members, ...newMembers]
+			}
+		}
+
+		case 'INJECT_CHANNELS': {
+			// Merge with existing channels, avoiding duplicates by id
+			const existingIds = new Set(state.channels.map((c) => c.id))
+			const newChannels = action.payload.filter((c) => !existingIds.has(c.id))
+			return {
+				...state,
+				channels: [...state.channels, ...newChannels]
+			}
+		}
+
+		case 'SHOW_MODAL':
+			return { ...state, activeModal: action.payload }
+
+		case 'CLOSE_MODAL':
+			return { ...state, activeModal: null }
+
+		case 'ADD_PENDING_INTERACTION':
+			return {
+				...state,
+				pendingInteractions: [...state.pendingInteractions, action.payload]
+			}
+
+		case 'REMOVE_PENDING_INTERACTION': {
+			const { id, channelId, botId } = action.payload
+			return {
+				...state,
+				pendingInteractions: state.pendingInteractions.filter((p) => {
+					// Remove by ID if provided
+					if (id && p.id === id) return false
+					// Remove by channelId + botId combination
+					if (channelId && botId && p.channelId === channelId && p.botId === botId) return false
+					return true
+				})
+			}
+		}
+
+		case 'ADD_PENDING_MESSAGE':
+			return {
+				...state,
+				pendingMessages: [...state.pendingMessages, action.payload]
+			}
+
+		case 'MARK_MESSAGE_FAILED': {
+			const { id, error } = action.payload
+			return {
+				...state,
+				pendingMessages: state.pendingMessages.map((m) =>
+					m.id === id ? { ...m, state: 'failed' as const, error } : m
+				)
+			}
+		}
+
+		case 'REMOVE_PENDING_MESSAGE':
+			return {
+				...state,
+				pendingMessages: state.pendingMessages.filter((m) => m.id !== action.payload)
+			}
 
 		default:
 			return state
@@ -276,9 +485,11 @@ interface WebSocketProviderProps {
 
 export function WebSocketProvider({ children }: WebSocketProviderProps) {
 	const { state, dispatch } = useSessionStore()
+	const playbackDispatch = usePlaybackDispatch()
 	const wsRef = useRef<WebSocket | null>(null)
 	const reconnectTimeoutRef = useRef<number | null>(null)
 	const reconnectAttempts = useRef(0)
+	const eventSeqRef = useRef(0)
 	const pendingCommands = useRef<Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }>>(
 		new Map()
 	)
@@ -290,6 +501,16 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 	// Handle incoming events
 	const handleEvent = useCallback(
 		(event: StageEvent) => {
+			// Record event for playback (Phase 5J)
+			const recordedEvent: RecordedEvent = {
+				id: `evt_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+				seq: event.seq ?? eventSeqRef.current++,
+				type: event.type,
+				timestamp: event.timestamp ?? Date.now(),
+				data: event.data
+			}
+			playbackDispatch({ type: 'ADD_EVENT', payload: recordedEvent })
+
 			switch (event.type) {
 				case 'connected':
 					dispatch({ type: 'SET_CONNECTED', payload: true })
@@ -299,9 +520,22 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 					dispatch({ type: 'HANDLE_STATE_SYNC', payload: event.data as StateSyncPayload })
 					break
 
-				case 'message_create':
-					dispatch({ type: 'HANDLE_MESSAGE_CREATE', payload: event.data as StageMessageCreateData })
+				case 'message_create': {
+					const msgData = event.data as StageMessageCreateData
+					dispatch({ type: 'HANDLE_MESSAGE_CREATE', payload: msgData })
+
+					// If message is from a bot, clear any pending interaction for that bot in that channel
+					if (msgData.source === 'bot' && msgData.message.author.bot) {
+						dispatch({
+							type: 'REMOVE_PENDING_INTERACTION',
+							payload: {
+								channelId: msgData.message.channel_id,
+								botId: msgData.message.author.id
+							}
+						})
+					}
 					break
+				}
 
 				case 'message_update': {
 					const updateData = event.data as { message: StageMessage }
@@ -320,6 +554,34 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 					dispatch({
 						type: 'HANDLE_MESSAGE_DELETE',
 						payload: { channelId: deleteData.channel_id, messageId: deleteData.message_id }
+					})
+					break
+				}
+
+				case 'message_reaction_add': {
+					const reactionData = event.data as {
+						channel_id: string
+						message_id: string
+						user_id: string
+						emoji: { id: string | null; name: string }
+					}
+					dispatch({
+						type: 'HANDLE_REACTION_ADD',
+						payload: reactionData
+					})
+					break
+				}
+
+				case 'message_reaction_remove': {
+					const reactionData = event.data as {
+						channel_id: string
+						message_id: string
+						user_id: string
+						emoji: { id: string | null; name: string }
+					}
+					dispatch({
+						type: 'HANDLE_REACTION_REMOVE',
+						payload: reactionData
 					})
 					break
 				}
@@ -351,6 +613,53 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 					break
 				}
 
+				case 'interaction_response': {
+					// Handle interaction responses
+					const responseData = event.data as StageInteractionResponseData & {
+						channelId?: string
+						bot?: { id?: string; username?: string; avatar?: string | null }
+					}
+					const response = responseData.response as { type?: number; data?: ModalData }
+
+					// Type 9 = Modal
+					if (response?.type === 9 && response.data) {
+						// Bot responded with a modal, show it
+						dispatch({
+							type: 'SHOW_MODAL',
+							payload: {
+								modal: response.data,
+								sourceInteractionId: responseData.interactionId
+							}
+						})
+					}
+
+					// Type 5 = DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE ("Bot is thinking...")
+					if (response?.type === 5 && responseData.channelId && responseData.bot) {
+						dispatch({
+							type: 'ADD_PENDING_INTERACTION',
+							payload: {
+								id: responseData.interactionId,
+								channelId: responseData.channelId,
+								botName: responseData.bot.username || 'Bot',
+								botAvatar: responseData.bot.avatar,
+								botId: responseData.bot.id,
+								createdAt: Date.now()
+							}
+						})
+					}
+
+					// Type 4, 6, 7 = immediate responses - remove pending interaction
+					if ([4, 6, 7].includes(response?.type ?? 0)) {
+						dispatch({
+							type: 'REMOVE_PENDING_INTERACTION',
+							payload: { id: responseData.interactionId }
+						})
+					}
+
+					dispatch({ type: 'INCREMENT_EVENT_COUNT' })
+					break
+				}
+
 				case 'heartbeat':
 					dispatch({ type: 'SET_HEARTBEAT', payload: Date.now() })
 					break
@@ -365,7 +674,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 					dispatch({ type: 'INCREMENT_EVENT_COUNT' })
 			}
 		},
-		[dispatch]
+		[dispatch, playbackDispatch]
 	)
 
 	// Connect to WebSocket

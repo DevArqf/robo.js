@@ -1,0 +1,125 @@
+/* JSON Viewer Container */
+.viewer {
+	font-family: var(--font-code);
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--text-normal);
+}
+
+/* Node */
+.node {
+	padding-left: 0;
+}
+
+/* Expandable row (clickable) */
+.expandable {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	cursor: pointer;
+	padding: 2px 0;
+	border-radius: var(--radius-xs);
+}
+
+.expandable:hover {
+	background: var(--background-modifier-hover);
+}
+
+/* Arrow icon */
+.arrow {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 14px;
+	height: 14px;
+	color: var(--text-muted);
+	transition: transform 0.1s ease;
+}
+
+.arrow.collapsed {
+	transform: rotate(0deg);
+}
+
+.arrow:not(.collapsed) {
+	transform: rotate(90deg);
+}
+
+/* Key name */
+.key {
+	color: var(--brand-500);
+}
+
+/* Brackets */
+.bracket {
+	color: var(--text-muted);
+}
+
+/* Preview text for collapsed items */
+.preview {
+	color: var(--text-muted);
+	font-style: italic;
+	margin: 0 4px;
+}
+
+/* Copy button */
+.copyButton {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	margin-left: auto;
+	border-radius: var(--radius-xs);
+	color: var(--text-muted);
+	opacity: 0;
+	transition: opacity 0.1s ease, background 0.1s ease;
+}
+
+.expandable:hover .copyButton {
+	opacity: 1;
+}
+
+.copyButton:hover {
+	background: var(--background-modifier-active);
+	color: var(--text-normal);
+}
+
+/* Children container */
+.children {
+	padding-left: 16px;
+	border-left: 1px solid var(--background-modifier-active);
+	margin-left: 6px;
+}
+
+/* Closing bracket */
+.closeBracket {
+	color: var(--text-muted);
+	padding: 2px 0;
+}
+
+/* Value types */
+.value {
+	padding: 2px 0;
+}
+
+.value.string {
+	color: #a5d6a7; /* Light green for strings */
+}
+
+.value.number {
+	color: #90caf9; /* Light blue for numbers */
+}
+
+.value.boolean {
+	color: #ce93d8; /* Light purple for booleans */
+}
+
+.value.null,
+.value.undefined {
+	color: var(--text-muted);
+	font-style: italic;
+}
+
+.value.unknown {
+	color: var(--text-muted);
+}

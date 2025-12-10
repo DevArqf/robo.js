@@ -96,3 +96,26 @@
 	color: var(--text-muted);
 	font-size: 16px;
 }
+
+/* Playback Mode Banner */
+.playbackBanner {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 16px;
+	background: linear-gradient(90deg, rgba(88, 101, 242, 0.15), rgba(88, 101, 242, 0.05));
+	border-bottom: 1px solid rgba(88, 101, 242, 0.3);
+	color: var(--brand-500);
+	font-size: 13px;
+	font-weight: 500;
+}
+
+.playbackBanner svg {
+	flex-shrink: 0;
+	animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.5; }
+}

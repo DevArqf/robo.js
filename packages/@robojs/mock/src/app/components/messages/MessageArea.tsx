@@ -1,10 +1,15 @@
-import { useRef, useEffect, useMemo } from 'react'
+import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useSession } from '../../hooks/useSession'
+import { usePlaybackMessages, useIsPlaybackMode, usePlayback, usePlaybackTypingUsers } from '../../stores/playbackStore'
+import { useContextMenu } from '../../hooks/useContextMenu'
 import { Message } from './Message'
 import { MessageInput } from './MessageInput'
 import { TypingIndicator } from './TypingIndicator'
-import type { StageMessage } from '../../types/stage'
+import { ThinkingIndicator } from './ThinkingIndicator'
+import { PendingMessage } from './PendingMessage'
+import { ContextMenu } from '../context/ContextMenu'
+import type { StageMessage, StageUser, StageApplicationCommand } from '../../types/stage'
 import styles from './MessageArea.module.css'
 
 interface MessageAreaProps {
@@ -18,12 +23,47 @@ interface MessageGroup {
 }
 
 export function MessageArea({ channelId }: MessageAreaProps) {
-	const { channelMessages, channelTypingUsers, selectedChannel, clickButton, selectOption } = useSession()
+	const {
+		channelMessages,
+		channelTypingUsers,
+		channelPendingInteractions,
+		channelPendingMessages,
+		selectedChannel,
+		clickButton,
+		selectOption,
+		addReaction,
+		removeReaction,
+		retryMessage,
+		cancelMessage,
+		commands,
+		invokeContextCommand
+	} = useSession()
+	const { menu: contextMenu, showMenu: showContextMenu, hideMenu: hideContextMenu } = useContextMenu()
+	const isPlaybackMode = useIsPlaybackMode()
+	const playbackMessages = usePlaybackMessages(channelId)
+	const playbackTypingUsers = usePlaybackTypingUsers(channelId)
+	const playbackState = usePlayback()
 	const containerRef = useRef<HTMLDivElement>(null)
 	const prevMessageCountRef = useRef(0)
+	const [isAtBottom, setIsAtBottom] = useState(true)
+
+	// Use playback messages when in playback mode, otherwise use session messages
+	const displayMessages = isPlaybackMode && playbackMessages !== null ? playbackMessages : channelMessages
+
+	// Use playback typing users when in playback mode, otherwise use session typing users
+	const displayTypingUsers = isPlaybackMode && playbackTypingUsers !== null ? playbackTypingUsers : channelTypingUsers
+
+	// Track if user is at bottom of scroll container
+	const handleScroll = useCallback(() => {
+		if (!containerRef.current) return
+		const { scrollTop, scrollHeight, clientHeight } = containerRef.current
+		// Consider "at bottom" if within 50px of the bottom
+		const atBottom = scrollHeight - scrollTop - clientHeight < 50
+		setIsAtBottom(atBottom)
+	}, [])
 
 	// Group consecutive messages from same author
-	const groupedMessages = useMemo(() => groupMessages(channelMessages), [channelMessages])
+	const groupedMessages = useMemo(() => groupMessages(displayMessages), [displayMessages])
 
 	// Virtual scrolling for performance
 	const virtualizer = useVirtualizer({
@@ -81,20 +121,66 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 		overscan: 10
 	})
 
-	// Auto-scroll to bottom on new messages
+	// Auto-scroll to bottom on new messages (in both live and playback mode if at bottom)
 	useEffect(() => {
-		if (channelMessages.length > prevMessageCountRef.current && containerRef.current) {
-			containerRef.current.scrollTop = containerRef.current.scrollHeight
+		if (displayMessages.length > prevMessageCountRef.current && containerRef.current) {
+			// In live mode, always scroll. In playback mode, only scroll if already at bottom
+			if (!isPlaybackMode || isAtBottom) {
+				containerRef.current.scrollTop = containerRef.current.scrollHeight
+			}
 		}
-		prevMessageCountRef.current = channelMessages.length
-	}, [channelMessages.length])
+		prevMessageCountRef.current = displayMessages.length
+	}, [displayMessages.length, isPlaybackMode, isAtBottom])
 
 	// Scroll to bottom when channel changes
 	useEffect(() => {
 		if (containerRef.current) {
 			containerRef.current.scrollTop = containerRef.current.scrollHeight
+			setIsAtBottom(true)
 		}
 	}, [channelId])
+
+	// Reset scroll position when entering playback mode
+	useEffect(() => {
+		if (isPlaybackMode && containerRef.current) {
+			// Start playback from the top (beginning of history)
+			containerRef.current.scrollTop = 0
+			setIsAtBottom(false)
+		}
+	}, [isPlaybackMode])
+
+	// Context menu handlers
+	const handleMessageContextMenu = useCallback(
+		(e: React.MouseEvent, message: StageMessage) => {
+			e.preventDefault()
+			showContextMenu('message', message.id, message, { x: e.clientX, y: e.clientY })
+		},
+		[showContextMenu]
+	)
+
+	const handleUserContextMenu = useCallback(
+		(e: React.MouseEvent, user: StageUser) => {
+			e.preventDefault()
+			e.stopPropagation()
+			showContextMenu('user', user.id, user, { x: e.clientX, y: e.clientY })
+		},
+		[showContextMenu]
+	)
+
+	const handleContextCommandClick = useCallback(
+		async (command: StageApplicationCommand) => {
+			if (!contextMenu) return
+
+			const commandType = command.type as 2 | 3
+			await invokeContextCommand(
+				command.name,
+				commandType,
+				contextMenu.targetId,
+				contextMenu.targetData
+			)
+		},
+		[contextMenu, invokeContextCommand]
+	)
 
 	if (!channelId || !selectedChannel) {
 		return (
@@ -114,14 +200,28 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 
 	return (
 		<div className={styles.container}>
-			<div className={styles.messages} ref={containerRef}>
-				{channelMessages.length === 0 ? (
+			{/* Playback mode banner */}
+			{isPlaybackMode && (
+				<div className={styles.playbackBanner}>
+					<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+						<path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zm0 14A6 6 0 1 1 8 2a6 6 0 0 1 0 12zm.5-9H7v5l4.25 2.5.75-1.23-3.5-2.08V5z" />
+					</svg>
+					<span>
+						Playback Mode — Viewing {displayMessages.length} message{displayMessages.length !== 1 ? 's' : ''} at{' '}
+						{formatPlaybackTime(playbackState.currentTime)}
+					</span>
+				</div>
+			)}
+			<div className={styles.messages} ref={containerRef} onScroll={handleScroll}>
+				{displayMessages.length === 0 ? (
 					<div className={styles.welcome}>
 						<div className={styles.welcomeIcon}>
 							<span className={styles.hash}>#</span>
 						</div>
 						<h2 className={styles.welcomeTitle}>Welcome to #{selectedChannel.name}!</h2>
-						<p className={styles.welcomeDescription}>This is the start of the #{selectedChannel.name} channel.</p>
+						<p className={styles.welcomeDescription}>
+							{selectedChannel.topic || `This is the start of the #${selectedChannel.name} channel.`}
+						</p>
 					</div>
 				) : (
 					<div
@@ -149,6 +249,10 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 										isHighlighted={group.isHighlighted}
 										onButtonClick={clickButton}
 										onSelectOption={selectOption}
+										onAddReaction={addReaction}
+										onRemoveReaction={removeReaction}
+										onContextMenu={handleMessageContextMenu}
+										onUserContextMenu={handleUserContextMenu}
 									/>
 								</div>
 							)
@@ -157,11 +261,44 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 				)}
 			</div>
 
+			{/* Pending messages (sending/failed) */}
+			{channelPendingMessages.map((pending) => (
+				<PendingMessage
+					key={pending.id}
+					message={pending}
+					onRetry={retryMessage}
+					onCancel={cancelMessage}
+				/>
+			))}
+
+			{/* Thinking indicators for deferred bot responses */}
+			{channelPendingInteractions.map((pending) => (
+				<ThinkingIndicator
+					key={pending.id}
+					botName={pending.botName}
+					botAvatar={pending.botAvatar}
+					botId={pending.botId}
+				/>
+			))}
+
 			{/* Typing indicator */}
-			<TypingIndicator typingUsers={channelTypingUsers} />
+			<TypingIndicator typingUsers={displayTypingUsers} />
 
 			{/* Message input */}
 			<MessageInput channelId={selectedChannel.id} channelName={selectedChannel.name} />
+
+			{/* Context menu */}
+			{contextMenu && (
+				<ContextMenu
+					type={contextMenu.type}
+					targetId={contextMenu.targetId}
+					targetData={contextMenu.targetData}
+					position={contextMenu.position}
+					commands={commands}
+					onClose={hideContextMenu}
+					onCommandClick={handleContextCommandClick}
+				/>
+			)}
 		</div>
 	)
 }
@@ -183,4 +320,14 @@ function groupMessages(messages: StageMessage[]): MessageGroup[] {
 			isHighlighted: false // Set when interaction response (can be extended later)
 		}
 	})
+}
+
+/**
+ * Format playback time as MM:SS
+ */
+function formatPlaybackTime(ms: number): string {
+	const totalSeconds = Math.floor(ms / 1000)
+	const minutes = Math.floor(totalSeconds / 60)
+	const seconds = totalSeconds % 60
+	return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }

@@ -6,6 +6,7 @@ import type {
 	StageBotReadyData,
 	StageBotDisconnectedData,
 	StageBotErrorData,
+	StageRESTCallData,
 	StageUser
 } from '../types/stage.js'
 import type { MockUser } from '../types/index.js'
@@ -160,6 +161,20 @@ export class StageBridge {
 	}
 
 	/**
+	 * Called when a REST API call is made.
+	 *
+	 * @param sessionId - The session
+	 * @param data - REST call data including method, path, status, duration
+	 */
+	onRESTCall(sessionId: string, data: StageRESTCallData): void {
+		const stageServer = getStageServer()
+		stageServer.broadcastToSession(sessionId, {
+			type: 'rest_call',
+			data
+		})
+	}
+
+	/**
 	 * Map Discord event names to Stage event types.
 	 * Returns null for events that shouldn't be forwarded to stage.
 	 */
@@ -184,6 +199,12 @@ export class StageBridge {
 			// Presence
 			case 'PRESENCE_UPDATE':
 				return 'presence_update'
+
+			// Reactions
+			case 'MESSAGE_REACTION_ADD':
+				return 'message_reaction_add'
+			case 'MESSAGE_REACTION_REMOVE':
+				return 'message_reaction_remove'
 
 			// We don't forward GUILD_CREATE, READY, etc. - those are internal gateway events
 			default:

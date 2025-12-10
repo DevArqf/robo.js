@@ -194,3 +194,26 @@
 .channel.unread .channelName {
 	font-weight: 600;
 }
+
+/* Voice channel styles */
+.voiceChannel {
+	margin: 1px 0;
+}
+
+.voiceChannelHeader {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	padding: 6px 8px;
+	border-radius: var(--radius-sm);
+	color: var(--channel-icon);
+	font-size: 16px;
+	font-weight: 500;
+	transition: background 0.1s ease, color 0.1s ease;
+}
+
+.voiceChannelHeader:hover {
+	background: var(--background-modifier-hover);
+	color: var(--interactive-hover);
+}

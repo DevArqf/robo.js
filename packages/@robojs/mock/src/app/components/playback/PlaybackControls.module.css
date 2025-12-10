@@ -1,14 +1,383 @@
+/* Container */
 .container {
-	height: 40px;
-	min-height: 40px;
+	height: 44px;
+	min-height: 44px;
 	padding: 0 16px;
 	display: flex;
 	align-items: center;
-	gap: 16px;
-	background: var(--background-secondary);
-	border-top: 1px solid var(--background-modifier-accent);
+	gap: 12px;
+	background: var(--background-tertiary);
 }
 
+/* Mode Toggle */
+.modeToggle {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px;
+	background: var(--background-tertiary);
+	border-radius: var(--radius-sm);
+}
+
+.modeButton {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 10px;
+	border-radius: var(--radius-xs);
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--text-muted);
+	transition: all 0.15s ease;
+}
+
+.modeButton:hover {
+	color: var(--text-normal);
+}
+
+.modeButton.active {
+	background: var(--background-modifier-selected);
+	color: var(--text-normal);
+}
+
+.liveDot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--red-400);
+	animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.4; }
+}
+
+/* Transport Controls */
+.transport {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.transportButton {
+	width: 28px;
+	height: 28px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: var(--radius-sm);
+	color: var(--interactive-normal);
+	transition: all 0.1s ease;
+}
+
+.transportButton:hover:not(:disabled) {
+	color: var(--interactive-hover);
+	background: var(--background-modifier-hover);
+}
+
+.transportButton:disabled {
+	opacity: 0.3;
+	cursor: not-allowed;
+}
+
+.playButton {
+	width: 32px;
+	height: 32px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 50%;
+	background: var(--brand-500);
+	color: white;
+	margin: 0 4px;
+	transition: all 0.1s ease;
+}
+
+.playButton:hover:not(:disabled) {
+	background: var(--brand-560);
+	transform: scale(1.05);
+}
+
+.playButton:disabled {
+	opacity: 0.3;
+	cursor: not-allowed;
+}
+
+/* Timeline */
+.timeline {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 200px;
+}
+
+.time {
+	font-size: 11px;
+	font-family: var(--font-code);
+	color: var(--text-muted);
+	min-width: 36px;
+	text-align: center;
+}
+
+/* Scrubber */
+.scrubber {
+	flex: 1;
+	position: relative;
+	height: 20px;
+	display: flex;
+	align-items: center;
+	cursor: pointer;
+}
+
+.scrubberTrack {
+	width: 100%;
+	height: 4px;
+	background: var(--background-accent);
+	border-radius: 2px;
+	position: relative;
+	overflow: visible;
+}
+
+.scrubberProgress {
+	height: 100%;
+	background: var(--brand-500);
+	border-radius: 2px;
+	transition: width 0.05s linear;
+}
+
+.scrubberThumb {
+	position: absolute;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	width: 12px;
+	height: 12px;
+	background: white;
+	border-radius: 50%;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+	opacity: 0;
+	transition: opacity 0.1s ease;
+}
+
+.scrubber:hover .scrubberThumb,
+.scrubberDragging .scrubberThumb {
+	opacity: 1;
+}
+
+/* Hidden range input for accessibility */
+.scrubberInput {
+	position: absolute;
+	width: 100%;
+	height: 100%;
+	opacity: 0;
+	cursor: pointer;
+	margin: 0;
+}
+
+/* Event Markers */
+.markers {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 100%;
+	pointer-events: none;
+}
+
+.marker {
+	position: absolute;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	width: 4px;
+	height: 4px;
+	border-radius: 50%;
+	background: var(--text-muted);
+	pointer-events: auto;
+	cursor: pointer;
+	transition: all 0.15s ease;
+	z-index: 1;
+	opacity: 0.7;
+}
+
+.marker:hover {
+	transform: translate(-50%, -50%) scale(2.5);
+	opacity: 1;
+	z-index: 10;
+}
+
+.marker.message {
+	background: var(--green-400);
+}
+
+.marker.interaction {
+	background: var(--brand-500);
+	width: 5px;
+	height: 5px;
+	opacity: 1;
+}
+
+.marker.response {
+	background: var(--yellow-400);
+	width: 5px;
+	height: 5px;
+	opacity: 1;
+}
+
+.marker.typing {
+	background: var(--text-muted);
+	width: 3px;
+	height: 3px;
+	opacity: 0.5;
+}
+
+/* Speed Control */
+.speedControl {
+	display: flex;
+	align-items: center;
+}
+
+.speedSelect {
+	padding: 4px 8px;
+	border-radius: var(--radius-sm);
+	background: var(--background-tertiary);
+	color: var(--text-normal);
+	font-size: 11px;
+	font-weight: 600;
+	border: none;
+	cursor: pointer;
+	outline: none;
+	transition: background 0.1s ease;
+}
+
+.speedSelect:hover {
+	background: var(--background-modifier-hover);
+}
+
+.speedSelect:focus {
+	box-shadow: 0 0 0 2px var(--brand-500);
+}
+
+/* Recording Indicator */
+.recording {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 10px;
+	border-radius: var(--radius-sm);
+	background: rgba(237, 66, 69, 0.1);
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--red-400);
+}
+
+.recordDot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--red-400);
+	animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Event Count */
+.eventCount {
+	font-size: 11px;
+	color: var(--text-muted);
+	font-weight: 500;
+}
+
+/* Actions group */
+.actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+/* Dev Button */
+.devButton {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	border-radius: var(--radius-sm);
+	font-size: 10px;
+	font-weight: 600;
+	color: var(--yellow-400);
+	background: rgba(250, 168, 26, 0.1);
+	transition: all 0.1s ease;
+}
+
+.devButton:hover {
+	background: rgba(250, 168, 26, 0.2);
+}
+
+/* Clear Button */
+.clearButton {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border-radius: var(--radius-sm);
+	color: var(--text-muted);
+	transition: all 0.1s ease;
+}
+
+.clearButton:hover {
+	color: var(--red-400);
+	background: var(--background-modifier-hover);
+}
+
+/* Tooltip */
+.tooltip {
+	position: absolute;
+	bottom: 100%;
+	left: 50%;
+	transform: translateX(-50%);
+	padding: 2px 6px;
+	margin-bottom: 2px;
+	background: var(--background-floating);
+	border-radius: 3px;
+	font-size: 10px;
+	color: var(--text-normal);
+	white-space: nowrap;
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity 0.1s ease;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+	z-index: 100;
+	user-select: none;
+}
+
+.marker:hover .tooltip {
+	opacity: 1;
+}
+
+/* Playback Mode Indicator */
+.playbackIndicator {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 8px;
+	border-radius: var(--radius-sm);
+	background: rgba(88, 101, 242, 0.1);
+	font-size: 10px;
+	font-weight: 600;
+	color: var(--brand-500);
+}
+
+/* Empty state */
+.emptyState {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	color: var(--text-muted);
+	font-size: 12px;
+}
+
+/* Legacy support - keeping old class names for compatibility */
 .controls {
 	display: flex;
 	align-items: center;
@@ -36,20 +405,6 @@
 	cursor: not-allowed;
 }
 
-.timeline {
-	flex: 1;
-	display: flex;
-	align-items: center;
-	gap: 8px;
-}
-
-.time {
-	font-size: 11px;
-	font-family: var(--font-code);
-	color: var(--text-muted);
-	min-width: 36px;
-}
-
 .progressBar {
 	flex: 1;
 	height: 4px;
@@ -63,12 +418,6 @@
 	background: var(--brand-500);
 	border-radius: 2px;
 	transition: width 0.1s ease;
-}
-
-.actions {
-	display: flex;
-	align-items: center;
-	gap: 12px;
 }
 
 .speed {
@@ -98,11 +447,4 @@
 .recordButton:disabled {
 	opacity: 0.4;
 	cursor: not-allowed;
-}
-
-.recordDot {
-	width: 8px;
-	height: 8px;
-	border-radius: 50%;
-	background: currentColor;
 }

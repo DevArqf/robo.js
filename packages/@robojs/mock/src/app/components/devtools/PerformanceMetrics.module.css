@@ -1,0 +1,158 @@
+/* Container */
+.container {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	overflow: auto;
+	padding: 16px;
+	gap: 24px;
+}
+
+/* Metrics grid */
+.metricsGrid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+	gap: 12px;
+}
+
+/* Metric card */
+.metricCard {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 12px;
+	background: var(--background-tertiary);
+	border-radius: var(--radius-md);
+	border: 1px solid var(--background-accent);
+}
+
+.metricIcon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	border-radius: var(--radius-sm);
+	background: var(--background-modifier-active);
+	color: var(--text-muted);
+}
+
+.metricContent {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.metricValue {
+	font-size: 20px;
+	font-weight: 700;
+	font-family: var(--font-code);
+	color: var(--text-normal);
+}
+
+.metricLabel {
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--text-muted);
+}
+
+/* Metric card colors */
+.metricCard.brand .metricIcon {
+	background: rgba(88, 101, 242, 0.15);
+	color: var(--brand-500);
+}
+
+.metricCard.brand .metricValue {
+	color: var(--brand-500);
+}
+
+.metricCard.green .metricIcon {
+	background: rgba(87, 242, 135, 0.15);
+	color: #57f287;
+}
+
+.metricCard.green .metricValue {
+	color: #57f287;
+}
+
+.metricCard.yellow .metricIcon {
+	background: rgba(254, 231, 92, 0.15);
+	color: #fee75c;
+}
+
+.metricCard.yellow .metricValue {
+	color: #fee75c;
+}
+
+.metricCard.red .metricIcon {
+	background: rgba(237, 66, 69, 0.15);
+	color: var(--red-400);
+}
+
+.metricCard.red .metricValue {
+	color: var(--red-400);
+}
+
+/* Breakdown section */
+.breakdown {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.breakdownTitle {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--header-secondary);
+	text-transform: uppercase;
+}
+
+.breakdownList {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.breakdownItem {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.breakdownType {
+	min-width: 140px;
+	font-size: 11px;
+	font-family: var(--font-code);
+	color: var(--text-normal);
+}
+
+.breakdownBar {
+	flex: 1;
+	height: 8px;
+	background: var(--background-tertiary);
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.breakdownFill {
+	height: 100%;
+	background: var(--brand-500);
+	border-radius: 4px;
+	transition: width 0.3s ease;
+}
+
+.breakdownCount {
+	min-width: 40px;
+	font-size: 11px;
+	font-family: var(--font-code);
+	color: var(--text-muted);
+	text-align: right;
+}
+
+/* Empty state */
+.empty {
+	color: var(--text-muted);
+	font-size: 12px;
+	text-align: center;
+	padding: 24px;
+}

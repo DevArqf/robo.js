@@ -1,0 +1,47 @@
+.picker {
+	position: absolute;
+	bottom: 100%;
+	left: 0;
+	margin-bottom: 4px;
+	padding: 8px;
+	background: var(--background-floating);
+	border-radius: 8px;
+	box-shadow: 0 8px 16px rgba(0, 0, 0, 0.24);
+	z-index: 1000;
+}
+
+.grid {
+	display: grid;
+	grid-template-columns: repeat(5, 1fr);
+	gap: 4px;
+	width: 180px;
+}
+
+.emoji {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	font-size: 20px;
+	line-height: 1;
+	background: transparent;
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	transition: background-color 0.1s ease;
+}
+
+.emoji:hover {
+	background: var(--background-modifier-hover);
+}
+
+.emoji:focus {
+	outline: none;
+}
+
+.emoji:focus-visible {
+	outline: 2px solid var(--brand-500);
+	outline-offset: -2px;
+}

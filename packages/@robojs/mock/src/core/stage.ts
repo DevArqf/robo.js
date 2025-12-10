@@ -21,12 +21,14 @@ import type {
 	StageCommandResponseData,
 	StageSendMessageData,
 	StageInvokeCommandData,
+	StageInvokeContextCommandData,
 	StageClickButtonData,
 	StageSelectOptionData,
 	StageSubscribeChannelData,
 	StageSubmitModalData,
 	StageStartTypingData,
-	StageAddReactionData
+	StageAddReactionData,
+	StageRemoveReactionData
 } from '../types/stage.js'
 import type { MockApplicationCommand, MockApplicationCommandOption } from '../types/index.js'
 import type { Session } from '../types/index.js'
@@ -250,7 +252,7 @@ export class StageServer {
 	/**
 	 * Convert MockMessage to StageMessage
 	 */
-	private toStageMessage(message: { id: string; channelId: string; guildId?: string; author?: { id: string; username: string; avatar?: string | null; bot?: boolean }; content: string; timestamp: string; editedTimestamp?: string | null; embeds?: unknown[]; components?: unknown[]; attachments?: unknown[]; reactions?: unknown[] }): StageMessage {
+	private toStageMessage(message: { id: string; channelId: string; guildId?: string; author?: { id: string; username: string; avatar?: string | null; bot?: boolean }; content: string; timestamp: string; editedTimestamp?: string | null; embeds?: unknown[]; components?: unknown[]; attachments?: unknown[]; reactions?: Array<{ count: number; me: boolean; emoji: { id: string | null; name: string } }> }): StageMessage {
 		return {
 			id: message.id,
 			channel_id: message.channelId,
@@ -262,7 +264,14 @@ export class StageServer {
 			embeds: message.embeds ?? [],
 			components: message.components ?? [],
 			attachments: message.attachments ?? [],
-			reactions: message.reactions
+			reactions: message.reactions?.map((r) => ({
+				count: r.count,
+				me: r.me,
+				emoji: {
+					id: r.emoji.id,
+					name: r.emoji.name
+				}
+			}))
 		}
 	}
 
@@ -460,6 +469,19 @@ export class StageServer {
 					break
 				}
 
+				case 'invoke_context_command': {
+					const data = command.data as StageInvokeContextCommandData
+					const interaction = await session.dispatchContextMenu({
+						commandName: data.command_name,
+						targetId: data.target_id,
+						contextMenuType: data.command_type,
+						channelId: data.channel_id,
+						user: data.user ? { id: data.user.id, username: data.user.username } : undefined
+					})
+					this.sendCommandResponse(ws, connState, command.id, true, { interaction_id: interaction.id })
+					break
+				}
+
 				case 'click_button': {
 					const data = command.data as StageClickButtonData
 					const interaction = await session.dispatchButtonClick({
@@ -469,6 +491,56 @@ export class StageServer {
 						user: data.user ? { id: data.user.id, username: data.user.username } : undefined
 					})
 					this.sendCommandResponse(ws, connState, command.id, true, { interaction_id: interaction.id })
+
+					// Test mode: If custom_id starts with "test_modal", simulate a modal response
+					if (data.custom_id.startsWith('test_modal')) {
+						setTimeout(() => {
+							this.broadcastToSession(connState.sessionId, {
+								type: 'interaction_response',
+								data: {
+									interactionId: interaction.id,
+									response: {
+										type: 9, // Modal
+										data: {
+											custom_id: 'test_modal_form',
+											title: 'Test Modal',
+											components: [
+												{
+													type: 1, // ActionRow
+													components: [
+														{
+															type: 4, // TextInput
+															custom_id: 'username',
+															style: 1, // Short
+															label: 'Username',
+															placeholder: 'Enter your username',
+															required: true,
+															min_length: 3,
+															max_length: 32
+														}
+													]
+												},
+												{
+													type: 1, // ActionRow
+													components: [
+														{
+															type: 4, // TextInput
+															custom_id: 'feedback',
+															style: 2, // Paragraph
+															label: 'Feedback',
+															placeholder: 'Tell us what you think...',
+															required: false,
+															max_length: 1000
+														}
+													]
+												}
+											]
+										}
+									}
+								}
+							})
+						}, 100) // Small delay to simulate network
+					}
 					break
 				}
 
@@ -516,6 +588,10 @@ export class StageServer {
 					const data = command.data as StageStartTypingData
 					// Dispatch TYPING_START event via Session.dispatch()
 					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.getOrCreateTestUser()
+					if (!user) {
+						this.sendCommandResponse(ws, connState, command.id, false, undefined, 'User not found')
+						break
+					}
 					await session.dispatch('TYPING_START', {
 						channel_id: data.channel_id,
 						user_id: user.id,
@@ -547,17 +623,41 @@ export class StageServer {
 
 				case 'add_reaction': {
 					const data = command.data as StageAddReactionData
-					// Dispatch MESSAGE_REACTION_ADD event via Session.dispatch()
 					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.getOrCreateTestUser()
+					if (!user) {
+						this.sendCommandResponse(ws, connState, command.id, false, undefined, 'User not found')
+						break
+					}
 					const channel = session.state.channels.get(data.channel_id)
-					await session.dispatch('MESSAGE_REACTION_ADD', {
-						user_id: user.id,
-						channel_id: data.channel_id,
-						message_id: data.message_id,
-						guild_id: channel?.guildId,
-						emoji: { name: data.emoji, id: null }  // Unicode emoji format
+					const success = await session.dispatchReaction({
+						action: 'add',
+						messageId: data.message_id,
+						channelId: data.channel_id,
+						userId: user.id,
+						emoji: { id: null, name: data.emoji },
+						guildId: channel?.guildId
 					})
-					this.sendCommandResponse(ws, connState, command.id, true)
+					this.sendCommandResponse(ws, connState, command.id, success, undefined, success ? undefined : 'Message not found')
+					break
+				}
+
+				case 'remove_reaction': {
+					const data = command.data as StageRemoveReactionData
+					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.getOrCreateTestUser()
+					if (!user) {
+						this.sendCommandResponse(ws, connState, command.id, false, undefined, 'User not found')
+						break
+					}
+					const channel = session.state.channels.get(data.channel_id)
+					const success = await session.dispatchReaction({
+						action: 'remove',
+						messageId: data.message_id,
+						channelId: data.channel_id,
+						userId: user.id,
+						emoji: { id: null, name: data.emoji },
+						guildId: channel?.guildId
+					})
+					this.sendCommandResponse(ws, connState, command.id, success, undefined, success ? undefined : 'Message or reaction not found')
 					break
 				}
 

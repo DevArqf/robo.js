@@ -83,3 +83,19 @@
 	width: 24px;
 	height: 24px;
 }
+
+.iconButton.active {
+	color: var(--brand-500);
+}
+
+.emojiButtonWrapper {
+	position: relative;
+}
+
+/* Position emoji picker above the button */
+.emojiButtonWrapper :global(.picker) {
+	position: absolute;
+	bottom: 100%;
+	right: 0;
+	margin-bottom: 8px;
+}

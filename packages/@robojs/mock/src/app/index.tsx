@@ -2,6 +2,9 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import { SessionProvider, WebSocketProvider } from './stores/sessionStore'
+import { PlaybackProvider } from './stores/playbackStore'
+import { ToasterProvider } from './components/common/Toaster'
+import { DevToolsProvider } from './components/devtools/DevToolsPanel'
 
 // Get initial session ID from URL query params or localStorage
 function getInitialSessionId(): string | null {
@@ -24,10 +27,16 @@ const initialSessionId = getInitialSessionId()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
 	<React.StrictMode>
-		<SessionProvider initialSessionId={initialSessionId}>
-			<WebSocketProvider>
-				<App />
-			</WebSocketProvider>
-		</SessionProvider>
+		<ToasterProvider>
+			<DevToolsProvider>
+				<PlaybackProvider>
+					<SessionProvider initialSessionId={initialSessionId}>
+						<WebSocketProvider>
+							<App />
+						</WebSocketProvider>
+					</SessionProvider>
+				</PlaybackProvider>
+			</DevToolsProvider>
+		</ToasterProvider>
 	</React.StrictMode>
 )

@@ -1,0 +1,567 @@
+/* Container */
+.container {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	overflow: hidden;
+}
+
+/* Tab bar */
+.tabBar {
+	display: flex;
+	gap: 4px;
+	padding: 6px 8px;
+	border-bottom: 1px solid var(--background-modifier-accent);
+	background: var(--background-secondary);
+}
+
+.tabButton {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 12px;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	color: var(--text-muted);
+	font-size: 12px;
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.tabButton:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.tabButton.active {
+	background: var(--background-modifier-selected);
+	color: var(--text-normal);
+}
+
+.badge {
+	background: var(--brand-500);
+	color: white;
+	font-size: 10px;
+	padding: 1px 5px;
+	border-radius: 10px;
+	min-width: 16px;
+	text-align: center;
+}
+
+/* Client pane */
+.clientPane {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	overflow: visible;
+}
+
+/* Request builder */
+.requestBuilder {
+	padding: 12px;
+	border-bottom: 1px solid var(--background-modifier-accent);
+	background: var(--background-secondary);
+	overflow: visible;
+	position: relative;
+	z-index: 10;
+}
+
+.requestRow {
+	display: flex;
+	gap: 8px;
+}
+
+.methodSelect {
+	padding: 8px 12px;
+	background: var(--background-tertiary);
+	border: 1px solid var(--background-modifier-accent);
+	border-radius: var(--radius-sm);
+	color: var(--text-normal);
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+	min-width: 90px;
+}
+
+.methodSelect:focus {
+	outline: none;
+	border-color: var(--brand-500);
+}
+
+.pathInputWrapper {
+	flex: 1;
+	position: relative;
+}
+
+.pathInput {
+	width: 100%;
+	padding: 8px 12px;
+	background: var(--background-tertiary);
+	border: 1px solid var(--background-modifier-accent);
+	border-radius: var(--radius-sm);
+	color: var(--text-normal);
+	font-size: 13px;
+	font-family: var(--font-code);
+}
+
+.pathInput::placeholder {
+	color: var(--text-muted);
+}
+
+.pathInput:focus {
+	outline: none;
+	border-color: var(--brand-500);
+}
+
+/* Autocomplete dropdown - opens downward into response area */
+.autocomplete {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	right: 0;
+	margin-top: 4px;
+	background: var(--background-floating);
+	border: 1px solid var(--background-modifier-accent);
+	border-radius: var(--radius-sm);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+	max-height: 172px;
+	overflow-y: auto;
+	z-index: 1000;
+}
+
+.suggestion {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 8px 12px;
+	cursor: pointer;
+	font-size: 12px;
+}
+
+.suggestion:hover,
+.suggestion.selected {
+	background: var(--background-modifier-hover);
+}
+
+.suggestionPath {
+	color: var(--text-normal);
+	font-family: var(--font-code);
+}
+
+.suggestionMethods {
+	color: var(--text-muted);
+	font-size: 11px;
+}
+
+/* Send button */
+.sendButton {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 16px;
+	background: var(--brand-500);
+	border: none;
+	border-radius: var(--radius-sm);
+	color: white;
+	font-size: 13px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background 0.15s ease;
+}
+
+.sendButton:hover:not(:disabled) {
+	background: var(--brand-560);
+}
+
+.sendButton:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* Spinner animation */
+.spinner {
+	animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
+}
+
+/* Body editor */
+.bodyEditor {
+	margin-top: 12px;
+}
+
+.bodyLabel {
+	display: block;
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	margin-bottom: 6px;
+}
+
+.bodyTextarea {
+	width: 100%;
+	padding: 10px;
+	background: var(--background-tertiary);
+	border: 1px solid var(--background-modifier-accent);
+	border-radius: var(--radius-sm);
+	color: var(--text-normal);
+	font-size: 12px;
+	font-family: var(--font-code);
+	resize: vertical;
+	min-height: 80px;
+}
+
+.bodyTextarea::placeholder {
+	color: var(--text-muted);
+}
+
+.bodyTextarea:focus {
+	outline: none;
+	border-color: var(--brand-500);
+}
+
+/* Response area */
+.responseArea {
+	flex: 1;
+	overflow-y: auto;
+	padding: 12px;
+}
+
+.errorBox {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 12px;
+	background: rgba(242, 63, 67, 0.1);
+	border: 1px solid var(--red-400);
+	border-radius: var(--radius-sm);
+	color: var(--red-400);
+	font-size: 13px;
+}
+
+.errorIcon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	background: var(--red-400);
+	color: white;
+	border-radius: 50%;
+	font-size: 12px;
+	font-weight: bold;
+}
+
+.resultBox {
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-accent);
+	border-radius: var(--radius-sm);
+	overflow: hidden;
+}
+
+.statusLine {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 10px 12px;
+	border-bottom: 1px solid var(--background-modifier-accent);
+	background: var(--background-tertiary);
+}
+
+.statusCode {
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.resultDuration {
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.responseBody {
+	padding: 12px;
+}
+
+.responseLabel {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	margin-bottom: 8px;
+}
+
+.clientEmpty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	height: 100%;
+	color: var(--text-muted);
+	font-size: 13px;
+}
+
+.clientEmpty p {
+	margin: 4px 0;
+}
+
+.clientEmpty code {
+	background: var(--background-modifier-accent);
+	padding: 2px 6px;
+	border-radius: var(--radius-sm);
+	font-family: var(--font-code);
+	font-size: 12px;
+}
+
+.hint {
+	font-size: 12px;
+	opacity: 0.7;
+}
+
+/* Header with filter */
+.header {
+	display: flex;
+	gap: 8px;
+	padding: 8px;
+	border-bottom: 1px solid var(--background-modifier-accent);
+}
+
+.filterInput {
+	flex: 1;
+	padding: 6px 10px;
+	background: var(--background-tertiary);
+	border: none;
+	border-radius: var(--radius-sm);
+	color: var(--text-normal);
+	font-size: 12px;
+}
+
+.filterInput::placeholder {
+	color: var(--text-muted);
+}
+
+.clearButton {
+	padding: 6px 12px;
+	background: transparent;
+	border: 1px solid var(--background-modifier-accent);
+	border-radius: var(--radius-sm);
+	color: var(--text-muted);
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.clearButton:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+/* Request list */
+.requestList {
+	flex: 1;
+	overflow-y: auto;
+}
+
+/* Log row */
+.logRow {
+	display: grid;
+	grid-template-columns: 70px 1fr 60px 60px;
+	gap: 8px;
+	padding: 6px 8px;
+	border-bottom: 1px solid var(--background-modifier-accent);
+	cursor: pointer;
+	font-size: 12px;
+	align-items: center;
+}
+
+.logRow:hover {
+	background: var(--background-modifier-hover);
+}
+
+.logRow.selected {
+	background: var(--background-modifier-selected);
+}
+
+/* Method badge */
+.method {
+	font-weight: 600;
+	font-size: 11px;
+	padding: 2px 6px;
+	border-radius: var(--radius-sm);
+	text-align: center;
+}
+
+.methodGET {
+	background: rgba(87, 242, 135, 0.15);
+	color: var(--green-400);
+}
+
+.methodPOST {
+	background: rgba(88, 101, 242, 0.15);
+	color: var(--brand-500);
+}
+
+.methodPATCH {
+	background: rgba(250, 168, 26, 0.15);
+	color: var(--yellow-400);
+}
+
+.methodPUT {
+	background: rgba(250, 168, 26, 0.15);
+	color: var(--yellow-400);
+}
+
+.methodDELETE {
+	background: rgba(242, 63, 67, 0.15);
+	color: var(--red-400);
+}
+
+/* Path */
+.path {
+	color: var(--text-normal);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Status */
+.status {
+	text-align: right;
+	font-weight: 500;
+}
+
+.status2xx {
+	color: var(--green-400);
+}
+
+.status3xx {
+	color: var(--text-muted);
+}
+
+.status4xx {
+	color: var(--yellow-400);
+}
+
+.status5xx {
+	color: var(--red-400);
+}
+
+/* Duration */
+.duration {
+	text-align: right;
+	color: var(--text-muted);
+}
+
+/* Split view */
+.splitView {
+	display: flex;
+	flex: 1;
+	overflow: hidden;
+}
+
+.listPane {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	border-right: 1px solid var(--background-modifier-accent);
+}
+
+.detailPane {
+	width: 350px;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.detailHeader {
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--background-modifier-accent);
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--header-primary);
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.closeDetail {
+	background: none;
+	border: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	padding: 4px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.closeDetail:hover {
+	color: var(--text-normal);
+}
+
+.detailContent {
+	flex: 1;
+	overflow-y: auto;
+	padding: 12px;
+}
+
+.detailSection {
+	margin-bottom: 16px;
+}
+
+.detailLabel {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	margin-bottom: 6px;
+}
+
+.detailValue {
+	font-size: 12px;
+	color: var(--text-normal);
+	word-break: break-all;
+}
+
+.detailMeta {
+	display: flex;
+	gap: 16px;
+	margin-bottom: 12px;
+}
+
+.metaItem {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+/* Empty state */
+.empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	flex: 1;
+	padding: 24px;
+}
+
+.title {
+	margin-top: 16px;
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--header-primary);
+}
+
+.description {
+	margin-top: 8px;
+	font-size: 13px;
+	color: var(--text-muted);
+	line-height: 1.4;
+	max-width: 280px;
+}

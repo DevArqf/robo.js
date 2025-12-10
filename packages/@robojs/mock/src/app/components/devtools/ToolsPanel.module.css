@@ -1,0 +1,111 @@
+.container {
+	display: flex;
+	flex-direction: row;
+	gap: 24px;
+	padding: 16px;
+	overflow-x: auto;
+	height: 100%;
+}
+
+.section {
+	flex: 0 0 auto;
+	min-width: 200px;
+	max-width: 280px;
+	padding: 12px;
+	background: var(--background-tertiary);
+	border-radius: var(--radius-md);
+	border: 1px solid var(--background-accent);
+}
+
+.sectionTitle {
+	margin: 0 0 8px 0;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.description {
+	margin: 0 0 12px 0;
+	font-size: 12px;
+	color: var(--text-muted);
+	line-height: 1.4;
+}
+
+.actionButton {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 12px;
+	background: var(--brand-500);
+	border-radius: var(--radius-sm);
+	font-size: 12px;
+	font-weight: 500;
+	color: white;
+	transition: background 0.15s ease;
+}
+
+.actionButton:hover {
+	background: var(--brand-560);
+}
+
+.buttonGroup {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.toastButton {
+	padding: 6px 10px;
+	border-radius: var(--radius-sm);
+	font-size: 11px;
+	font-weight: 500;
+	color: white;
+	transition: filter 0.15s ease;
+}
+
+.toastButton:hover {
+	filter: brightness(1.1);
+}
+
+.toastButton.info {
+	background: var(--brand-500);
+}
+
+.toastButton.success {
+	background: var(--green-500);
+}
+
+.toastButton.warning {
+	background: var(--yellow-500);
+	color: var(--background-primary);
+}
+
+.toastButton.error {
+	background: var(--red-500);
+}
+
+.skeletonPreview {
+	margin-top: 12px;
+	padding: 12px;
+	background: var(--background-primary);
+	border-radius: var(--radius-sm);
+	border: 1px solid var(--background-accent);
+}
+
+.previewSection {
+	margin-bottom: 12px;
+}
+
+.previewSection:last-child {
+	margin-bottom: 0;
+}
+
+.previewLabel {
+	display: block;
+	margin-bottom: 8px;
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}

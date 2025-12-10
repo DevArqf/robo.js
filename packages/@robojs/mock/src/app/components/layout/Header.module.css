@@ -78,3 +78,42 @@
 .iconButton.active {
 	color: var(--interactive-active);
 }
+
+/* Mobile menu button - hidden by default */
+.mobileMenuButton {
+	display: none;
+	width: 32px;
+	height: 32px;
+	align-items: center;
+	justify-content: center;
+	color: var(--interactive-normal);
+	border-radius: var(--radius-sm);
+	transition: color 0.15s ease, background 0.15s ease;
+	margin-right: 8px;
+	flex-shrink: 0;
+}
+
+.mobileMenuButton:hover {
+	color: var(--interactive-hover);
+	background: var(--background-modifier-hover);
+}
+
+.mobileMenuButton.active {
+	color: var(--interactive-active);
+	background: var(--background-modifier-selected);
+}
+
+/* Show mobile menu button on mobile */
+@media (max-width: 768px) {
+	.mobileMenuButton {
+		display: flex;
+	}
+
+	.topic {
+		display: none;
+	}
+
+	.divider {
+		display: none;
+	}
+}

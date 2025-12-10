@@ -83,7 +83,7 @@ export function ChannelList({ guild, channels, selectedId, onSelect, unreadChann
 			</div>
 
 			{/* Channel list */}
-			<nav className={styles.channels}>
+			<nav className={styles.channels} aria-label="Channels">
 				{/* Uncategorized channels */}
 				{uncategorizedChannels.map((channel) => (
 					<ChannelItemWithThreads
@@ -105,12 +105,18 @@ export function ChannelList({ guild, channels, selectedId, onSelect, unreadChann
 
 					return (
 						<div key={category.id} className={styles.category}>
-							<button className={styles.categoryHeader} onClick={() => toggleCategory(category.id)}>
+							<button
+								className={styles.categoryHeader}
+								onClick={() => toggleCategory(category.id)}
+								aria-expanded={!isCollapsed}
+								aria-label={`${category.name} category, ${isCollapsed ? 'collapsed' : 'expanded'}`}
+							>
 								<svg
 									className={`${styles.collapseIcon} ${isCollapsed ? styles.collapsed : ''}`}
 									width="12"
 									height="12"
 									viewBox="0 0 12 12"
+									aria-hidden="true"
 								>
 									<path fill="currentColor" d="M2 4l4 4 4-4H2z" />
 								</svg>
@@ -191,10 +197,28 @@ interface ChannelItemProps {
 function ChannelItem({ channel, isSelected, isUnread, onClick }: ChannelItemProps) {
 	const Icon = getChannelIcon(channel.type)
 	const hasUnread = isUnread && !isSelected
+	const isVoice = channel.type === ChannelType.GUILD_VOICE || channel.type === ChannelType.GUILD_STAGE_VOICE
+
+	// Voice channels have a different appearance - show empty state
+	if (isVoice) {
+		return (
+			<div className={styles.voiceChannel}>
+				<button className={styles.voiceChannelHeader} aria-label={`Voice channel: ${channel.name}`}>
+					<Icon className={styles.channelIcon} aria-hidden="true" />
+					<span className={styles.channelName}>{channel.name}</span>
+				</button>
+			</div>
+		)
+	}
 
 	return (
-		<button className={`${styles.channel} ${isSelected ? styles.selected : ''} ${hasUnread ? styles.unread : ''}`} onClick={onClick}>
-			<Icon className={styles.channelIcon} />
+		<button
+			className={`${styles.channel} ${isSelected ? styles.selected : ''} ${hasUnread ? styles.unread : ''}`}
+			onClick={onClick}
+			aria-current={isSelected ? 'page' : undefined}
+			aria-label={`${channel.name}${hasUnread ? ' (unread messages)' : ''}`}
+		>
+			<Icon className={styles.channelIcon} aria-hidden="true" />
 			<span className={styles.channelName}>{channel.name}</span>
 		</button>
 	)

@@ -1,12 +1,16 @@
 .shell {
 	display: grid;
 	grid-template-columns: var(--server-list-width) var(--sidebar-width) 1fr;
-	grid-template-rows: 1fr;
+	grid-template-rows: 1fr auto;
+	grid-template-areas:
+		"servers channels main"
+		"bottom bottom bottom";
 	height: 100vh;
 	overflow: hidden;
 }
 
 .serverList {
+	grid-area: servers;
 	background: var(--background-tertiary);
 	display: flex;
 	flex-direction: column;
@@ -17,6 +21,7 @@
 }
 
 .channelList {
+	grid-area: channels;
 	background: var(--background-secondary);
 	display: flex;
 	flex-direction: column;
@@ -24,12 +29,12 @@
 }
 
 .main {
+	grid-area: main;
 	display: flex;
 	flex-direction: column;
 	background: var(--background-primary);
 	min-width: 0; /* Allow shrinking */
 	min-height: 0; /* Allow proper overflow scrolling in children */
-	max-height: 100vh; /* Constrain to viewport for scrolling */
 }
 
 .content {
@@ -37,4 +42,102 @@
 	display: flex;
 	overflow: hidden;
 	min-height: 0; /* Allow proper overflow scrolling */
+}
+
+.bottomBar {
+	grid-area: bottom;
+	display: flex;
+	flex-direction: column;
+	background: var(--background-tertiary);
+	border-top: 3px solid var(--brand-500);
+	box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Mobile sidebar overlay */
+.sidebarOverlay {
+	display: none;
+}
+
+.sidebarMobile {
+	display: none;
+}
+
+/* Tablet: hide server list, keep channels */
+@media (max-width: 1024px) {
+	.shell {
+		grid-template-columns: var(--sidebar-width) 1fr;
+		grid-template-areas:
+			"channels main"
+			"bottom bottom";
+	}
+
+	.serverList {
+		display: none;
+	}
+}
+
+/* Mobile: single column with overlay navigation */
+@media (max-width: 768px) {
+	.shell {
+		grid-template-columns: 1fr;
+		grid-template-areas:
+			"main"
+			"bottom";
+	}
+
+	.serverList,
+	.channelList {
+		display: none;
+	}
+
+	/* Show mobile sidebar when open */
+	.shell.sidebarOpen .sidebarOverlay {
+		display: block;
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 100;
+	}
+
+	.shell.sidebarOpen .sidebarMobile {
+		display: flex;
+		position: fixed;
+		top: 0;
+		left: 0;
+		bottom: 0;
+		width: calc(var(--server-list-width) + var(--sidebar-width));
+		max-width: 85vw;
+		z-index: 101;
+		animation: slideInLeft 0.2s ease-out;
+	}
+
+	.sidebarMobile .serverList,
+	.sidebarMobile .channelList {
+		display: flex;
+	}
+
+	.sidebarMobile .serverList {
+		background: var(--background-tertiary);
+	}
+
+	.sidebarMobile .channelList {
+		flex: 1;
+		background: var(--background-secondary);
+	}
+}
+
+@keyframes slideInLeft {
+	from {
+		transform: translateX(-100%);
+	}
+	to {
+		transform: translateX(0);
+	}
+}
+
+/* Small mobile: compact bottom bar */
+@media (max-width: 480px) {
+	.bottomBar {
+		padding: 4px 0;
+	}
 }

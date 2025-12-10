@@ -1,6 +1,9 @@
-import { useMemo, useState } from 'react'
-import type { StageMember, StageRole } from '../../types/stage'
+import { useMemo, useState, useCallback } from 'react'
+import type { StageMember, StageRole, StageUser, StageApplicationCommand } from '../../types/stage'
+import { useSession } from '../../hooks/useSession'
+import { useContextMenu } from '../../hooks/useContextMenu'
 import { UserProfilePopout } from './UserProfilePopout'
+import { ContextMenu } from '../context/ContextMenu'
 import styles from './MemberList.module.css'
 
 interface MemberListProps {
@@ -16,6 +19,26 @@ interface MemberGroup {
 
 export function MemberList({ members, roles }: MemberListProps) {
 	const [selectedMember, setSelectedMember] = useState<StageMember | null>(null)
+	const { commands, invokeContextCommand } = useSession()
+	const { menu: contextMenu, showMenu: showContextMenu, hideMenu: hideContextMenu } = useContextMenu()
+
+	// Context menu handlers
+	const handleUserContextMenu = useCallback(
+		(e: React.MouseEvent, user: StageUser) => {
+			e.preventDefault()
+			e.stopPropagation()
+			showContextMenu('user', user.id, user, { x: e.clientX, y: e.clientY })
+		},
+		[showContextMenu]
+	)
+
+	const handleContextCommandClick = useCallback(
+		async (command: StageApplicationCommand) => {
+			if (!contextMenu) return
+			await invokeContextCommand(command.name, 2, contextMenu.targetId, contextMenu.targetData)
+		},
+		[contextMenu, invokeContextCommand]
+	)
 
 	// Create role lookup map
 	const roleMap = useMemo(() => {
@@ -126,6 +149,7 @@ export function MemberList({ members, roles }: MemberListProps) {
 							member={member}
 							color={getMemberColor(member)}
 							onClick={() => setSelectedMember(member)}
+							onContextMenu={handleUserContextMenu}
 						/>
 					))}
 				</div>
@@ -146,6 +170,19 @@ export function MemberList({ members, roles }: MemberListProps) {
 					onClose={() => setSelectedMember(null)}
 				/>
 			)}
+
+			{/* Context menu */}
+			{contextMenu && (
+				<ContextMenu
+					type={contextMenu.type}
+					targetId={contextMenu.targetId}
+					targetData={contextMenu.targetData}
+					position={contextMenu.position}
+					commands={commands}
+					onClose={hideContextMenu}
+					onCommandClick={handleContextCommandClick}
+				/>
+			)}
 		</aside>
 	)
 }
@@ -154,9 +191,10 @@ interface MemberItemProps {
 	member: StageMember
 	color: number
 	onClick: () => void
+	onContextMenu: (e: React.MouseEvent, user: StageUser) => void
 }
 
-function MemberItem({ member, color, onClick }: MemberItemProps) {
+function MemberItem({ member, color, onClick, onContextMenu }: MemberItemProps) {
 	const { user, nick } = member
 	const displayName = nick || user.username
 	const status = user.status || 'online'
@@ -165,7 +203,7 @@ function MemberItem({ member, color, onClick }: MemberItemProps) {
 	const colorStyle = color !== 0 ? { color: `#${color.toString(16).padStart(6, '0')}` } : undefined
 
 	return (
-		<div className={styles.member} onClick={onClick}>
+		<div className={styles.member} onClick={onClick} onContextMenu={(e) => onContextMenu(e, user)}>
 			<div className={styles.avatar}>
 				{user.avatar ? (
 					<img src={getAvatarUrl(user.id, user.avatar)} alt="" className={styles.avatarImage} />

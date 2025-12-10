@@ -73,8 +73,20 @@ import type {
 	MockAutoModRuleConfig,
 	MockAutoModRuleUpdateConfig,
 	// Phase 7: Voice States
-	MockVoiceState
+	MockVoiceState,
+	// Phase 5I: Reactions
+	MockReaction,
+	// Phase 11: Stage Instances
+	MockStageInstance,
+	MockStageInstanceConfig,
+	StageInstancePrivacyLevel,
+	// Phase 11: Command Permissions
+	MockCommandPermission,
+	// Phase 14: Audit Logs
+	MockAuditLogEntry,
+	MockAuditLogEntryConfig
 } from '../types/index.js'
+import { AuditLogEvent, AuditLogLimits } from '../types/index.js'
 import { ComponentsV2Limits, ComponentTypeV2, PollLayoutType, ForumLayoutType, ForumSortOrderType, StickerType, StickerFormatType, StickerLimits, WebhookType, WebhookLimits, EmojiLimits, RoleLimits, BanLimits, ApplicationCommandType, CommandLimits, InviteLimits, ScheduledEventLimits, GuildScheduledEventPrivacyLevel, GuildScheduledEventStatus, GuildScheduledEventEntityType, AutoModLimits, AutoModerationEventType } from '../types/index.js'
 import { generateSnowflake } from '../utils/snowflake.js'
 import { MemoryAttachmentStorage, type AttachmentStorage, type StorageConfig, createStorage } from '../storage/attachment-storage.js'
@@ -118,7 +130,10 @@ export class MockServerState implements SessionState {
 	readonly invites: Map<string, MockInvite> // Phase 5A: code -> invite
 	readonly scheduledEvents: Map<string, MockScheduledEvent> // Phase 5B: `${guildId}:${eventId}` -> event
 	readonly autoModRules: Map<string, MockAutoModRule> // Phase 5C: `${guildId}:${ruleId}` -> rule
+	readonly stageInstances: Map<Snowflake, MockStageInstance> // Phase 11: channelId -> stage instance
+	readonly commandPermissions: Map<string, MockCommandPermission[]> // Phase 11: `${guildId}:${commandId}` -> permissions
 	readonly voiceStates: Map<string, MockVoiceState> // Phase 7: `${guildId}:${userId}` -> voice state
+	readonly auditLogs: Map<string, MockAuditLogEntry[]> // Phase 14: guildId -> audit log entries
 	readonly botUser: MockUser
 	readonly applicationId: Snowflake
 
@@ -163,7 +178,10 @@ export class MockServerState implements SessionState {
 		this.invites = new Map()
 		this.scheduledEvents = new Map()
 		this.autoModRules = new Map()
+		this.stageInstances = new Map()
+		this.commandPermissions = new Map()
 		this.voiceStates = new Map()
+		this.auditLogs = new Map()
 		this.interactionsByToken = new Map()
 		this.webhooksByToken = new Map()
 		this.maxMessages = options?.maxMessages ?? DEFAULT_MAX_MESSAGES
@@ -298,6 +316,28 @@ export class MockServerState implements SessionState {
 	 */
 	addGuild(guild: MockGuild): void {
 		this.guilds.set(guild.id, guild)
+
+		// Create @everyone role if not already exists
+		// The @everyone role has the same ID as the guild
+		if (!this.roles.has(guild.id)) {
+			this.roles.set(guild.id, {
+				id: guild.id,
+				guildId: guild.id,
+				name: '@everyone',
+				color: 0,
+				hoist: false,
+				position: 0,
+				permissions: MockServerState.DEFAULT_EVERYONE_PERMISSIONS,
+				managed: false,
+				mentionable: false,
+				flags: 0
+			})
+		}
+
+		// Ensure @everyone role is in guild's roles array
+		if (!guild.roles.includes(guild.id)) {
+			guild.roles.push(guild.id)
+		}
 
 		// Add bot user as member if not already
 		if (!guild.members.includes(this.botUser.id)) {
@@ -558,6 +598,103 @@ export class MockServerState implements SessionState {
 			}
 		}
 		return this.messages.delete(id)
+	}
+
+	// ============================================================================
+	// Reaction Operations (Phase 5I)
+	// ============================================================================
+
+	/**
+	 * Add a reaction to a message
+	 * Returns the updated reactions array or undefined if message not found
+	 */
+	addReaction(
+		messageId: Snowflake,
+		userId: Snowflake,
+		emoji: { id: Snowflake | null; name: string }
+	): MockReaction[] | undefined {
+		const message = this.messages.get(messageId)
+		if (!message) {
+			return undefined
+		}
+
+		// Initialize reactions array if needed
+		if (!message.reactions) {
+			message.reactions = []
+		}
+
+		// Find existing reaction for this emoji
+		const emojiKey = emoji.id || emoji.name
+		const existingReaction = message.reactions.find(
+			(r) => (r.emoji.id || r.emoji.name) === emojiKey
+		)
+
+		if (existingReaction) {
+			// Increment count
+			existingReaction.count++
+			existingReaction.count_details.normal++
+			// Mark as "me" if this is the test user (for Stage UI display)
+			if (userId === this.getOrCreateTestUser().id) {
+				existingReaction.me = true
+			}
+		} else {
+			// Create new reaction
+			const newReaction: MockReaction = {
+				count: 1,
+				count_details: { burst: 0, normal: 1 },
+				me: userId === this.getOrCreateTestUser().id,
+				me_burst: false,
+				emoji: {
+					id: emoji.id,
+					name: emoji.name
+				},
+				burst_colors: []
+			}
+			message.reactions.push(newReaction)
+		}
+
+		return message.reactions
+	}
+
+	/**
+	 * Remove a reaction from a message
+	 * Returns the updated reactions array or undefined if message/reaction not found
+	 */
+	removeReaction(
+		messageId: Snowflake,
+		userId: Snowflake,
+		emoji: { id: Snowflake | null; name: string }
+	): MockReaction[] | undefined {
+		const message = this.messages.get(messageId)
+		if (!message || !message.reactions) {
+			return undefined
+		}
+
+		// Find existing reaction for this emoji
+		const emojiKey = emoji.id || emoji.name
+		const reactionIndex = message.reactions.findIndex(
+			(r) => (r.emoji.id || r.emoji.name) === emojiKey
+		)
+
+		if (reactionIndex === -1) {
+			return message.reactions
+		}
+
+		const reaction = message.reactions[reactionIndex]
+		reaction.count--
+		reaction.count_details.normal--
+
+		// Remove "me" flag if this is the test user
+		if (userId === this.getOrCreateTestUser().id) {
+			reaction.me = false
+		}
+
+		// Remove reaction entirely if count reaches 0
+		if (reaction.count <= 0) {
+			message.reactions.splice(reactionIndex, 1)
+		}
+
+		return message.reactions
 	}
 
 	// ============================================================================
@@ -2036,6 +2173,20 @@ export class MockServerState implements SessionState {
 		this.roles.set(role.id, role)
 		guild.roles.push(role.id)
 
+		// Create audit log entry for role creation
+		this.createAuditLogEntry(guildId, {
+			targetId: role.id,
+			actionType: AuditLogEvent.RoleCreate,
+			reason: config?.reason,
+			changes: [
+				{ key: 'name', new_value: role.name },
+				{ key: 'color', new_value: role.color },
+				{ key: 'hoist', new_value: role.hoist },
+				{ key: 'mentionable', new_value: role.mentionable },
+				{ key: 'permissions', new_value: role.permissions }
+			]
+		})
+
 		return role
 	}
 
@@ -2043,7 +2194,7 @@ export class MockServerState implements SessionState {
 	 * Update a role
 	 * @returns The updated role, or null if not found
 	 */
-	updateGuildRole(guildId: Snowflake, roleId: Snowflake, updates: Partial<MockRoleConfig>): MockRole | null {
+	updateGuildRole(guildId: Snowflake, roleId: Snowflake, updates: Partial<MockRoleConfig>, reason?: string): MockRole | null {
 		const role = this.getGuildRole(guildId, roleId)
 		if (!role) {
 			return null
@@ -2056,11 +2207,15 @@ export class MockServerState implements SessionState {
 			}
 		}
 
+		// Track changes for audit log
+		const changes: Array<{ key: string; old_value?: unknown; new_value?: unknown }> = []
+
 		// Validate name length
 		if (updates.name !== undefined) {
 			if (updates.name.length < RoleLimits.MIN_NAME_LENGTH || updates.name.length > RoleLimits.MAX_NAME_LENGTH) {
 				return null
 			}
+			changes.push({ key: 'name', old_value: role.name, new_value: updates.name })
 			role.name = updates.name
 		}
 
@@ -2069,15 +2224,41 @@ export class MockServerState implements SessionState {
 			if (updates.color < 0 || updates.color > RoleLimits.MAX_COLOR_VALUE) {
 				return null
 			}
+			changes.push({ key: 'color', old_value: role.color, new_value: updates.color })
 			role.color = updates.color
 		}
 
 		// Update other fields
-		if (updates.hoist !== undefined) role.hoist = updates.hoist
-		if (updates.icon !== undefined) role.icon = updates.icon
-		if (updates.unicodeEmoji !== undefined) role.unicodeEmoji = updates.unicodeEmoji
-		if (updates.permissions !== undefined) role.permissions = updates.permissions
-		if (updates.mentionable !== undefined) role.mentionable = updates.mentionable
+		if (updates.hoist !== undefined) {
+			changes.push({ key: 'hoist', old_value: role.hoist, new_value: updates.hoist })
+			role.hoist = updates.hoist
+		}
+		if (updates.icon !== undefined) {
+			changes.push({ key: 'icon', old_value: role.icon, new_value: updates.icon })
+			role.icon = updates.icon
+		}
+		if (updates.unicodeEmoji !== undefined) {
+			changes.push({ key: 'unicode_emoji', old_value: role.unicodeEmoji, new_value: updates.unicodeEmoji })
+			role.unicodeEmoji = updates.unicodeEmoji
+		}
+		if (updates.permissions !== undefined) {
+			changes.push({ key: 'permissions', old_value: role.permissions, new_value: updates.permissions })
+			role.permissions = updates.permissions
+		}
+		if (updates.mentionable !== undefined) {
+			changes.push({ key: 'mentionable', old_value: role.mentionable, new_value: updates.mentionable })
+			role.mentionable = updates.mentionable
+		}
+
+		// Create audit log entry for role update
+		if (changes.length > 0) {
+			this.createAuditLogEntry(guildId, {
+				targetId: role.id,
+				actionType: AuditLogEvent.RoleUpdate,
+				changes,
+				reason
+			})
+		}
 
 		return role
 	}
@@ -2113,7 +2294,7 @@ export class MockServerState implements SessionState {
 	 * Delete a role from a guild
 	 * @returns true if deleted, false if not found or cannot delete @everyone
 	 */
-	deleteGuildRole(guildId: Snowflake, roleId: Snowflake): boolean {
+	deleteGuildRole(guildId: Snowflake, roleId: Snowflake, reason?: string): boolean {
 		const guild = this.guilds.get(guildId)
 		if (!guild) {
 			return false
@@ -2128,6 +2309,20 @@ export class MockServerState implements SessionState {
 		if (!role || role.guildId !== guildId) {
 			return false
 		}
+
+		// Create audit log entry for role deletion (before deletion)
+		this.createAuditLogEntry(guildId, {
+			targetId: role.id,
+			actionType: AuditLogEvent.RoleDelete,
+			changes: [
+				{ key: 'name', old_value: role.name },
+				{ key: 'color', old_value: role.color },
+				{ key: 'hoist', old_value: role.hoist },
+				{ key: 'mentionable', old_value: role.mentionable },
+				{ key: 'permissions', old_value: role.permissions }
+			],
+			reason
+		})
 
 		// Remove from guild's role list
 		const index = guild.roles.indexOf(roleId)
@@ -3139,6 +3334,184 @@ export class MockServerState implements SessionState {
 	}
 
 	// ============================================================================
+	// Phase 11: Stage Instance Operations
+	// ============================================================================
+
+	/**
+	 * Get a stage instance by channel ID
+	 */
+	getStageInstance(channelId: Snowflake): MockStageInstance | undefined {
+		return this.stageInstances.get(channelId)
+	}
+
+	/**
+	 * Get all stage instances for a guild
+	 */
+	getGuildStageInstances(guildId: Snowflake): MockStageInstance[] {
+		return Array.from(this.stageInstances.values()).filter((s) => s.guildId === guildId)
+	}
+
+	/**
+	 * Create a stage instance
+	 * @returns The created stage instance, or null if validation fails
+	 */
+	createStageInstance(guildId: Snowflake, config: MockStageInstanceConfig): MockStageInstance | null {
+		// Validate channel exists and is a stage channel
+		const channel = this.channels.get(config.channelId)
+		if (!channel || channel.type !== 13) {
+			// 13 = GUILD_STAGE_VOICE
+			return null
+		}
+
+		// Check if stage instance already exists for this channel
+		if (this.stageInstances.has(config.channelId)) {
+			return null
+		}
+
+		// Validate topic length (1-120 characters)
+		if (!config.topic || config.topic.length < 1 || config.topic.length > 120) {
+			return null
+		}
+
+		const stageInstance: MockStageInstance = {
+			id: generateSnowflake(),
+			guildId,
+			channelId: config.channelId,
+			topic: config.topic,
+			privacyLevel: config.privacyLevel ?? StageInstancePrivacyLevel.GuildOnly,
+			discoverableDisabled: true, // Always true for guild-only
+			guildScheduledEventId: config.guildScheduledEventId ?? null
+		}
+
+		this.stageInstances.set(config.channelId, stageInstance)
+		return stageInstance
+	}
+
+	/**
+	 * Update a stage instance
+	 * @returns The updated stage instance, or null if not found
+	 */
+	updateStageInstance(
+		channelId: Snowflake,
+		updates: { topic?: string; privacyLevel?: StageInstancePrivacyLevel }
+	): MockStageInstance | null {
+		const stageInstance = this.stageInstances.get(channelId)
+		if (!stageInstance) {
+			return null
+		}
+
+		// Validate topic if provided
+		if (updates.topic !== undefined) {
+			if (updates.topic.length < 1 || updates.topic.length > 120) {
+				return null
+			}
+			stageInstance.topic = updates.topic
+		}
+
+		if (updates.privacyLevel !== undefined) {
+			stageInstance.privacyLevel = updates.privacyLevel
+			stageInstance.discoverableDisabled = updates.privacyLevel === StageInstancePrivacyLevel.GuildOnly
+		}
+
+		return stageInstance
+	}
+
+	/**
+	 * Delete a stage instance
+	 * @returns The deleted stage instance, or null if not found
+	 */
+	deleteStageInstance(channelId: Snowflake): MockStageInstance | null {
+		const stageInstance = this.stageInstances.get(channelId)
+		if (!stageInstance) {
+			return null
+		}
+		this.stageInstances.delete(channelId)
+		return stageInstance
+	}
+
+	// ============================================================================
+	// Phase 14: Audit Log Operations
+	// ============================================================================
+
+	/**
+	 * Create an audit log entry for a guild
+	 * @param guildId The guild ID
+	 * @param config The audit log entry configuration
+	 * @returns The created audit log entry
+	 */
+	createAuditLogEntry(guildId: Snowflake, config: MockAuditLogEntryConfig): MockAuditLogEntry {
+		const entry: MockAuditLogEntry = {
+			id: generateSnowflake(),
+			target_id: config.targetId ?? null,
+			user_id: config.userId ?? this.botUser.id,
+			action_type: config.actionType,
+			changes: config.changes,
+			options: config.options,
+			reason: config.reason,
+			guild_id: guildId,
+			created_at: new Date().toISOString()
+		}
+
+		// Get or create the guild's audit log array
+		let entries = this.auditLogs.get(guildId)
+		if (!entries) {
+			entries = []
+			this.auditLogs.set(guildId, entries)
+		}
+
+		// Add entry at the beginning (newest first)
+		entries.unshift(entry)
+
+		// Enforce limit with LRU eviction
+		if (entries.length > AuditLogLimits.MAX_ENTRIES_PER_GUILD) {
+			entries.pop()
+		}
+
+		return entry
+	}
+
+	/**
+	 * Get audit log entries for a guild with optional filtering
+	 * @param guildId The guild ID
+	 * @param options Filtering options
+	 * @returns Array of audit log entries
+	 */
+	getAuditLogEntries(
+		guildId: Snowflake,
+		options?: {
+			userId?: Snowflake
+			actionType?: AuditLogEvent
+			before?: Snowflake
+			limit?: number
+		}
+	): MockAuditLogEntry[] {
+		const entries = this.auditLogs.get(guildId) ?? []
+		let filtered = [...entries]
+
+		// Filter by user
+		if (options?.userId) {
+			filtered = filtered.filter((e) => e.user_id === options.userId)
+		}
+
+		// Filter by action type
+		if (options?.actionType !== undefined) {
+			filtered = filtered.filter((e) => e.action_type === options.actionType)
+		}
+
+		// Filter by before ID (entries are sorted newest first, so we skip entries >= before)
+		if (options?.before) {
+			const beforeIndex = filtered.findIndex((e) => e.id === options.before)
+			if (beforeIndex !== -1) {
+				filtered = filtered.slice(beforeIndex + 1)
+			}
+		}
+
+		// Apply limit
+		const limit = Math.min(options?.limit ?? AuditLogLimits.DEFAULT_FETCH_LIMIT, AuditLogLimits.MAX_FETCH_LIMIT)
+		return filtered.slice(0, limit)
+	}
+
+	// ============================================================================
 	// State Management
 	// ============================================================================
 
@@ -3163,6 +3536,8 @@ export class MockServerState implements SessionState {
 		this.invites.clear()
 		this.scheduledEvents.clear()
 		this.autoModRules.clear()
+		this.stageInstances.clear()
+		this.auditLogs.clear()
 		this.interactionsByToken.clear()
 		this.webhooksByToken.clear()
 		this.users.clear()
@@ -3245,13 +3620,17 @@ export function createMockChannel(config?: {
 	name?: string
 	type?: number
 	parentId?: Snowflake | null
+	topic?: string | null
+	position?: number
 }): MockChannel {
 	return {
 		id: config?.id ?? generateSnowflake(),
 		guildId: config?.guildId,
 		name: config?.name ?? 'general',
 		type: config?.type ?? 0, // GUILD_TEXT
-		parentId: config?.parentId ?? null
+		parentId: config?.parentId ?? null,
+		topic: config?.topic ?? null,
+		position: config?.position
 	}
 }
 
@@ -3336,7 +3715,8 @@ export function createMockMessage(config: MockMessageConfig): MockMessage {
 		attachments: config.attachments ?? [],
 		embeds: config.embeds ?? [],
 		pinned: false,
-		type: config.type ?? 0 // DEFAULT
+		type: config.type ?? 0, // DEFAULT
+		nonce: config.nonce ?? null
 	}
 
 	// Phase 3I: Add optional fields if provided
