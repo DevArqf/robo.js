@@ -24,6 +24,8 @@ export class Player {
 	private isOnGround: boolean = false
 	private jumpRequested: boolean = false
 	private physicsEngine: Matter.Engine | null = null
+	private isSlowed: boolean = false
+	private readonly SLOW_MULTIPLIER = 0.4 // 40% speed when slowed
 
 	constructor(
 		character: CharacterConfig,
@@ -109,19 +111,28 @@ export class Player {
 	/**
 	 * Update player physics and animation
 	 */
-	update(input: InputState, screenWidth: number, floorY: number): void {
+	update(input: InputState, screenWidth: number, floorY: number, slowed: boolean = false): void {
+		this.isSlowed = slowed
 		this.checkGrounded(floorY)
 		this.handleMovement(input)
 		this.handleJump(input)
 		this.syncSpriteToBody()
 		this.constrainToScreen(screenWidth)
 		this.updateAnimation(input)
+
+		// Apply visual tint when slowed
+		if (this.isSlowed) {
+			this.sprite.tint = 0xff6666
+		} else {
+			this.sprite.tint = 0xffffff
+		}
 	}
 
 	private handleMovement(input: InputState): void {
 		const isRunning = input.run
-		const force = isRunning ? GAME_CONFIG.RUN_FORCE : GAME_CONFIG.WALK_FORCE
-		const maxVel = isRunning ? GAME_CONFIG.MAX_RUN_VELOCITY : GAME_CONFIG.MAX_WALK_VELOCITY
+		const slowMultiplier = this.isSlowed ? this.SLOW_MULTIPLIER : 1
+		const force = (isRunning ? GAME_CONFIG.RUN_FORCE : GAME_CONFIG.WALK_FORCE) * slowMultiplier
+		const maxVel = (isRunning ? GAME_CONFIG.MAX_RUN_VELOCITY : GAME_CONFIG.MAX_WALK_VELOCITY) * slowMultiplier
 
 		let isMoving = false
 

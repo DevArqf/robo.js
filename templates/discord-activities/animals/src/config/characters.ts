@@ -34,7 +34,7 @@ export const CHARACTERS: Record<CharacterId, CharacterConfig> = {
 		description: 'Quick and cunning',
 		spritesheets: createSpritesheets('/characters/weasel', 20),
 		preview: '/characters/weasel/walking.png',
-		scale: 2,
+		scale: 1.8,
 		animationSpeed: 0.5,
 		unlocked: true,
 		canFly: false,

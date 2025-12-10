@@ -3,10 +3,17 @@ import Matter from 'matter-js'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { CloudPlatforms } from '../systems/CloudPlatforms'
 
+export interface CloudPosition {
+	x: number
+	y: number
+	index: number
+}
+
 export interface UseCloudPlatformsResult {
 	cloudPlatforms: CloudPlatforms | null
 	isReady: boolean
 	updateClouds: (deltaTime: number) => void
+	getCloudPositions: () => CloudPosition[]
 }
 
 /**
@@ -65,9 +72,19 @@ export function useCloudPlatforms(
 		}
 	}, [])
 
+	const getCloudPositions = useCallback((): CloudPosition[] => {
+		if (!cloudPlatformsRef.current) return []
+		return cloudPlatformsRef.current.getClouds().map((cloud, index) => ({
+			x: cloud.sprite.x,
+			y: cloud.sprite.y,
+			index
+		}))
+	}, [])
+
 	return {
 		cloudPlatforms: cloudPlatformsRef.current,
 		isReady,
-		updateClouds
+		updateClouds,
+		getCloudPositions
 	}
 }
