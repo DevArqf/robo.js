@@ -38,9 +38,10 @@ export class CloudPlatforms {
 		const scale = 2
 		const scaledWidth = cloudWidth * scale
 
-		// Define spawn area (lower so players can jump to them)
-		const minY = screenHeight * 0.4
-		const maxY = screenHeight * 0.75
+		// Define spawn area - cover almost full screen height
+		// Players can jump from cloud to cloud to reach higher areas
+		const minY = screenHeight * 0.15 // Near top of screen
+		const maxY = screenHeight * 0.75 // Leave room at bottom for ground
 		const padding = 120
 
 		// Minimum distance between cloud centers to prevent overlap
@@ -83,12 +84,15 @@ export class CloudPlatforms {
 			sprite.x = x
 			sprite.y = y
 
-			// Create physics body (static platform at center of cloud)
+			// Create physics body - thin invisible platform at BOTTOM of cloud sprite
+			// Cloud sprite is anchored at center (0.5, 0.5)
+			// The flat base is at the very bottom - move hitbox lower
+			const platformY = y + cloudHeight * scale * 0.45
 			const body = Matter.Bodies.rectangle(
 				x,
-				y, // Center of cloud
-				cloudWidth * scale * 0.8, // Width
-				cloudHeight * scale * 0.4, // Thin-ish platform
+				platformY, // Position hitbox at the flat bottom part of cloud
+				cloudWidth * scale * 0.9, // Width to match the flat base
+				1, // Very thin platform
 				{
 					isStatic: true,
 					friction: 0.8,
@@ -100,19 +104,8 @@ export class CloudPlatforms {
 			Matter.World.add(this.physicsWorld, body)
 			this.container.addChild(sprite)
 
-			console.log(
-				'[CloudPlatforms] Added cloud at',
-				x,
-				y,
-				'body position:',
-				body.position,
-				'isStatic:',
-				body.isStatic,
-				'world bodies count:',
-				this.physicsWorld.bodies.length
-			)
-
 			// Random animation parameters for each cloud
+			// Keep vertical movement minimal to prevent player shaking
 			this.clouds.push({
 				sprite,
 				body,
@@ -120,10 +113,10 @@ export class CloudPlatforms {
 				baseY: y,
 				phaseX: Math.random() * Math.PI * 2,
 				phaseY: Math.random() * Math.PI * 2,
-				speedX: 0.3 + Math.random() * 0.4,
-				speedY: 0.5 + Math.random() * 0.5,
-				amplitudeX: 20 + Math.random() * 30,
-				amplitudeY: 8 + Math.random() * 12
+				speedX: 0.2 + Math.random() * 0.3,
+				speedY: 0.3 + Math.random() * 0.3,
+				amplitudeX: 15 + Math.random() * 20,
+				amplitudeY: 3 + Math.random() * 4
 			})
 		}
 	}
@@ -153,10 +146,13 @@ export class CloudPlatforms {
 			cloud.sprite.x = newX
 			cloud.sprite.y = newY
 
-			// Update physics body position (same as sprite)
+			// Update physics body position (at bottom flat part of cloud)
+			const cloudHeight = 40
+			const scale = 2
+			const platformY = newY + cloudHeight * scale * 0.45
 			Matter.Body.setPosition(cloud.body, {
 				x: newX,
-				y: newY
+				y: platformY
 			})
 		}
 	}

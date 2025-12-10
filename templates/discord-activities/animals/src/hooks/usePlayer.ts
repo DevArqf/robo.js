@@ -16,6 +16,7 @@ export interface UsePlayerResult {
 export function usePlayer(
 	gameContainer: Container | null,
 	physicsWorld: Matter.World | null,
+	physicsEngine: Matter.Engine | null,
 	characterId: CharacterId,
 	username: string,
 	screenWidth: number,
@@ -26,7 +27,7 @@ export function usePlayer(
 
 	// Create player when dependencies are ready
 	useEffect(() => {
-		if (!gameContainer || !physicsWorld || !screenWidth || !screenHeight) return
+		if (!gameContainer || !physicsWorld || !physicsEngine || !screenWidth || !screenHeight) return
 
 		let cancelled = false
 
@@ -37,7 +38,7 @@ export function usePlayer(
 			const spawnX = screenWidth / 2
 			const spawnY = screenHeight - 100
 
-			const player = new Player(character, username, spawnX, spawnY, physicsWorld)
+			const player = new Player(character, username, spawnX, spawnY, physicsWorld, physicsEngine)
 
 			// Load animations
 			try {
@@ -67,7 +68,7 @@ export function usePlayer(
 			}
 			setIsReady(false)
 		}
-	}, [gameContainer, physicsWorld, characterId, username, screenWidth, screenHeight])
+	}, [gameContainer, physicsWorld, physicsEngine, characterId, username, screenWidth, screenHeight])
 
 	return {
 		player: playerRef.current,

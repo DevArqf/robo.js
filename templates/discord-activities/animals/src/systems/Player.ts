@@ -23,13 +23,15 @@ export class Player {
 	private character: CharacterConfig
 	private isOnGround: boolean = false
 	private jumpRequested: boolean = false
+	private physicsEngine: Matter.Engine | null = null
 
 	constructor(
 		character: CharacterConfig,
 		username: string,
 		spawnX: number,
 		spawnY: number,
-		physicsWorld: Matter.World
+		physicsWorld: Matter.World,
+		physicsEngine: Matter.Engine
 	) {
 		this.character = character
 
@@ -74,8 +76,16 @@ export class Player {
 
 		Matter.World.add(physicsWorld, this.body)
 
+		// Set up collision detection for grounding
+		this.setupCollisionDetection(physicsEngine)
+
 		// Create animation controller
 		this.animationController = new AnimationController(this.sprite, character)
+	}
+
+	private setupCollisionDetection(engine: Matter.Engine): void {
+		this.physicsEngine = engine
+		// Collision detection is now handled in checkGrounded using Query.collides
 	}
 
 	private get estimatedWidth(): number {
@@ -100,12 +110,12 @@ export class Player {
 	 * Update player physics and animation
 	 */
 	update(input: InputState, screenWidth: number, floorY: number): void {
+		this.checkGrounded(floorY)
 		this.handleMovement(input)
 		this.handleJump(input)
 		this.syncSpriteToBody()
 		this.constrainToScreen(screenWidth)
 		this.updateAnimation(input)
-		this.checkGrounded(floorY)
 	}
 
 	private handleMovement(input: InputState): void {
@@ -173,9 +183,39 @@ export class Player {
 	}
 
 	private checkGrounded(floorY: number): void {
-		// Check if body is near ground level
+		// Check if near floor (simple Y check for main ground)
 		const bodyBottom = this.body.position.y + this.estimatedHeight * 0.4
-		this.isOnGround = bodyBottom >= floorY - 5 && this.body.velocity.y >= -0.1
+		const isNearFloor = bodyBottom >= floorY - 5
+
+		// Check for cloud platform collisions using Matter.Query
+		let isOnCloud = false
+		if (this.physicsEngine) {
+			const bodies = Matter.Composite.allBodies(this.physicsEngine.world)
+			const clouds = bodies.filter((b) => b.label === 'cloud-platform')
+
+			// Create a small sensor area at player's feet
+			const feetSensor = Matter.Bodies.rectangle(
+				this.body.position.x,
+				this.body.position.y + this.estimatedHeight * 0.4,
+				this.estimatedWidth * 0.4,
+				10,
+				{ isSensor: true }
+			)
+
+			for (const cloud of clouds) {
+				// Only check clouds that have collision enabled
+				if (cloud.collisionFilter.category === 0) continue
+
+				const collision = Matter.Collision.collides(feetSensor, cloud, undefined)
+				if (collision) {
+					isOnCloud = true
+					break
+				}
+			}
+		}
+
+		// Player is grounded if on floor or on a cloud, and not moving upward
+		this.isOnGround = (isNearFloor || isOnCloud) && this.body.velocity.y >= -0.1
 	}
 
 	private syncSpriteToBody(): void {

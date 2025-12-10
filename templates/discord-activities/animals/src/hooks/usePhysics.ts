@@ -51,11 +51,39 @@ export function usePhysics(screenWidth: number, screenHeight: number): UsePhysic
 
 		Matter.World.add(engine.world, floorBody)
 
-		// Debug: log all collisions
-		Matter.Events.on(engine, 'collisionStart', (event) => {
-			for (const pair of event.pairs) {
-				if (pair.bodyA.label === 'cloud-platform' || pair.bodyB.label === 'cloud-platform') {
-					console.log('[Physics] Cloud collision detected!', pair.bodyA.label, '<->', pair.bodyB.label)
+		// One-way platform logic for clouds (Mario-style)
+		// In screen coordinates: Y increases downward, so smaller Y = higher on screen
+		Matter.Events.on(engine, 'beforeUpdate', () => {
+			const bodies = Matter.Composite.allBodies(engine.world)
+			const player = bodies.find((b) => b.label === 'player')
+			const clouds = bodies.filter((b) => b.label === 'cloud-platform')
+
+			if (!player) return
+
+			for (const cloud of clouds) {
+				// Player feet position (bottom of player hitbox)
+				const playerFeet = player.position.y + 35
+				// Platform top position
+				const platformTop = cloud.position.y - 1
+
+				// Player is "above" the platform when playerFeet Y < platformTop Y
+				// (smaller Y = higher on screen)
+				const isPlayerAboveCloud = playerFeet < platformTop
+
+				// Player is moving upward (jumping through platform)
+				const isPlayerMovingUp = player.velocity.y < -0.5
+
+				// Player is below the platform (coming from underneath)
+				const isPlayerBelowCloud = playerFeet > platformTop + 10
+
+				if (isPlayerMovingUp || isPlayerBelowCloud) {
+					// Disable collision - player passes through from below
+					cloud.collisionFilter.category = 0x0000
+					cloud.collisionFilter.mask = 0x0000
+				} else if (isPlayerAboveCloud || player.velocity.y >= 0) {
+					// Enable collision - player can land on cloud or is standing on it
+					cloud.collisionFilter.category = 0x0002
+					cloud.collisionFilter.mask = 0xffff
 				}
 			}
 		})
