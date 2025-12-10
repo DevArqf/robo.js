@@ -151,6 +151,10 @@ export default async (request: RoboRequest) => {
 			)
 		}
 
+		// Get audit log reason from header (may be URL-encoded)
+		const rawReason = request.headers.get('X-Audit-Log-Reason')
+		const reason = rawReason ? decodeURIComponent(rawReason) : undefined
+
 		// Create the role
 		const role = session.state.createGuildRole(guildId, {
 			name: body.name,
@@ -159,7 +163,8 @@ export default async (request: RoboRequest) => {
 			hoist: body.hoist,
 			icon: body.icon,
 			unicodeEmoji: body.unicode_emoji,
-			mentionable: body.mentionable
+			mentionable: body.mentionable,
+			reason
 		})
 
 		if (!role) {

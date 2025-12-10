@@ -312,6 +312,28 @@ export async function getHeartbeatInterval(): Promise<{ interval: number; succes
 	return controlAPI('/gateway/heartbeat-interval')
 }
 
+/**
+ * Enable or disable rate limit simulation for a session
+ *
+ * When enabled, the next API request will return a 429 Too Many Requests
+ * response with the specified Retry-After header. The simulation is one-shot
+ * and automatically disables after returning the 429 response.
+ *
+ * @param sessionId - Session ID
+ * @param enabled - Whether to enable rate limit simulation (default: true)
+ * @param retryAfter - Retry-After value in seconds (default: 1)
+ */
+export async function setRateLimitSimulation(
+	sessionId: string,
+	enabled = true,
+	retryAfter = 1
+): Promise<{ success: boolean; enabled: boolean; retry_after: number }> {
+	return controlAPI(`/sessions/${sessionId}/rate-limit`, {
+		method: 'POST',
+		body: { enabled, retry_after: retryAfter }
+	})
+}
+
 // ============================================================================
 // Recording & Replay API Helpers
 // ============================================================================

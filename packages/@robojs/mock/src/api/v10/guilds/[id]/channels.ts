@@ -126,6 +126,25 @@ export default async (request: RoboRequest) => {
 			}))
 		}
 
+		// Initialize forum-specific properties for forum/media channels (type 15 or 16)
+		if (channelType === ChannelType.GuildForum || channelType === 16) {
+			// Cast to add forum properties
+			const forumChannel = channel as typeof channel & {
+				available_tags: Array<{ id: string; name: string; moderated: boolean; emoji_id: string | null; emoji_name: string | null }>
+				default_auto_archive_duration?: number
+				default_thread_rate_limit_per_user?: number
+				default_sort_order?: number | null
+				default_forum_layout?: number
+				default_reaction_emoji?: { emoji_id: string | null; emoji_name: string | null } | null
+			}
+			forumChannel.available_tags = []
+			forumChannel.default_auto_archive_duration = 4320 // 3 days default
+			forumChannel.default_thread_rate_limit_per_user = 0
+			forumChannel.default_sort_order = null
+			forumChannel.default_forum_layout = 0
+			forumChannel.default_reaction_emoji = null
+		}
+
 		// Add to state
 		session.state.addChannelToGuild(guildId, channel)
 

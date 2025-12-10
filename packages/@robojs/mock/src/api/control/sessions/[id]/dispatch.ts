@@ -95,11 +95,38 @@ export default async (request: RoboRequest) => {
 			embeds?: unknown[]
 			attachments?: unknown[]
 			components?: unknown[]
-			mentions?: Array<{ id?: string; username?: string; bot?: boolean }>
+			mentions?: Array<{ id?: string; username?: string; discriminator?: string; avatar?: string | null; bot?: boolean; global_name?: string | null }>
+			mention_roles?: string[]
+			mention_everyone?: boolean
+			mention_channels?: Array<{ id: string; name: string; type: number; guild_id: string }>
+			reactions?: Array<{
+				emoji: { id: string | null; name: string }
+				count: number
+				me: boolean
+			}>
+			/** Message type (0 = DEFAULT, 7 = USER_JOIN, 8 = GUILD_BOOST, etc.) */
+			type?: number
 		}
 
 		if (!data.channel_id) {
 			return badRequest('MESSAGE_CREATE requires "channel_id" in data')
+		}
+
+		// Check if this is a raw dispatch with full mention data
+		// If full mentions array is provided (with username, not just id), dispatch raw data
+		const hasFullMentionData = data.mentions?.some((m) => m.username !== undefined)
+		const hasRoleMentions = data.mention_roles && data.mention_roles.length > 0
+
+		if (hasFullMentionData || hasRoleMentions) {
+			// Dispatch raw MESSAGE_CREATE payload to preserve full mention data
+			// This allows tests to send full Discord API format payloads directly
+			await session.dispatch(body.event, body.data)
+
+			return {
+				success: true,
+				dispatched: session.connections.size,
+				message_id: data.id ?? 'unknown'
+			}
 		}
 
 		// Extract mention user IDs from the mentions array
@@ -114,7 +141,9 @@ export default async (request: RoboRequest) => {
 				embeds: data.embeds,
 				attachments: data.attachments,
 				components: data.components,
-				mentions: mentionIds
+				mentions: mentionIds,
+				reactions: data.reactions,
+				type: data.type
 			})
 
 			return {
@@ -782,6 +811,73 @@ export default async (request: RoboRequest) => {
 			channel_count: data.channels?.length ?? 0,
 			role_count: data.roles?.length ?? 0,
 			member_count: data.members?.length ?? 0
+		}
+	}
+
+	// Handle GUILD_SCHEDULED_EVENT_USER_ADD - add subscriber to state AND dispatch event
+	if (body.event === 'GUILD_SCHEDULED_EVENT_USER_ADD') {
+		const data = body.data as {
+			guild_scheduled_event_id: string
+			user_id: string
+			guild_id: string
+		}
+
+		if (!data.guild_scheduled_event_id || !data.user_id || !data.guild_id) {
+			return badRequest('GUILD_SCHEDULED_EVENT_USER_ADD requires "guild_scheduled_event_id", "user_id", and "guild_id" in data')
+		}
+
+		// Add subscriber to state
+		const added = session.state.addScheduledEventSubscriber(data.guild_id, data.guild_scheduled_event_id, data.user_id)
+		if (!added) {
+			return badRequest('Scheduled event not found')
+		}
+
+		// Create user in state if not exists
+		if (!session.state.users.has(data.user_id)) {
+			session.state.users.set(data.user_id, {
+				id: data.user_id,
+				username: `User_${data.user_id.slice(-4)}`,
+				discriminator: '0',
+				globalName: null,
+				avatar: null,
+				bot: false
+			})
+		}
+
+		// Dispatch the event
+		await session.dispatch(body.event, body.data)
+
+		return {
+			success: true,
+			dispatched: session.connections.size,
+			event_id: data.guild_scheduled_event_id,
+			user_id: data.user_id
+		}
+	}
+
+	// Handle GUILD_SCHEDULED_EVENT_USER_REMOVE - remove subscriber from state AND dispatch event
+	if (body.event === 'GUILD_SCHEDULED_EVENT_USER_REMOVE') {
+		const data = body.data as {
+			guild_scheduled_event_id: string
+			user_id: string
+			guild_id: string
+		}
+
+		if (!data.guild_scheduled_event_id || !data.user_id || !data.guild_id) {
+			return badRequest('GUILD_SCHEDULED_EVENT_USER_REMOVE requires "guild_scheduled_event_id", "user_id", and "guild_id" in data')
+		}
+
+		// Remove subscriber from state
+		session.state.removeScheduledEventSubscriber(data.guild_id, data.guild_scheduled_event_id, data.user_id)
+
+		// Dispatch the event
+		await session.dispatch(body.event, body.data)
+
+		return {
+			success: true,
+			dispatched: session.connections.size,
+			event_id: data.guild_scheduled_event_id,
+			user_id: data.user_id
 		}
 	}
 

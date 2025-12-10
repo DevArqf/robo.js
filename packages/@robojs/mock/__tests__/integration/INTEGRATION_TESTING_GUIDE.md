@@ -79,6 +79,35 @@ Tests are organized into phases matching the mock server implementation:
 | Phase 9 | Permission Overwrites | `phase-9/permission-overwrites.test.ts` |
 | Phase 9 | Sticker Methods | `phase-9/stickers.test.ts` |
 | Phase 9 | Discord.js Utilities | `phase-9/utilities.test.ts` |
+| Phase 12 | Message Reference & Reply Chain | `phase-12/message-references.test.ts` |
+| Phase 12 | Thread Member Management | `phase-12/thread-members.test.ts` |
+| Phase 12 | Channel Position & Category Sync | `phase-12/channel-sync.test.ts` |
+| Phase 12 | Guild Preview & Widget | `phase-12/guild-widget.test.ts` |
+| Phase 12 | Invite Properties | `phase-12/invite-properties.test.ts` |
+| Phase 12 | TextChannel-Specific Methods | `phase-12/text-channel-methods.test.ts` |
+| Phase 12 | VoiceChannel-Specific Methods | `phase-12/voice-channel-methods.test.ts` |
+| Phase 12 | AnnouncementChannel Methods | `phase-12/announcement-channel.test.ts` |
+| Phase 12 | Client Caching & Sweepers | `phase-12/client-caching.test.ts` |
+| Phase 12 | ForumChannel-Specific Methods | `phase-12/forum-channel-methods.test.ts` |
+| Phase 13 | CategoryChannel Children | `phase-13/category-children.test.ts` |
+| Phase 13 | Role Position Comparison | `phase-13/role-positions.test.ts` |
+| Phase 13 | Channel Comparisons | `phase-13/channel-comparisons.test.ts` |
+| Phase 13 | Extended Embeds | `phase-13/embeds.test.ts` |
+| Phase 13 | Application & Bot User | `phase-13/application-bot.test.ts` |
+| Phase 13 | Fetch Options | `phase-13/fetch-options.test.ts` |
+| Phase 13 | Message Nonce & System Messages | `phase-13/message-nonce.test.ts` |
+| Phase 13 | Partial Structures | `phase-13/partials.test.ts` |
+| Phase 13 | Voice Regions | `phase-13/voice-regions.test.ts` |
+| Phase 13 | Guild Integrations & Vanity | `phase-13/guild-integrations.test.ts` |
+| Phase 13 | Guild Templates | `phase-13/guild-templates.test.ts` |
+| Phase 13 | Error Classes & Handling | `phase-13/error-handling.test.ts` |
+| Phase 14 | Button Variations | `phase-14/buttons.test.ts` |
+| Phase 14 | Select Menu Variations | `phase-14/select-menus.test.ts` |
+| Phase 14 | Modal & TextInput | `phase-14/modals.test.ts` |
+| Phase 14 | Multiple Action Rows | `phase-14/action-rows.test.ts` |
+| Phase 14 | Thread Archive/Unarchive | `phase-14/thread-archive.test.ts` |
+| Phase 14 | Audit Log Details | `phase-14/audit-logs.test.ts` |
+| Phase 14 | Scheduled Event Subscribers | `phase-14/scheduled-event-subscribers.test.ts` |
 
 ---
 
@@ -148,13 +177,45 @@ __tests__/integration/
 │   ├── role-methods.test.ts         # Role methods
 │   ├── guild-methods.test.ts        # Guild methods
 │   └── collectors.test.ts           # Collector methods
-└── phase-9/
-    ├── client-methods.test.ts       # Client-level methods
-    ├── member-manager.test.ts       # GuildMemberManager methods
-    ├── channel-manager.test.ts      # GuildChannelManager methods
-    ├── permission-overwrites.test.ts # Permission overwrites
-    ├── stickers.test.ts             # Sticker methods
-    └── utilities.test.ts            # Discord.js utilities
+├── phase-9/
+│   ├── client-methods.test.ts       # Client-level methods
+│   ├── member-manager.test.ts       # GuildMemberManager methods
+│   ├── channel-manager.test.ts      # GuildChannelManager methods
+│   ├── permission-overwrites.test.ts # Permission overwrites
+│   ├── stickers.test.ts             # Sticker methods
+│   └── utilities.test.ts            # Discord.js utilities
+├── phase-12/
+│   ├── message-references.test.ts   # Message reference & reply chain
+│   ├── thread-members.test.ts       # Thread member management
+│   ├── channel-sync.test.ts         # Channel position & category sync
+│   ├── guild-widget.test.ts         # Guild preview & widget
+│   ├── invite-properties.test.ts    # Invite properties
+│   ├── text-channel-methods.test.ts # TextChannel-specific methods
+│   ├── voice-channel-methods.test.ts # VoiceChannel-specific methods
+│   ├── announcement-channel.test.ts # AnnouncementChannel methods
+│   ├── client-caching.test.ts       # Client caching & sweepers
+│   └── forum-channel-methods.test.ts # ForumChannel-specific methods
+├── phase-13/
+│   ├── category-children.test.ts    # CategoryChannel children
+│   ├── role-positions.test.ts       # Role position comparison
+│   ├── channel-comparisons.test.ts  # Channel type checks
+│   ├── embeds.test.ts               # Extended embed features
+│   ├── application-bot.test.ts      # Application & bot user
+│   ├── fetch-options.test.ts        # Fetch method options
+│   ├── message-nonce.test.ts        # Message nonce & system messages
+│   ├── partials.test.ts             # Partial structures
+│   ├── voice-regions.test.ts        # Voice regions
+│   ├── guild-integrations.test.ts   # Guild integrations & vanity
+│   ├── guild-templates.test.ts      # Guild templates
+│   └── error-handling.test.ts       # Error classes & handling
+└── phase-14/
+    ├── buttons.test.ts              # Button style variations
+    ├── select-menus.test.ts         # Select menu types & options
+    ├── modals.test.ts               # Modal & TextInput variations
+    ├── action-rows.test.ts          # Action row limits & mixing
+    ├── thread-archive.test.ts       # Thread archive/unarchive edge cases
+    ├── audit-logs.test.ts           # Audit log entry details
+    └── scheduled-event-subscribers.test.ts # Scheduled event subscribers
 ```
 
 ### Server Lifecycle

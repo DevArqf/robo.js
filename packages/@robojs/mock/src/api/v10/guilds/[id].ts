@@ -133,6 +133,13 @@ export default async (request: RoboRequest) => {
 		if (body.features !== undefined) {
 			guild.features = body.features as string[]
 		}
+		// Phase 11: Premium progress bar and preferred locale
+		if (body.premium_progress_bar_enabled !== undefined) {
+			guild.premiumProgressBarEnabled = Boolean(body.premium_progress_bar_enabled)
+		}
+		if (body.preferred_locale !== undefined) {
+			guild.preferredLocale = String(body.preferred_locale)
+		}
 
 		// Dispatch GUILD_UPDATE event
 		session.state.sequence++

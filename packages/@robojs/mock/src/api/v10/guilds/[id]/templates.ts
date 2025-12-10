@@ -1,0 +1,128 @@
+import type { RoboRequest } from '@robojs/server'
+import { sessionManager } from '../../../../core/manager.js'
+import { parseMockToken } from '../../../../utils/id.js'
+import { generateTemplateCode, getTemplatesForSession, type GuildTemplate } from '../template-storage.js'
+
+/**
+ * GET /api/v10/guilds/:id/templates - List Guild Templates
+ * POST /api/v10/guilds/:id/templates - Create Guild Template
+ *
+ * Templates allow guilds to be duplicated with their structure.
+ */
+export default async (request: RoboRequest) => {
+	const authHeader = request.headers.get('Authorization') || ''
+	const sessionId = parseMockToken(authHeader)
+
+	if (!sessionId) {
+		return new Response(JSON.stringify({ error: 'Unauthorized', code: 0 }), {
+			status: 401,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	const session = sessionManager.get(sessionId)
+	if (!session) {
+		return new Response(JSON.stringify({ error: 'Invalid session', code: 0 }), {
+			status: 401,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	const { id } = request.params as { id: string }
+	const guild = session.state.guilds.get(id)
+
+	if (!guild) {
+		return new Response(JSON.stringify({ message: 'Unknown Guild', code: 10004 }), {
+			status: 404,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	}
+
+	const templates = getTemplatesForSession(sessionId)
+
+	if (request.method === 'GET') {
+		// Return all templates for this guild
+		const guildTemplates = Array.from(templates.values()).filter((t) => t.source_guild_id === id)
+		return guildTemplates
+	}
+
+	if (request.method === 'POST') {
+		const body = (await request.json()) as { name: string; description?: string }
+
+		if (!body.name) {
+			return new Response(JSON.stringify({ message: 'Template name is required', code: 50035 }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		const now = new Date().toISOString()
+		const code = generateTemplateCode()
+
+		// Build serialized guild structure
+		const channels = Array.from(session.state.channels.values())
+			.filter((c) => c.guildId === id)
+			.map((c) => ({
+				id: c.id,
+				type: c.type,
+				name: c.name,
+				position: c.position ?? 0,
+				topic: c.topic ?? null,
+				parent_id: c.parentId ?? null,
+				permission_overwrites: []
+			}))
+
+		const roles = Array.from(session.state.roles?.values() ?? [])
+			.filter((r) => r.guildId === id)
+			.map((r) => ({
+				id: r.id,
+				name: r.name,
+				color: r.color ?? 0,
+				hoist: r.hoist ?? false,
+				mentionable: r.mentionable ?? false,
+				permissions: r.permissions ?? '0'
+			}))
+
+		const template: GuildTemplate = {
+			code,
+			name: body.name,
+			description: body.description ?? null,
+			usage_count: 0,
+			creator_id: session.state.botUser.id,
+			creator: {
+				id: session.state.botUser.id,
+				username: session.state.botUser.username,
+				discriminator: session.state.botUser.discriminator ?? '0',
+				avatar: session.state.botUser.avatar ?? null
+			},
+			created_at: now,
+			updated_at: now,
+			source_guild_id: id,
+			serialized_source_guild: {
+				name: guild.name,
+				description: guild.description ?? null,
+				region: null,
+				icon_hash: guild.icon ?? null,
+				verification_level: guild.verificationLevel ?? 0,
+				default_message_notifications: guild.defaultMessageNotifications ?? 0,
+				explicit_content_filter: guild.explicitContentFilter ?? 0,
+				roles,
+				channels,
+				afk_channel_id: guild.afkChannelId ?? null,
+				afk_timeout: guild.afkTimeout ?? 300,
+				system_channel_id: guild.systemChannelId ?? null,
+				system_channel_flags: guild.systemChannelFlags ?? 0
+			},
+			is_dirty: null
+		}
+
+		templates.set(code, template)
+
+		return template
+	}
+
+	return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+		status: 405,
+		headers: { 'Content-Type': 'application/json' }
+	})
+}

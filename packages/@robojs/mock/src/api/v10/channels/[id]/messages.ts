@@ -53,6 +53,30 @@ export default async (request: RoboRequest) => {
 		})
 	}
 
+	// 2.5. Check for rate limit simulation
+	const rateLimit = session.checkRateLimit()
+	if (rateLimit) {
+		return new Response(
+			JSON.stringify({
+				message: 'You are being rate limited.',
+				retry_after: rateLimit.retryAfter,
+				global: false
+			}),
+			{
+				status: 429,
+				headers: {
+					'Content-Type': 'application/json',
+					'Retry-After': String(rateLimit.retryAfter),
+					'X-RateLimit-Global': 'false',
+					'X-RateLimit-Limit': '5',
+					'X-RateLimit-Remaining': '0',
+					'X-RateLimit-Reset-After': String(rateLimit.retryAfter),
+					'X-RateLimit-Bucket': 'mock-rate-limit-bucket'
+				}
+			}
+		)
+	}
+
 	// 3. Extract channel ID from params
 	const { id: channelId } = request.params as { id: string }
 
@@ -146,6 +170,9 @@ export default async (request: RoboRequest) => {
 		tts?: boolean
 		message_reference?: { message_id: string }
 		attachments?: AttachmentPayload[] // Metadata for uploaded files
+		// Phase 13: Message nonce support
+		nonce?: string | number
+		enforceNonce?: boolean
 		// Phase 4G: Poll support
 		poll?: {
 			question: { text: string; emoji?: { id?: string; name?: string } }
@@ -319,6 +346,8 @@ export default async (request: RoboRequest) => {
 	}
 
 	// 6. Create message in state (author is bot user)
+	// Set type to 19 (Reply) when message_reference is present
+	const messageType = body.message_reference ? 19 : 0 // 19 = Reply, 0 = Default
 	const message = session.state.createMessage({
 		id: messageId,
 		channelId,
@@ -328,6 +357,8 @@ export default async (request: RoboRequest) => {
 		embeds: body.embeds ?? [],
 		attachments,
 		tts: body.tts ?? false,
+		type: messageType,
+		nonce: body.nonce,
 		flags: body.flags,
 		components: body.components,
 		poll: body.poll,
