@@ -36,6 +36,8 @@ export function useSession() {
 	const channelPendingMessages = state.selectedChannelId
 		? state.pendingMessages.filter((m) => m.channelId === state.selectedChannelId)
 		: []
+	// Get voice states for current guild (Phase 5P)
+	const guildVoiceStates = state.voiceStates.filter((vs) => vs.guild_id === state.selectedGuildId)
 
 	// Actions
 	const setSessionId = (sessionId: string) => {
@@ -55,7 +57,7 @@ export function useSession() {
 	}
 
 	// Send message command with pending state tracking
-	const sendMessage = async (content: string, channelId?: string) => {
+	const sendMessage = async (content: string, channelId?: string, messageReference?: { message_id: string; channel_id?: string; guild_id?: string }) => {
 		const targetChannelId = channelId || state.selectedChannelId
 		if (!targetChannelId) {
 			throw new Error('No channel selected')
@@ -85,7 +87,8 @@ export function useSession() {
 		try {
 			const result = await sendCommand('send_message', {
 				channel_id: targetChannelId,
-				content
+				content,
+				...(messageReference && { message_reference: messageReference })
 			})
 			// Remove pending message on success (the real message will be added via message_create event)
 			dispatch({ type: 'REMOVE_PENDING_MESSAGE', payload: pendingId })
@@ -225,6 +228,88 @@ export function useSession() {
 		})
 	}
 
+	// Pin a message (Phase 5N enhancement)
+	const pinMessage = async (channelId: string, messageId: string) => {
+		const response = await fetch(`/api/v10/channels/${channelId}/pins/${messageId}`, {
+			method: 'PUT'
+		})
+		if (!response.ok) {
+			throw new Error('Failed to pin message')
+		}
+		// Update local state - the gateway event will handle this via MESSAGE_UPDATE
+	}
+
+	// Unpin a message (Phase 5N enhancement)
+	const unpinMessage = async (channelId: string, messageId: string) => {
+		const response = await fetch(`/api/v10/channels/${channelId}/pins/${messageId}`, {
+			method: 'DELETE'
+		})
+		if (!response.ok) {
+			throw new Error('Failed to unpin message')
+		}
+		// Update local state - the gateway event will handle this via MESSAGE_UPDATE
+	}
+
+	// Open a DM channel with a user (Phase 5N enhancement)
+	const openDM = async (userId: string) => {
+		const response = await fetch('/api/v10/users/@me/channels', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ recipient_id: userId })
+		})
+		if (!response.ok) {
+			throw new Error('Failed to open DM')
+		}
+		const dmChannel = await response.json()
+		// Add the DM channel to state and select it
+		dispatch({ type: 'ADD_DM_CHANNEL', payload: dmChannel })
+		dispatch({ type: 'SELECT_CHANNEL', payload: dmChannel.id })
+		return dmChannel
+	}
+
+	// Set the message being replied to (Phase 5N enhancement)
+	const setReplyingTo = (message: StageMessage) => {
+		dispatch({ type: 'SET_REPLYING_TO', payload: message })
+	}
+
+	// Clear the reply state (Phase 5N enhancement)
+	const clearReplyingTo = () => {
+		dispatch({ type: 'CLEAR_REPLYING_TO' })
+	}
+
+	// Join a voice channel (Phase 5P)
+	const joinVoice = async (channelId: string, guildId?: string, userId?: string) => {
+		const targetGuildId = guildId || state.selectedGuildId
+		if (!targetGuildId) {
+			throw new Error('No guild selected')
+		}
+
+		// Use provided userId, or fall back to bot user
+		const targetUserId = userId || state.botUser?.id
+
+		return sendCommand('join_voice', {
+			channel_id: channelId,
+			guild_id: targetGuildId,
+			user: targetUserId ? { id: targetUserId } : undefined
+		})
+	}
+
+	// Leave voice channel (Phase 5P)
+	const leaveVoice = async (guildId?: string, userId?: string) => {
+		const targetGuildId = guildId || state.selectedGuildId
+		if (!targetGuildId) {
+			throw new Error('No guild selected')
+		}
+
+		// Use provided userId, or fall back to bot user
+		const targetUserId = userId || state.botUser?.id
+
+		return sendCommand('leave_voice', {
+			guild_id: targetGuildId,
+			user: targetUserId ? { id: targetUserId } : undefined
+		})
+	}
+
 	return {
 		// State
 		...state,
@@ -245,6 +330,7 @@ export function useSession() {
 		slashCommands,
 		userCommands,
 		messageCommands,
+		guildVoiceStates,
 
 		// Connection
 		connect,
@@ -268,6 +354,13 @@ export function useSession() {
 		removeReaction,
 		submitModal,
 		closeModal,
-		invokeContextCommand
+		invokeContextCommand,
+		pinMessage,
+		unpinMessage,
+		openDM,
+		setReplyingTo,
+		clearReplyingTo,
+		joinVoice,
+		leaveVoice
 	}
 }

@@ -10,6 +10,10 @@ interface ContextMenuProps {
 	commands: StageApplicationCommand[]
 	onClose: () => void
 	onCommandClick: (command: StageApplicationCommand) => Promise<void>
+	// Standard Discord actions
+	onReply?: (message: StageMessage) => void
+	onPinMessage?: (messageId: string, channelId: string, isPinned: boolean) => Promise<void>
+	onMessageUser?: (userId: string) => Promise<void>
 }
 
 export function ContextMenu({
@@ -19,7 +23,10 @@ export function ContextMenu({
 	position,
 	commands,
 	onClose,
-	onCommandClick
+	onCommandClick,
+	onReply,
+	onPinMessage,
+	onMessageUser
 }: ContextMenuProps) {
 	const menuRef = useRef<HTMLDivElement>(null)
 	const [adjustedPosition, setAdjustedPosition] = useState(position)
@@ -106,6 +113,31 @@ export function ContextMenu({
 		onClose()
 	}
 
+	const handleReply = () => {
+		if (type === 'message' && onReply) {
+			onReply(targetData as StageMessage)
+		}
+		onClose()
+	}
+
+	const handlePinMessage = async () => {
+		if (type === 'message' && onPinMessage) {
+			const message = targetData as StageMessage
+			await onPinMessage(message.id, message.channel_id, message.pinned || false)
+		}
+		onClose()
+	}
+
+	const handleMessageUser = async () => {
+		if (type === 'user' && onMessageUser) {
+			await onMessageUser(targetId)
+		}
+		onClose()
+	}
+
+	// Get pin status for messages
+	const isPinned = type === 'message' ? (targetData as StageMessage).pinned : false
+
 	return (
 		<div
 			ref={menuRef}
@@ -141,6 +173,23 @@ export function ContextMenu({
 			{/* Standard Discord actions */}
 			{type === 'message' && (
 				<>
+					{onReply && (
+						<button className={styles.item} onClick={handleReply} role="menuitem">
+							<span className={styles.itemIcon}>
+								<ReplyIcon />
+							</span>
+							<span className={styles.itemLabel}>Reply</span>
+						</button>
+					)}
+					{onPinMessage && (
+						<button className={styles.item} onClick={handlePinMessage} role="menuitem">
+							<span className={styles.itemIcon}>
+								<PinIcon />
+							</span>
+							<span className={styles.itemLabel}>{isPinned ? 'Unpin Message' : 'Pin Message'}</span>
+						</button>
+					)}
+					<div className={styles.separator} />
 					<button className={styles.item} onClick={handleCopyText} role="menuitem">
 						<span className={styles.itemIcon}>
 							<CopyIcon />
@@ -158,6 +207,15 @@ export function ContextMenu({
 
 			{type === 'user' && (
 				<>
+					{onMessageUser && (
+						<button className={styles.item} onClick={handleMessageUser} role="menuitem">
+							<span className={styles.itemIcon}>
+								<MessageIcon />
+							</span>
+							<span className={styles.itemLabel}>Message</span>
+						</button>
+					)}
+					<div className={styles.separator} />
 					<button className={styles.item} onClick={handleCopyId} role="menuitem">
 						<span className={styles.itemIcon}>
 							<IdIcon />
@@ -191,6 +249,30 @@ function IdIcon() {
 	return (
 		<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
 			<path d="M14.5 3H9.5C6.46 3 4 5.46 4 8.5V15.5C4 18.54 6.46 21 9.5 21H14.5C17.54 21 20 18.54 20 15.5V8.5C20 5.46 17.54 3 14.5 3ZM8 8H10V16H8V8ZM16 16H12V14H16V16ZM16 12H12V10H16V12Z" />
+		</svg>
+	)
+}
+
+function ReplyIcon() {
+	return (
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z" />
+		</svg>
+	)
+}
+
+function PinIcon() {
+	return (
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M22 12L12.101 2.10101L10.686 3.51401L12.101 4.92901L7.15096 9.87801V9.88001L5.73596 8.46501L4.32196 9.88001L8.56496 14.122L2.90796 19.778L4.32196 21.192L9.97896 15.536L14.222 19.778L15.636 18.364L14.222 16.95L19.171 12H19.172L20.586 13.414L22 12Z" />
+		</svg>
+	)
+}
+
+function MessageIcon() {
+	return (
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M4.79805 3C3.80445 3 2.99805 3.8055 2.99805 4.8V15.6C2.99805 16.5936 3.80445 17.4 4.79805 17.4H7.49805V21L11.098 17.4H19.198C20.1925 17.4 20.998 16.5936 20.998 15.6V4.8C20.998 3.8055 20.1925 3 19.198 3H4.79805Z" />
 		</svg>
 	)
 }

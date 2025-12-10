@@ -5,6 +5,7 @@ import type {
 	StageUser,
 	StageMember,
 	StageRole,
+	StageVoiceState,
 	StageMessage,
 	StageApplicationCommand,
 	StateSyncPayload,
@@ -53,10 +54,11 @@ export interface SessionState {
 	guilds: StageGuild[]
 	channels: StageChannel[]
 	members: StageMember[]
-	roles: StageRole[]  // Phase 5H: Guild roles
+	roles: StageRole[] // Phase 5H: Guild roles
+	voiceStates: StageVoiceState[] // Phase 5P: Voice channel states
 	users: StageUser[]
 	messages: Record<string, StageMessage[]>
-	commands: StageApplicationCommand[]  // Phase 5G: Available slash commands
+	commands: StageApplicationCommand[] // Phase 5G: Available slash commands
 	botUser: StageUser | null
 
 	// UI state
@@ -75,6 +77,9 @@ export interface SessionState {
 
 	// Pending messages being sent (Phase 5O)
 	pendingMessages: PendingMessage[]
+
+	// Reply state (Phase 5N enhancement)
+	replyingTo: StageMessage | null
 
 	// Stats
 	eventCount: number
@@ -110,6 +115,10 @@ type SessionAction =
 	| { type: 'ADD_PENDING_MESSAGE'; payload: PendingMessage }
 	| { type: 'MARK_MESSAGE_FAILED'; payload: { id: string; error?: string } }
 	| { type: 'REMOVE_PENDING_MESSAGE'; payload: string }
+	| { type: 'ADD_DM_CHANNEL'; payload: StageChannel }
+	| { type: 'SET_REPLYING_TO'; payload: StageMessage }
+	| { type: 'CLEAR_REPLYING_TO' }
+	| { type: 'HANDLE_VOICE_STATE_UPDATE'; payload: StageVoiceState }
 
 // Initial state
 const initialState: SessionState = {
@@ -121,6 +130,7 @@ const initialState: SessionState = {
 	channels: [],
 	members: [],
 	roles: [],
+	voiceStates: [],
 	users: [],
 	messages: {},
 	commands: [],
@@ -132,6 +142,7 @@ const initialState: SessionState = {
 	activeModal: null,
 	pendingInteractions: [],
 	pendingMessages: [],
+	replyingTo: null,
 	eventCount: 0,
 	lastHeartbeat: null
 }
@@ -152,7 +163,7 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 			return { ...state, error: action.payload, isConnecting: false, isConnected: false }
 
 		case 'HANDLE_STATE_SYNC': {
-			const { session, guilds, channels, members, roles, messages, users, commands } = action.payload
+			const { session, guilds, channels, members, roles, messages, users, commands, voice_states } = action.payload
 			const firstGuild = guilds[0]
 			// Find first text channel (type 0) or announcement channel (type 5), not categories (type 4) or voice (type 2)
 			const firstChannel = firstGuild
@@ -165,6 +176,7 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 				channels,
 				members,
 				roles: roles || [],
+				voiceStates: voice_states || [],
 				users,
 				messages,
 				commands: commands || [],
@@ -293,7 +305,7 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 		case 'HANDLE_TYPING_START': {
 			const { channelId, userId, username } = action.payload
 			const existingTyping = state.typingUsers[channelId] || []
-			const expiresAt = Date.now() + 10000  // 10 second timeout
+			const expiresAt = Date.now() + 10000 // 10 second timeout
 
 			// Update or add typing user
 			const filtered = existingTyping.filter((t) => t.userId !== userId)
@@ -305,6 +317,40 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 					...state.typingUsers,
 					[channelId]: newTyping
 				},
+				eventCount: state.eventCount + 1
+			}
+		}
+
+		case 'HANDLE_VOICE_STATE_UPDATE': {
+			const voiceState = action.payload
+			// If channel_id is null, user left voice - remove from list
+			if (!voiceState.channel_id) {
+				return {
+					...state,
+					voiceStates: state.voiceStates.filter(
+						(vs) => !(vs.guild_id === voiceState.guild_id && vs.user_id === voiceState.user_id)
+					),
+					eventCount: state.eventCount + 1
+				}
+			}
+			// Otherwise, update or add the voice state
+			const existingIndex = state.voiceStates.findIndex(
+				(vs) => vs.guild_id === voiceState.guild_id && vs.user_id === voiceState.user_id
+			)
+			if (existingIndex >= 0) {
+				// Update existing
+				const newVoiceStates = [...state.voiceStates]
+				newVoiceStates[existingIndex] = voiceState
+				return {
+					...state,
+					voiceStates: newVoiceStates,
+					eventCount: state.eventCount + 1
+				}
+			}
+			// Add new
+			return {
+				...state,
+				voiceStates: [...state.voiceStates, voiceState],
 				eventCount: state.eventCount + 1
 			}
 		}
@@ -416,6 +462,24 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 			return {
 				...state,
 				pendingMessages: state.pendingMessages.filter((m) => m.id !== action.payload)
+			}
+
+		case 'ADD_DM_CHANNEL':
+			return {
+				...state,
+				channels: [...state.channels, action.payload]
+			}
+
+		case 'SET_REPLYING_TO':
+			return {
+				...state,
+				replyingTo: action.payload
+			}
+
+		case 'CLEAR_REPLYING_TO':
+			return {
+				...state,
+				replyingTo: null
 			}
 
 		default:
@@ -587,7 +651,12 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 				}
 
 				case 'typing_start': {
-					const typingData = event.data as { channel_id: string; user_id: string; member?: { nick?: string }; user?: { username: string } }
+					const typingData = event.data as {
+						channel_id: string
+						user_id: string
+						member?: { nick?: string }
+						user?: { username: string }
+					}
 					dispatch({
 						type: 'HANDLE_TYPING_START',
 						payload: {
@@ -595,6 +664,15 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 							userId: typingData.user_id,
 							username: typingData.member?.nick || typingData.user?.username || 'Someone'
 						}
+					})
+					break
+				}
+
+				case 'voice_state_update': {
+					const voiceData = event.data as StageVoiceState
+					dispatch({
+						type: 'HANDLE_VOICE_STATE_UPDATE',
+						payload: voiceData
 					})
 					break
 				}
@@ -656,6 +734,18 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 						})
 					}
 
+					dispatch({ type: 'INCREMENT_EVENT_COUNT' })
+					break
+				}
+
+				case 'interaction_edit': {
+					// Phase 5O: Bot edited an interaction message (e.g., editReply after deferReply)
+					// This clears the "Bot is thinking..." indicator
+					const editData = event.data as { interactionId: string }
+					dispatch({
+						type: 'REMOVE_PENDING_INTERACTION',
+						payload: { id: editData.interactionId }
+					})
 					dispatch({ type: 'INCREMENT_EVENT_COUNT' })
 					break
 				}

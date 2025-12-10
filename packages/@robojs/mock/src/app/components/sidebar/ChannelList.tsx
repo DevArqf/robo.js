@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import type { StageChannel, StageGuild } from '../../types/stage'
+import type { StageChannel, StageGuild, StageVoiceState, StageUser } from '../../types/stage'
+import { VoiceChannel } from './VoiceChannel'
 import styles from './ChannelList.module.css'
 
 interface ChannelListProps {
@@ -8,6 +9,11 @@ interface ChannelListProps {
 	selectedId: string | null
 	onSelect: (id: string | null) => void
 	unreadChannelIds?: Set<string>
+	voiceStates?: StageVoiceState[]
+	users?: StageUser[]
+	onJoinVoice?: (channelId: string, guildId: string) => void
+	onLeaveVoice?: (guildId: string) => void
+	currentUserId?: string
 }
 
 // Discord channel types
@@ -28,7 +34,18 @@ const ChannelType = {
 	GUILD_MEDIA: 16
 } as const
 
-export function ChannelList({ guild, channels, selectedId, onSelect, unreadChannelIds }: ChannelListProps) {
+export function ChannelList({
+	guild,
+	channels,
+	selectedId,
+	onSelect,
+	unreadChannelIds,
+	voiceStates = [],
+	users = [],
+	onJoinVoice,
+	onLeaveVoice,
+	currentUserId
+}: ChannelListProps) {
 	const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
 	const [showArchivedThreads, setShowArchivedThreads] = useState(false)
 
@@ -74,6 +91,39 @@ export function ChannelList({ guild, channels, selectedId, onSelect, unreadChann
 		return regularChannels.filter((c) => c.parent_id === categoryId && c.type !== ChannelType.GUILD_CATEGORY)
 	}
 
+	const isVoiceChannel = (type: number) =>
+		type === ChannelType.GUILD_VOICE || type === ChannelType.GUILD_STAGE_VOICE
+
+	// Render a channel item - uses VoiceChannel for voice channels
+	const renderChannelItem = (channel: StageChannel) => {
+		if (isVoiceChannel(channel.type)) {
+			return (
+				<VoiceChannel
+					key={channel.id}
+					channel={channel}
+					voiceStates={voiceStates}
+					users={users}
+					currentUserId={currentUserId}
+					onJoin={() => onJoinVoice?.(channel.id, channel.guild_id!)}
+					onLeave={() => onLeaveVoice?.(channel.guild_id!)}
+				/>
+			)
+		}
+
+		return (
+			<ChannelItemWithThreads
+				key={channel.id}
+				channel={channel}
+				threads={getThreadsForChannel(channel.id)}
+				isSelected={selectedId === channel.id}
+				isUnread={unreadChannelIds?.has(channel.id)}
+				selectedThreadId={selectedId}
+				onClick={() => onSelect(channel.id)}
+				onThreadSelect={onSelect}
+			/>
+		)
+	}
+
 	return (
 		<div className={styles.container}>
 			{/* Server header */}
@@ -85,18 +135,7 @@ export function ChannelList({ guild, channels, selectedId, onSelect, unreadChann
 			{/* Channel list */}
 			<nav className={styles.channels} aria-label="Channels">
 				{/* Uncategorized channels */}
-				{uncategorizedChannels.map((channel) => (
-					<ChannelItemWithThreads
-						key={channel.id}
-						channel={channel}
-						threads={getThreadsForChannel(channel.id)}
-						isSelected={selectedId === channel.id}
-						isUnread={unreadChannelIds?.has(channel.id)}
-						selectedThreadId={selectedId}
-						onClick={() => onSelect(channel.id)}
-						onThreadSelect={onSelect}
-					/>
-				))}
+				{uncategorizedChannels.map((channel) => renderChannelItem(channel))}
 
 				{/* Categories with their channels */}
 				{categories.map((category) => {
@@ -125,18 +164,7 @@ export function ChannelList({ guild, channels, selectedId, onSelect, unreadChann
 
 							{!isCollapsed && (
 								<div className={styles.categoryChannels}>
-									{categoryChannels.map((channel) => (
-										<ChannelItemWithThreads
-											key={channel.id}
-											channel={channel}
-											threads={getThreadsForChannel(channel.id)}
-											isSelected={selectedId === channel.id}
-											isUnread={unreadChannelIds?.has(channel.id)}
-											selectedThreadId={selectedId}
-											onClick={() => onSelect(channel.id)}
-											onThreadSelect={onSelect}
-										/>
-									))}
+									{categoryChannels.map((channel) => renderChannelItem(channel))}
 								</div>
 							)}
 						</div>

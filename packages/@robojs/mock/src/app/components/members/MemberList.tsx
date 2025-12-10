@@ -19,7 +19,7 @@ interface MemberGroup {
 
 export function MemberList({ members, roles }: MemberListProps) {
 	const [selectedMember, setSelectedMember] = useState<StageMember | null>(null)
-	const { commands, invokeContextCommand } = useSession()
+	const { commands, invokeContextCommand, openDM } = useSession()
 	const { menu: contextMenu, showMenu: showContextMenu, hideMenu: hideContextMenu } = useContextMenu()
 
 	// Context menu handlers
@@ -38,6 +38,14 @@ export function MemberList({ members, roles }: MemberListProps) {
 			await invokeContextCommand(command.name, 2, contextMenu.targetId, contextMenu.targetData)
 		},
 		[contextMenu, invokeContextCommand]
+	)
+
+	// Handle message user action from context menu
+	const handleMessageUser = useCallback(
+		async (userId: string) => {
+			await openDM(userId)
+		},
+		[openDM]
 	)
 
 	// Create role lookup map
@@ -181,6 +189,7 @@ export function MemberList({ members, roles }: MemberListProps) {
 					commands={commands}
 					onClose={hideContextMenu}
 					onCommandClick={handleContextCommandClick}
+					onMessageUser={handleMessageUser}
 				/>
 			)}
 		</aside>

@@ -1,0 +1,19 @@
+.separator {
+	width: 100%;
+}
+
+.withDivider {
+	border-top: 1px solid var(--background-modifier-accent);
+}
+
+.noDivider {
+	border-top: none;
+}
+
+.spacingSmall {
+	margin: 8px 0;
+}
+
+.spacingLarge {
+	margin: 16px 0;
+}

@@ -15,6 +15,7 @@ import type {
 	StageUser,
 	StageMember,
 	StageRole,
+	StageVoiceState,
 	StageMessage,
 	StageApplicationCommand,
 	StageApplicationCommandOption,
@@ -28,7 +29,10 @@ import type {
 	StageSubmitModalData,
 	StageStartTypingData,
 	StageAddReactionData,
-	StageRemoveReactionData
+	StageRemoveReactionData,
+	StageJoinVoiceData,
+	StageLeaveVoiceData,
+	StageUpdateVoiceStateData
 } from '../types/stage.js'
 import type { MockApplicationCommand, MockApplicationCommandOption } from '../types/index.js'
 import type { Session } from '../types/index.js'
@@ -193,13 +197,14 @@ export class StageServer {
 				createdAt: session.createdAt,
 				bot: state.botUser ? this.toStageUser(state.botUser) : null
 			},
-			guilds: Array.from(state.guilds.values()).map(g => this.toStageGuild(g)),
-			channels: Array.from(state.channels.values()).map(c => this.toStageChannel(c)),
+			guilds: Array.from(state.guilds.values()).map((g) => this.toStageGuild(g)),
+			channels: Array.from(state.channels.values()).map((c) => this.toStageChannel(c)),
 			members: this.getStageMembers(state),
 			roles: this.getStageRoles(state),
 			messages: this.getRecentMessagesByChannel(state),
-			users: Array.from(state.users.values()).map(u => this.toStageUser(u)),
-			commands: Array.from(state.commands.values()).map(c => this.toStageCommand(c))
+			users: Array.from(state.users.values()).map((u) => this.toStageUser(u)),
+			commands: Array.from(state.commands.values()).map((c) => this.toStageCommand(c)),
+			voice_states: this.getStageVoiceStates(state)
 		}
 
 		this.pushEvent(ws, connState, {
@@ -349,6 +354,31 @@ export class StageServer {
 	}
 
 	/**
+	 * Get all voice states as StageVoiceState array (Phase 5P)
+	 */
+	private getStageVoiceStates(state: Session['state']): StageVoiceState[] {
+		const voiceStates: StageVoiceState[] = []
+		for (const vs of state.voiceStates.values()) {
+			// Only include voice states with a channel (i.e., user is in voice)
+			if (vs.channel_id) {
+				voiceStates.push({
+					guild_id: vs.guild_id,
+					channel_id: vs.channel_id,
+					user_id: vs.user_id,
+					self_mute: vs.self_mute ?? false,
+					self_deaf: vs.self_deaf ?? false,
+					mute: vs.mute ?? false,
+					deaf: vs.deaf ?? false,
+					self_stream: vs.self_stream,
+					self_video: vs.self_video,
+					speaking: (vs as { speaking?: boolean }).speaking
+				})
+			}
+		}
+		return voiceStates
+	}
+
+	/**
 	 * Get recent messages grouped by channel
 	 */
 	private getRecentMessagesByChannel(state: Session['state']): Record<string, StageMessage[]> {
@@ -452,6 +482,7 @@ export class StageServer {
 						content: data.content,
 						author: data.author ? { id: data.author.id, username: data.author.username } : undefined,
 						embeds: data.embeds as unknown[],
+						messageReference: data.message_reference
 					})
 					this.sendCommandResponse(ws, connState, command.id, true, { message_id: message.id })
 					break
@@ -664,6 +695,106 @@ export class StageServer {
 				case 'set_playback': {
 					// Playback controls will be implemented in Phase 5J
 					this.sendCommandResponse(ws, connState, command.id, false, undefined, 'Playback controls not yet implemented')
+					break
+				}
+
+				case 'join_voice': {
+					const data = command.data as StageJoinVoiceData
+					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.getOrCreateTestUser()
+					if (!user) {
+						this.sendCommandResponse(ws, connState, command.id, false, undefined, 'User not found')
+						break
+					}
+					// Update voice state in session
+					const voiceStateKey = `${data.guild_id}:${user.id}`
+					session.state.voiceStates.set(voiceStateKey, {
+						guild_id: data.guild_id,
+						channel_id: data.channel_id,
+						user_id: user.id,
+						self_mute: data.self_mute ?? false,
+						self_deaf: data.self_deaf ?? false,
+						mute: false,
+						deaf: false
+					})
+					// Broadcast voice state update to all stage clients
+					this.broadcastToSession(connState.sessionId, {
+						type: 'voice_state_update',
+						data: {
+							guild_id: data.guild_id,
+							channel_id: data.channel_id,
+							user_id: user.id,
+							self_mute: data.self_mute ?? false,
+							self_deaf: data.self_deaf ?? false,
+							mute: false,
+							deaf: false
+						}
+					})
+					this.sendCommandResponse(ws, connState, command.id, true, { user_id: user.id })
+					break
+				}
+
+				case 'leave_voice': {
+					const data = command.data as StageLeaveVoiceData
+					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.getOrCreateTestUser()
+					if (!user) {
+						this.sendCommandResponse(ws, connState, command.id, false, undefined, 'User not found')
+						break
+					}
+					// Remove voice state from session
+					const voiceStateKey = `${data.guild_id}:${user.id}`
+					session.state.voiceStates.delete(voiceStateKey)
+					// Broadcast voice state update (null channel = left voice)
+					this.broadcastToSession(connState.sessionId, {
+						type: 'voice_state_update',
+						data: {
+							guild_id: data.guild_id,
+							channel_id: null,
+							user_id: user.id,
+							self_mute: false,
+							self_deaf: false,
+							mute: false,
+							deaf: false
+						}
+					})
+					this.sendCommandResponse(ws, connState, command.id, true)
+					break
+				}
+
+				case 'update_voice_state': {
+					const data = command.data as StageUpdateVoiceStateData
+					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.getOrCreateTestUser()
+					if (!user) {
+						this.sendCommandResponse(ws, connState, command.id, false, undefined, 'User not found')
+						break
+					}
+					// Get existing voice state
+					const voiceStateKey = `${data.guild_id}:${user.id}`
+					const existingState = session.state.voiceStates.get(voiceStateKey)
+					if (!existingState) {
+						this.sendCommandResponse(ws, connState, command.id, false, undefined, 'User not in voice channel')
+						break
+					}
+					// Update voice state
+					const updatedState = {
+						...existingState,
+						self_mute: data.self_mute ?? existingState.self_mute,
+						self_deaf: data.self_deaf ?? existingState.self_deaf
+					}
+					session.state.voiceStates.set(voiceStateKey, updatedState)
+					// Broadcast update
+					this.broadcastToSession(connState.sessionId, {
+						type: 'voice_state_update',
+						data: {
+							guild_id: updatedState.guild_id,
+							channel_id: updatedState.channel_id,
+							user_id: updatedState.user_id,
+							self_mute: updatedState.self_mute ?? false,
+							self_deaf: updatedState.self_deaf ?? false,
+							mute: updatedState.mute ?? false,
+							deaf: updatedState.deaf ?? false
+						}
+					})
+					this.sendCommandResponse(ws, connState, command.id, true)
 					break
 				}
 

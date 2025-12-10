@@ -22,36 +22,37 @@ interface MessageGroup {
 	isHighlighted: boolean
 }
 
-export function MessageArea({ channelId }: MessageAreaProps) {
-	const {
-		channelMessages,
-		channelTypingUsers,
-		channelPendingInteractions,
-		channelPendingMessages,
-		selectedChannel,
-		clickButton,
-		selectOption,
-		addReaction,
-		removeReaction,
-		retryMessage,
-		cancelMessage,
-		commands,
-		invokeContextCommand
-	} = useSession()
-	const { menu: contextMenu, showMenu: showContextMenu, hideMenu: hideContextMenu } = useContextMenu()
-	const isPlaybackMode = useIsPlaybackMode()
-	const playbackMessages = usePlaybackMessages(channelId)
-	const playbackTypingUsers = usePlaybackTypingUsers(channelId)
-	const playbackState = usePlayback()
+interface VirtualizedListProps {
+	messages: StageMessage[]
+	isPlaybackMode: boolean
+	channelName: string
+	channelTopic?: string
+	onButtonClick: (messageId: string, customId: string) => void
+	onSelectOption: (messageId: string, customId: string, values: string[]) => void
+	onAddReaction: (channelId: string, messageId: string, emoji: string) => void
+	onRemoveReaction: (channelId: string, messageId: string, emoji: string) => void
+	onMessageContextMenu: (e: React.MouseEvent, message: StageMessage) => void
+	onUserContextMenu: (e: React.MouseEvent, user: StageUser) => void
+}
+
+/**
+ * Virtualized message list component - extracted so it can be keyed for proper reset
+ */
+function VirtualizedMessageList({
+	messages,
+	isPlaybackMode,
+	channelName,
+	channelTopic,
+	onButtonClick,
+	onSelectOption,
+	onAddReaction,
+	onRemoveReaction,
+	onMessageContextMenu,
+	onUserContextMenu
+}: VirtualizedListProps) {
 	const containerRef = useRef<HTMLDivElement>(null)
 	const prevMessageCountRef = useRef(0)
 	const [isAtBottom, setIsAtBottom] = useState(true)
-
-	// Use playback messages when in playback mode, otherwise use session messages
-	const displayMessages = isPlaybackMode && playbackMessages !== null ? playbackMessages : channelMessages
-
-	// Use playback typing users when in playback mode, otherwise use session typing users
-	const displayTypingUsers = isPlaybackMode && playbackTypingUsers !== null ? playbackTypingUsers : channelTypingUsers
 
 	// Track if user is at bottom of scroll container
 	const handleScroll = useCallback(() => {
@@ -63,22 +64,58 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 	}, [])
 
 	// Group consecutive messages from same author
-	const groupedMessages = useMemo(() => groupMessages(displayMessages), [displayMessages])
+	const groupedMessages = useMemo(() => groupMessages(messages), [messages])
 
 	// Virtual scrolling for performance
 	const virtualizer = useVirtualizer({
 		count: groupedMessages.length,
 		getScrollElement: () => containerRef.current,
+		// Use message ID as key to prevent stale cache
+		getItemKey: (index) => groupedMessages[index]?.message.id ?? `idx-${index}`,
 		estimateSize: (index) => {
 			const group = groupedMessages[index]
 			const message = group.message
-			// Estimate: header (if first in group) + content lines + embeds + attachments
+			// Estimate: header (if first in group) + content lines + embeds + attachments + components
 			const hasHeader = group.isFirstInGroup
-			const lineCount = Math.ceil((message.content?.length || 0) / 80) || 1
 
-			// Better embed height estimation
+			// Check if this is a V2 message (flags & 32768)
+			const isV2 = ((message.flags ?? 0) & 32768) !== 0
+
+			// V2 messages have empty content - estimate based on components instead
+			let contentHeight = 0
+			if (isV2) {
+				// V2: estimate height from components
+				contentHeight = estimateV2ComponentsHeight(message.components)
+			} else {
+				// V1: estimate from content text, accounting for code blocks
+				const content = message.content || ''
+
+				// Count code blocks and their lines
+				const codeBlockMatches = content.match(/```[\s\S]*?```/g) || []
+				let codeBlockHeight = 0
+				let remainingContent = content
+
+				for (const block of codeBlockMatches) {
+					// Count lines in code block + padding (16px top/bottom)
+					const codeLines = (block.match(/\n/g) || []).length + 1
+					codeBlockHeight += codeLines * 20 + 32 // 20px per line + 32px padding
+					remainingContent = remainingContent.replace(block, '')
+				}
+
+				// Count remaining text lines (actual newlines + character wrap)
+				const textLines = remainingContent.split('\n')
+				let textHeight = 0
+				for (const line of textLines) {
+					// Each line wraps at ~80 chars
+					textHeight += Math.max(1, Math.ceil(line.length / 80)) * 22
+				}
+
+				contentHeight = codeBlockHeight + textHeight
+			}
+
+			// Better embed height estimation (V1 only - V2 doesn't have embeds)
 			let embedHeight = 0
-			if (message.embeds?.length) {
+			if (!isV2 && message.embeds?.length) {
 				for (const embed of message.embeds as Array<{ image?: unknown; fields?: unknown[] }>) {
 					// Base embed: padding + author + title + description
 					embedHeight += 120
@@ -109,45 +146,140 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 				}
 			}
 
-			// Component height estimation (buttons, selects)
-			let componentHeight = 0
-			if (message.components?.length) {
+			// V1 component height estimation (buttons, selects)
+			let v1ComponentHeight = 0
+			if (!isV2 && message.components?.length) {
 				// Each action row is about 40px (button/select height + gap)
-				componentHeight = message.components.length * 44
+				v1ComponentHeight = message.components.length * 44
 			}
 
-			return (hasHeader ? 44 : 0) + lineCount * 22 + embedHeight + attachmentHeight + componentHeight + 16
+			return (hasHeader ? 44 : 0) + contentHeight + embedHeight + attachmentHeight + v1ComponentHeight + 16
 		},
 		overscan: 10
 	})
 
-	// Auto-scroll to bottom on new messages (in both live and playback mode if at bottom)
+	// Auto-scroll to bottom on new messages
 	useEffect(() => {
-		if (displayMessages.length > prevMessageCountRef.current && containerRef.current) {
+		if (messages.length > prevMessageCountRef.current && containerRef.current) {
 			// In live mode, always scroll. In playback mode, only scroll if already at bottom
 			if (!isPlaybackMode || isAtBottom) {
 				containerRef.current.scrollTop = containerRef.current.scrollHeight
 			}
 		}
-		prevMessageCountRef.current = displayMessages.length
-	}, [displayMessages.length, isPlaybackMode, isAtBottom])
+		prevMessageCountRef.current = messages.length
+	}, [messages.length, isPlaybackMode, isAtBottom])
 
-	// Scroll to bottom when channel changes
+	// Scroll to appropriate position on mount
 	useEffect(() => {
 		if (containerRef.current) {
-			containerRef.current.scrollTop = containerRef.current.scrollHeight
-			setIsAtBottom(true)
+			if (isPlaybackMode) {
+				// Start playback from the top
+				containerRef.current.scrollTop = 0
+				setIsAtBottom(false)
+			} else {
+				// Live mode - start at bottom
+				containerRef.current.scrollTop = containerRef.current.scrollHeight
+				setIsAtBottom(true)
+			}
 		}
-	}, [channelId])
+	}, []) // Only on mount
 
-	// Reset scroll position when entering playback mode
-	useEffect(() => {
-		if (isPlaybackMode && containerRef.current) {
-			// Start playback from the top (beginning of history)
-			containerRef.current.scrollTop = 0
-			setIsAtBottom(false)
-		}
-	}, [isPlaybackMode])
+	return (
+		<div className={styles.messages} ref={containerRef} onScroll={handleScroll}>
+			{messages.length === 0 ? (
+				isPlaybackMode ? (
+					// Show empty state during playback mode instead of welcome
+					<div className={styles.empty}>
+						<div className={styles.emptyIcon}>
+							<svg width="48" height="48" viewBox="0 0 16 16" fill="currentColor">
+								<path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zm0 14A6 6 0 1 1 8 2a6 6 0 0 1 0 12zm.5-9H7v5l4.25 2.5.75-1.23-3.5-2.08V5z" />
+							</svg>
+						</div>
+						<h3 className={styles.emptyTitle}>Playback Starting...</h3>
+						<p className={styles.emptyDescription}>Messages will appear as the playback progresses.</p>
+					</div>
+				) : (
+					<div className={styles.welcome}>
+						<div className={styles.welcomeIcon}>
+							<span className={styles.hash}>#</span>
+						</div>
+						<h2 className={styles.welcomeTitle}>Welcome to #{channelName}!</h2>
+						<p className={styles.welcomeDescription}>
+							{channelTopic || `This is the start of the #${channelName} channel.`}
+						</p>
+					</div>
+				)
+			) : (
+				<div
+					className={styles.virtualContainer}
+					style={{
+						height: virtualizer.getTotalSize(),
+						position: 'relative'
+					}}
+				>
+					{virtualizer.getVirtualItems().map((virtualItem) => {
+						const group = groupedMessages[virtualItem.index]
+						return (
+							<div
+								key={group.message.id}
+								style={{
+									position: 'absolute',
+									top: virtualItem.start,
+									left: 0,
+									right: 0
+								}}
+							>
+								<Message
+									message={group.message}
+									isFirstInGroup={group.isFirstInGroup}
+									isHighlighted={group.isHighlighted}
+									onButtonClick={onButtonClick}
+									onSelectOption={onSelectOption}
+									onAddReaction={onAddReaction}
+									onRemoveReaction={onRemoveReaction}
+									onContextMenu={onMessageContextMenu}
+									onUserContextMenu={onUserContextMenu}
+								/>
+							</div>
+						)
+					})}
+				</div>
+			)}
+		</div>
+	)
+}
+
+export function MessageArea({ channelId }: MessageAreaProps) {
+	const {
+		channelMessages,
+		channelTypingUsers,
+		channelPendingInteractions,
+		channelPendingMessages,
+		selectedChannel,
+		clickButton,
+		selectOption,
+		addReaction,
+		removeReaction,
+		retryMessage,
+		cancelMessage,
+		commands,
+		invokeContextCommand,
+		setReplyingTo,
+		pinMessage,
+		unpinMessage,
+		openDM
+	} = useSession()
+	const { menu: contextMenu, showMenu: showContextMenu, hideMenu: hideContextMenu } = useContextMenu()
+	const isPlaybackMode = useIsPlaybackMode()
+	const playbackMessages = usePlaybackMessages(channelId)
+	const playbackTypingUsers = usePlaybackTypingUsers(channelId)
+	const playbackState = usePlayback()
+
+	// Use playback messages when in playback mode, otherwise use session messages
+	const displayMessages = isPlaybackMode && playbackMessages !== null ? playbackMessages : channelMessages
+
+	// Use playback typing users when in playback mode, otherwise use session typing users
+	const displayTypingUsers = isPlaybackMode && playbackTypingUsers !== null ? playbackTypingUsers : channelTypingUsers
 
 	// Context menu handlers
 	const handleMessageContextMenu = useCallback(
@@ -172,14 +304,37 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 			if (!contextMenu) return
 
 			const commandType = command.type as 2 | 3
-			await invokeContextCommand(
-				command.name,
-				commandType,
-				contextMenu.targetId,
-				contextMenu.targetData
-			)
+			await invokeContextCommand(command.name, commandType, contextMenu.targetId, contextMenu.targetData)
 		},
 		[contextMenu, invokeContextCommand]
+	)
+
+	// Handle reply action from context menu
+	const handleReply = useCallback(
+		(message: StageMessage) => {
+			setReplyingTo(message)
+		},
+		[setReplyingTo]
+	)
+
+	// Handle pin/unpin action from context menu
+	const handlePinMessage = useCallback(
+		async (messageId: string, messageChannelId: string, isPinned: boolean) => {
+			if (isPinned) {
+				await unpinMessage(messageChannelId, messageId)
+			} else {
+				await pinMessage(messageChannelId, messageId)
+			}
+		},
+		[pinMessage, unpinMessage]
+	)
+
+	// Handle message user action from context menu
+	const handleMessageUser = useCallback(
+		async (userId: string) => {
+			await openDM(userId)
+		},
+		[openDM]
 	)
 
 	if (!channelId || !selectedChannel) {
@@ -212,63 +367,25 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 					</span>
 				</div>
 			)}
-			<div className={styles.messages} ref={containerRef} onScroll={handleScroll}>
-				{displayMessages.length === 0 ? (
-					<div className={styles.welcome}>
-						<div className={styles.welcomeIcon}>
-							<span className={styles.hash}>#</span>
-						</div>
-						<h2 className={styles.welcomeTitle}>Welcome to #{selectedChannel.name}!</h2>
-						<p className={styles.welcomeDescription}>
-							{selectedChannel.topic || `This is the start of the #${selectedChannel.name} channel.`}
-						</p>
-					</div>
-				) : (
-					<div
-						className={styles.virtualContainer}
-						style={{
-							height: virtualizer.getTotalSize(),
-							position: 'relative'
-						}}
-					>
-						{virtualizer.getVirtualItems().map((virtualItem) => {
-							const group = groupedMessages[virtualItem.index]
-							return (
-								<div
-									key={group.message.id}
-									style={{
-										position: 'absolute',
-										top: virtualItem.start,
-										left: 0,
-										right: 0
-									}}
-								>
-									<Message
-										message={group.message}
-										isFirstInGroup={group.isFirstInGroup}
-										isHighlighted={group.isHighlighted}
-										onButtonClick={clickButton}
-										onSelectOption={selectOption}
-										onAddReaction={addReaction}
-										onRemoveReaction={removeReaction}
-										onContextMenu={handleMessageContextMenu}
-										onUserContextMenu={handleUserContextMenu}
-									/>
-								</div>
-							)
-						})}
-					</div>
-				)}
-			</div>
+
+			{/* Virtualized message list - keyed to force reset on channel/mode change */}
+			<VirtualizedMessageList
+				key={`${channelId}-${isPlaybackMode}`}
+				messages={displayMessages}
+				isPlaybackMode={isPlaybackMode}
+				channelName={selectedChannel.name}
+				channelTopic={selectedChannel.topic}
+				onButtonClick={clickButton}
+				onSelectOption={selectOption}
+				onAddReaction={addReaction}
+				onRemoveReaction={removeReaction}
+				onMessageContextMenu={handleMessageContextMenu}
+				onUserContextMenu={handleUserContextMenu}
+			/>
 
 			{/* Pending messages (sending/failed) */}
 			{channelPendingMessages.map((pending) => (
-				<PendingMessage
-					key={pending.id}
-					message={pending}
-					onRetry={retryMessage}
-					onCancel={cancelMessage}
-				/>
+				<PendingMessage key={pending.id} message={pending} onRetry={retryMessage} onCancel={cancelMessage} />
 			))}
 
 			{/* Thinking indicators for deferred bot responses */}
@@ -297,6 +414,9 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 					commands={commands}
 					onClose={hideContextMenu}
 					onCommandClick={handleContextCommandClick}
+					onReply={handleReply}
+					onPinMessage={handlePinMessage}
+					onMessageUser={handleMessageUser}
 				/>
 			)}
 		</div>
@@ -330,4 +450,132 @@ function formatPlaybackTime(ms: number): string {
 	const minutes = Math.floor(totalSeconds / 60)
 	const seconds = totalSeconds % 60
 	return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
+
+/**
+ * Estimate height of V2 components for virtualization
+ * Based on actual CSS measurements:
+ * - Container gap: 8px between components
+ * - Container margin-top: 4px
+ */
+function estimateV2ComponentsHeight(components: unknown[] | undefined): number {
+	if (!components?.length) return 22 // Minimum height
+
+	let totalHeight = 4 // margin-top from container
+
+	for (let i = 0; i < components.length; i++) {
+		const comp = components[i] as {
+			type?: number
+			content?: string
+			components?: unknown[]
+			items?: unknown[]
+			accessory?: { type?: number }
+			spacing?: string
+			divider?: boolean
+		}
+		const type = comp.type
+
+		// Add gap between components (8px)
+		if (i > 0) {
+			totalHeight += 8
+		}
+
+		switch (type) {
+			case 1: // ActionRow (buttons/selects)
+				totalHeight += 40
+				break
+
+			case 9: { // Section (text + optional accessory)
+				// Section uses grid layout with text column and optional thumbnail/button
+				// Estimate text height from nested TextDisplay components
+				let textHeight = 0
+				if (comp.components?.length) {
+					for (const textComp of comp.components) {
+						const tc = textComp as { content?: string }
+						textHeight += estimateTextHeight(tc.content || '')
+					}
+					// Add gaps between text components (4px)
+					textHeight += (comp.components.length - 1) * 4
+				}
+				// Accessory is typically 80px thumbnail or ~32px button
+				const accessoryHeight = comp.accessory?.type === 11 ? 80 : 32
+				// Section height is max of text content vs accessory
+				totalHeight += Math.max(textHeight, accessoryHeight)
+				break
+			}
+
+			case 10: // TextDisplay (markdown text block)
+				totalHeight += estimateTextHeight(comp.content || '')
+				break
+
+			case 12: { // MediaGallery
+				// Based on CSS: max-width 520px
+				// - Single image: max-height 300px
+				// - Double (2 images): aspect-ratio 1:1, ~258px each
+				// - Grid (3+ images): 2 columns, aspect-ratio 1:1, ~258px per row + 4px gap
+				const itemCount = comp.items?.length || 1
+				if (itemCount === 1) {
+					totalHeight += 300
+				} else if (itemCount === 2) {
+					totalHeight += 258 // Side by side, aspect ratio 1:1
+				} else {
+					// Multiple rows: 2 columns, ceiling of items/2 rows
+					const rows = Math.ceil(itemCount / 2)
+					totalHeight += rows * 258 + (rows - 1) * 4 // 4px gap between rows
+				}
+				break
+			}
+
+			case 13: // File (icon + info + download button)
+				// 40px icon height + 24px padding = 64px + 1px border
+				totalHeight += 68
+				break
+
+			case 14: // Separator
+				// Small spacing: 8px margin top/bottom = 17px total
+				// Large spacing: 16px margin top/bottom = 33px total
+				totalHeight += comp.spacing === 'large' ? 33 : 17
+				break
+
+			case 17: // Container (styled wrapper with nested components)
+				// Container: 24px padding (12 top + 12 bottom) + 8px gaps between children
+				totalHeight += 24 + estimateV2ComponentsHeight(comp.components)
+				break
+
+			default:
+				totalHeight += 40
+		}
+	}
+
+	return Math.max(totalHeight, 44) // Minimum 44px
+}
+
+/**
+ * Estimate height of text content based on character count and line breaks
+ * Uses 14px font size with 1.375 line-height (~19px per line)
+ * Assumes ~70 chars per line at max content width
+ */
+function estimateTextHeight(content: string): number {
+	if (!content) return 19 // Minimum one line
+
+	// Split by actual newlines first
+	const lines = content.split('\n')
+	let totalLines = 0
+
+	for (const line of lines) {
+		// Check for headers (larger text)
+		if (line.startsWith('# ')) {
+			totalLines += 1.5 // Headers are taller
+		} else if (line.startsWith('## ') || line.startsWith('### ')) {
+			totalLines += 1.25
+		} else if (line.length === 0) {
+			totalLines += 0.5 // Empty lines are shorter
+		} else {
+			// Estimate wrapping at ~70 chars per line
+			totalLines += Math.max(1, Math.ceil(line.length / 70))
+		}
+	}
+
+	// 19px per line (14px * 1.375 line-height)
+	return Math.ceil(totalLines * 19)
 }

@@ -1985,6 +1985,25 @@ export const ComponentTypeV2 = {
 } as const
 
 /**
+ * Classic (V1) component validation limits
+ * @see https://discord.com/developers/docs/interactions/message-components
+ */
+export const ComponentLimits = {
+	/** Maximum action rows per message */
+	MAX_ACTION_ROWS: 5,
+	/** Maximum buttons per action row */
+	MAX_BUTTONS_PER_ROW: 5,
+	/** Maximum select menus per action row (always 1) */
+	MAX_SELECT_MENUS_PER_ROW: 1,
+	/** Maximum options in a string select menu */
+	MAX_SELECT_OPTIONS: 25,
+	/** Minimum options in a string select menu */
+	MIN_SELECT_OPTIONS: 1,
+	/** Maximum text inputs per modal (5 action rows with 1 text input each) */
+	MAX_TEXT_INPUTS_PER_MODAL: 5
+} as const
+
+/**
  * V2 validation limits
  */
 export const ComponentsV2Limits = {

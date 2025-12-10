@@ -1,8 +1,23 @@
 import { Button, type ButtonComponentData } from './Button'
 import { SelectMenu, type SelectMenuComponentData } from './SelectMenu'
+import { TextDisplay } from './TextDisplay'
+import { Section } from './Section'
+import { MediaGallery } from './MediaGallery'
+import { FileComponentV2 } from './FileComponentV2'
+import { Separator } from './Separator'
+import { Container } from './Container'
+import {
+	ComponentTypeV2,
+	type TextDisplayComponent,
+	type SectionComponent,
+	type MediaGalleryComponent,
+	type FileComponentData,
+	type SeparatorComponent,
+	type ContainerComponent
+} from './ComponentsV2.types'
 import styles from './ComponentRow.module.css'
 
-// Discord component types
+// Discord component types (V1)
 const ComponentType = {
 	ActionRow: 1,
 	Button: 2,
@@ -78,21 +93,41 @@ interface ComponentsContainerProps {
 	channelId: string
 	onButtonClick: (customId: string) => Promise<void>
 	onSelectOption: (customId: string, values: string[]) => Promise<void>
+	isV2?: boolean
 }
 
 /**
- * Container for all message components (action rows)
+ * Container for all message components (V1 action rows and V2 display components)
  */
 export function ComponentsContainer({
 	components,
 	messageId,
 	channelId,
 	onButtonClick,
-	onSelectOption
+	onSelectOption,
+	isV2 = false
 }: ComponentsContainerProps) {
 	if (!components || components.length === 0) return null
 
-	// Type guard for action rows
+	// V2 mode: render all component types
+	if (isV2) {
+		return (
+			<div className={styles.container}>
+				{components.map((component, index) => (
+					<V2ComponentRenderer
+						key={index}
+						component={component}
+						messageId={messageId}
+						channelId={channelId}
+						onButtonClick={onButtonClick}
+						onSelectOption={onSelectOption}
+					/>
+				))}
+			</div>
+		)
+	}
+
+	// V1 mode: only render ActionRows
 	const actionRows = components.filter((c): c is ActionRowComponent => {
 		return typeof c === 'object' && c !== null && (c as ActionRowComponent).type === ComponentType.ActionRow
 	})
@@ -113,6 +148,66 @@ export function ComponentsContainer({
 			))}
 		</div>
 	)
+}
+
+interface V2ComponentRendererProps {
+	component: unknown
+	messageId: string
+	channelId: string
+	onButtonClick: (customId: string) => Promise<void>
+	onSelectOption: (customId: string, values: string[]) => Promise<void>
+}
+
+/**
+ * Renders a single V2 component based on its type
+ */
+function V2ComponentRenderer({ component, messageId, channelId, onButtonClick, onSelectOption }: V2ComponentRendererProps) {
+	if (typeof component !== 'object' || component === null) return null
+
+	const type = (component as { type?: number }).type
+
+	switch (type) {
+		case ComponentType.ActionRow:
+			return (
+				<ComponentRow
+					row={component as ActionRowComponent}
+					messageId={messageId}
+					channelId={channelId}
+					onButtonClick={onButtonClick}
+					onSelectOption={onSelectOption}
+				/>
+			)
+
+		case ComponentTypeV2.TextDisplay:
+			return <TextDisplay component={component as TextDisplayComponent} />
+
+		case ComponentTypeV2.Section:
+			return <Section component={component as SectionComponent} onButtonClick={onButtonClick} />
+
+		case ComponentTypeV2.MediaGallery:
+			return <MediaGallery component={component as MediaGalleryComponent} />
+
+		case ComponentTypeV2.File:
+			return <FileComponentV2 component={component as FileComponentData} />
+
+		case ComponentTypeV2.Separator:
+			return <Separator component={component as SeparatorComponent} />
+
+		case ComponentTypeV2.Container:
+			return (
+				<Container
+					component={component as ContainerComponent}
+					messageId={messageId}
+					channelId={channelId}
+					onButtonClick={onButtonClick}
+					onSelectOption={onSelectOption}
+				/>
+			)
+
+		default:
+			// Unknown component type, skip
+			return null
+	}
 }
 
 export { ComponentType }

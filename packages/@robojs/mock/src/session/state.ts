@@ -87,7 +87,7 @@ import type {
 	MockAuditLogEntryConfig
 } from '../types/index.js'
 import { AuditLogEvent, AuditLogLimits } from '../types/index.js'
-import { ComponentsV2Limits, ComponentTypeV2, PollLayoutType, ForumLayoutType, ForumSortOrderType, StickerType, StickerFormatType, StickerLimits, WebhookType, WebhookLimits, EmojiLimits, RoleLimits, BanLimits, ApplicationCommandType, CommandLimits, InviteLimits, ScheduledEventLimits, GuildScheduledEventPrivacyLevel, GuildScheduledEventStatus, GuildScheduledEventEntityType, AutoModLimits, AutoModerationEventType } from '../types/index.js'
+import { ComponentLimits, ComponentsV2Limits, ComponentTypeV2, PollLayoutType, ForumLayoutType, ForumSortOrderType, StickerType, StickerFormatType, StickerLimits, WebhookType, WebhookLimits, EmojiLimits, RoleLimits, BanLimits, ApplicationCommandType, CommandLimits, InviteLimits, ScheduledEventLimits, GuildScheduledEventPrivacyLevel, GuildScheduledEventStatus, GuildScheduledEventEntityType, AutoModLimits, AutoModerationEventType } from '../types/index.js'
 import { generateSnowflake } from '../utils/snowflake.js'
 import { MemoryAttachmentStorage, type AttachmentStorage, type StorageConfig, createStorage } from '../storage/attachment-storage.js'
 
@@ -273,6 +273,31 @@ export class MockServerState implements SessionState {
 						required: false
 					}
 				]
+			},
+			// Context menu commands for testing right-click functionality (Phase 5N)
+			{
+				name: 'Get User Info',
+				type: 2 // USER context menu
+			},
+			{
+				name: 'Report User',
+				type: 2 // USER context menu
+			},
+			{
+				name: 'Warn User',
+				type: 2 // USER context menu
+			},
+			{
+				name: 'Bookmark Message',
+				type: 3 // MESSAGE context menu
+			},
+			{
+				name: 'Report Message',
+				type: 3 // MESSAGE context menu
+			},
+			{
+				name: 'Translate Message',
+				type: 3 // MESSAGE context menu
 			}
 		]
 
@@ -4442,6 +4467,134 @@ export function validateComponentsV2(
 	for (const comp of components) {
 		if (comp && typeof comp === 'object') {
 			validateComponent(comp as Record<string, unknown>)
+		}
+	}
+
+	return {
+		valid: errors.length === 0,
+		errors
+	}
+}
+
+// ============================================================================
+// Phase 14: Classic (V1) Component Validation
+// ============================================================================
+
+/**
+ * Validate classic (V1) message components according to Discord's rules:
+ * - Max 5 action rows per message
+ * - Max 5 buttons per action row
+ * - Max 1 select menu per action row (cannot mix with buttons)
+ * - Max 25 options in a string select menu
+ * - String select must have at least 1 option
+ *
+ * @param components - Array of components to validate
+ * @returns Validation result with any errors
+ */
+export function validateComponents(components: unknown[]): ComponentsV2ValidationResult {
+	const errors: string[] = []
+
+	// Check if components is an array
+	if (!Array.isArray(components)) {
+		return { valid: false, errors: ['Components must be an array'] }
+	}
+
+	// Check action row limit
+	if (components.length > ComponentLimits.MAX_ACTION_ROWS) {
+		errors.push(`Too many action rows: ${components.length} (max ${ComponentLimits.MAX_ACTION_ROWS})`)
+	}
+
+	// Validate each action row
+	for (let rowIndex = 0; rowIndex < components.length; rowIndex++) {
+		const row = components[rowIndex] as Record<string, unknown>
+
+		if (!row || typeof row !== 'object') {
+			errors.push(`Invalid action row at index ${rowIndex}`)
+			continue
+		}
+
+		// Must be ActionRow type
+		if (row.type !== ComponentTypeV2.ActionRow) {
+			errors.push(`Component at index ${rowIndex} must be ActionRow (type 1)`)
+			continue
+		}
+
+		const rowComponents = row.components as unknown[]
+		if (!Array.isArray(rowComponents)) {
+			errors.push(`Action row ${rowIndex} must have components array`)
+			continue
+		}
+
+		// Count buttons and select menus in this row
+		let buttonCount = 0
+		let selectCount = 0
+
+		for (let compIndex = 0; compIndex < rowComponents.length; compIndex++) {
+			const comp = rowComponents[compIndex] as Record<string, unknown>
+
+			if (!comp || typeof comp !== 'object') {
+				errors.push(`Invalid component at row ${rowIndex}, index ${compIndex}`)
+				continue
+			}
+
+			const compType = comp.type as number
+
+			// Button (type 2)
+			if (compType === ComponentTypeV2.Button) {
+				buttonCount++
+			}
+			// Select menus (types 3-8)
+			else if (
+				compType === ComponentTypeV2.StringSelect ||
+				compType === ComponentTypeV2.UserSelect ||
+				compType === ComponentTypeV2.RoleSelect ||
+				compType === ComponentTypeV2.MentionableSelect ||
+				compType === ComponentTypeV2.ChannelSelect
+			) {
+				selectCount++
+
+				// Validate string select options
+				if (compType === ComponentTypeV2.StringSelect) {
+					const options = comp.options as unknown[]
+					if (!Array.isArray(options)) {
+						errors.push(`String select at row ${rowIndex} must have options array`)
+					} else {
+						if (options.length < ComponentLimits.MIN_SELECT_OPTIONS) {
+							errors.push(
+								`String select at row ${rowIndex} must have at least ${ComponentLimits.MIN_SELECT_OPTIONS} option`
+							)
+						}
+						if (options.length > ComponentLimits.MAX_SELECT_OPTIONS) {
+							errors.push(
+								`String select at row ${rowIndex} has too many options: ${options.length} (max ${ComponentLimits.MAX_SELECT_OPTIONS})`
+							)
+						}
+					}
+				}
+			}
+			// Text input (type 4) - only valid in modals, not messages
+			else if (compType === ComponentTypeV2.TextInput) {
+				errors.push(`Text input at row ${rowIndex} is only valid in modals, not messages`)
+			}
+		}
+
+		// Check button limit
+		if (buttonCount > ComponentLimits.MAX_BUTTONS_PER_ROW) {
+			errors.push(
+				`Action row ${rowIndex} has too many buttons: ${buttonCount} (max ${ComponentLimits.MAX_BUTTONS_PER_ROW})`
+			)
+		}
+
+		// Check select menu limit
+		if (selectCount > ComponentLimits.MAX_SELECT_MENUS_PER_ROW) {
+			errors.push(
+				`Action row ${rowIndex} has too many select menus: ${selectCount} (max ${ComponentLimits.MAX_SELECT_MENUS_PER_ROW})`
+			)
+		}
+
+		// Cannot mix buttons and select menus
+		if (buttonCount > 0 && selectCount > 0) {
+			errors.push(`Action row ${rowIndex} cannot mix buttons and select menus`)
 		}
 	}
 

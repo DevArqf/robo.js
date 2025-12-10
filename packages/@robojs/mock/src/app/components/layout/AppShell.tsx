@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useSession } from '../../hooks/useSession'
 import { useIsPlaybackMode, usePlaybackChannels, usePlaybackMembers } from '../../stores/playbackStore'
 import { ServerList } from '../sidebar/ServerList'
@@ -13,7 +13,7 @@ import { DevToolsPanel } from '../devtools/DevToolsPanel'
 import styles from './AppShell.module.css'
 
 export function AppShell() {
-	const { guilds, guildChannels, guildMembers, guildRoles, selectedGuildId, selectedChannelId, showMembers, selectGuild, selectChannel, toggleMembers, selectedChannel, selectedGuild, botUser, sessionId } =
+	const { guilds, guildChannels, guildMembers, guildRoles, guildVoiceStates, users, selectedGuildId, selectedChannelId, showMembers, selectGuild, selectChannel, toggleMembers, selectedChannel, selectedGuild, botUser, sessionId, joinVoice, leaveVoice } =
 		useSession()
 
 	// Mobile sidebar state
@@ -27,6 +27,14 @@ export function AppShell() {
 	// Use playback data when in playback mode, otherwise use session data
 	const displayChannels = isPlaybackMode && playbackChannels !== null ? playbackChannels : guildChannels
 	const displayMembers = isPlaybackMode && playbackMembers !== null ? playbackMembers : guildMembers
+
+	// Combine users with botUser for voice channel display (Phase 5P)
+	const allUsers = useMemo(() => {
+		if (!botUser) return users
+		// Check if botUser is already in users
+		const botInUsers = users.some((u) => u.id === botUser.id)
+		return botInUsers ? users : [...users, botUser]
+	}, [users, botUser])
 
 	const handleMobileMenuToggle = useCallback(() => {
 		setMobileSidebarOpen((prev) => !prev)
@@ -56,7 +64,17 @@ export function AppShell() {
 
 			{/* Channel list */}
 			<div className={styles.channelList}>
-				<ChannelList guild={selectedGuild} channels={displayChannels} selectedId={selectedChannelId} onSelect={handleChannelSelect} />
+				<ChannelList
+					guild={selectedGuild}
+					channels={displayChannels}
+					selectedId={selectedChannelId}
+					onSelect={handleChannelSelect}
+					voiceStates={guildVoiceStates}
+					users={allUsers}
+					onJoinVoice={joinVoice}
+					onLeaveVoice={leaveVoice}
+					currentUserId={botUser?.id}
+				/>
 				<UserArea user={botUser} />
 			</div>
 
@@ -69,7 +87,17 @@ export function AppShell() {
 					<ServerList guilds={guilds} selectedId={selectedGuildId} onSelect={selectGuild} sessionId={sessionId} />
 				</div>
 				<div className={styles.channelList}>
-					<ChannelList guild={selectedGuild} channels={displayChannels} selectedId={selectedChannelId} onSelect={handleChannelSelect} />
+					<ChannelList
+						guild={selectedGuild}
+						channels={displayChannels}
+						selectedId={selectedChannelId}
+						onSelect={handleChannelSelect}
+						voiceStates={guildVoiceStates}
+						users={allUsers}
+						onJoinVoice={joinVoice}
+						onLeaveVoice={leaveVoice}
+						currentUserId={botUser?.id}
+					/>
 					<UserArea user={botUser} />
 				</div>
 			</div>

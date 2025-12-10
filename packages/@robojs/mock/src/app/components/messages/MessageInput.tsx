@@ -11,7 +11,7 @@ interface MessageInputProps {
 }
 
 export function MessageInput({ channelId, channelName }: MessageInputProps) {
-	const { sendMessage, invokeCommand, slashCommands } = useSession()
+	const { sendMessage, invokeCommand, slashCommands, replyingTo, clearReplyingTo } = useSession()
 	const [value, setValue] = useState('')
 	const [showCommands, setShowCommands] = useState(false)
 	const [showEmojiPicker, setShowEmojiPicker] = useState(false)
@@ -42,14 +42,22 @@ export function MessageInput({ channelId, channelName }: MessageInputProps) {
 
 		setIsLoading(true)
 		try {
-			await sendMessage(trimmed, channelId)
+			// Include message reference if replying
+			const messageReference = replyingTo
+				? { message_id: replyingTo.id, channel_id: replyingTo.channel_id }
+				: undefined
+			await sendMessage(trimmed, channelId, messageReference)
 			setValue('')
+			// Clear reply state after successful send
+			if (replyingTo) {
+				clearReplyingTo()
+			}
 		} catch (err) {
 			console.error('Failed to send message:', err)
 		} finally {
 			setIsLoading(false)
 		}
-	}, [value, channelId, sendMessage, isLoading])
+	}, [value, channelId, sendMessage, isLoading, replyingTo, clearReplyingTo])
 
 	const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
 		// Only let CommandAutocomplete handle keyboard when it's actually rendered
@@ -129,6 +137,26 @@ export function MessageInput({ channelId, channelName }: MessageInputProps) {
 				/>
 			)}
 
+			{/* Reply bar */}
+			{replyingTo && (
+				<div className={styles.replyBar}>
+					<div className={styles.replyInfo}>
+						<ReplyIcon />
+						<span className={styles.replyLabel}>
+							Replying to <strong>{replyingTo.author.username}</strong>
+						</span>
+					</div>
+					<button
+						className={styles.replyCancelButton}
+						onClick={clearReplyingTo}
+						type="button"
+						aria-label="Cancel reply"
+					>
+						<CloseIcon />
+					</button>
+				</div>
+			)}
+
 			<div className={styles.inputWrapper}>
 				<button className={styles.attachButton} type="button" aria-label="Add attachment">
 					<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
@@ -190,5 +218,22 @@ export function MessageInput({ channelId, channelName }: MessageInputProps) {
 				</div>
 			</div>
 		</div>
+	)
+}
+
+// Icon components
+function ReplyIcon() {
+	return (
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z" />
+		</svg>
+	)
+}
+
+function CloseIcon() {
+	return (
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M18.4 4L12 10.4L5.6 4L4 5.6L10.4 12L4 18.4L5.6 20L12 13.6L18.4 20L20 18.4L13.6 12L20 5.6L18.4 4Z" />
+		</svg>
 	)
 }

@@ -25,10 +25,14 @@ export type StageEventType =
 	| 'interaction_create'     // Slash command, button, etc. invoked
 	| 'interaction_response'   // Bot responded to interaction
 	| 'interaction_followup'   // Bot sent followup message
+	| 'interaction_edit'       // Bot edited interaction message (Phase 5O)
 
 	// Typing & presence
 	| 'typing_start'           // User started typing
 	| 'presence_update'        // User status changed
+
+	// Voice (Phase 5P)
+	| 'voice_state_update'     // User joined/left/updated voice channel
 
 	// Bot lifecycle
 	| 'bot_ready'              // Bot connected and ready
@@ -58,6 +62,10 @@ export type StageCommandType =
 	| 'request_state'          // Request current state
 	| 'set_playback'           // Control playback (play/pause/seek)
 	| 'subscribe_channel'      // Subscribe to channel updates
+	// Voice (Phase 5P)
+	| 'join_voice'             // Join a voice channel
+	| 'leave_voice'            // Leave voice channel
+	| 'update_voice_state'     // Update mute/deaf state
 
 // ============================================================================
 // Stage Event Payloads
@@ -93,6 +101,7 @@ export interface StateSyncPayload {
 	messages: Record<string, StageMessage[]>  // channelId -> messages
 	users: StageUser[]
 	commands: StageApplicationCommand[]  // Phase 5G: Available slash commands
+	voice_states: StageVoiceState[]  // Phase 5P: Voice channel states
 }
 
 /**
@@ -164,6 +173,22 @@ export interface StageRole {
 }
 
 /**
+ * Simplified voice state data for stage clients (Phase 5P)
+ */
+export interface StageVoiceState {
+	guild_id: Snowflake
+	channel_id: Snowflake | null // null when leaving voice
+	user_id: Snowflake
+	self_mute: boolean
+	self_deaf: boolean
+	mute: boolean // Server mute
+	deaf: boolean // Server deaf
+	self_stream?: boolean
+	self_video?: boolean
+	speaking?: boolean // Simulated speaking indicator (Phase 5P)
+}
+
+/**
  * Reaction data for stage clients (matches Discord API structure)
  */
 export interface StageReaction {
@@ -191,6 +216,12 @@ export interface StageMessage {
 	attachments: unknown[]
 	reactions?: StageReaction[]
 	flags?: number  // Message flags (64 = EPHEMERAL)
+	pinned?: boolean  // Whether message is pinned
+	message_reference?: {  // Reference for reply messages
+		message_id?: Snowflake
+		channel_id?: Snowflake
+		guild_id?: Snowflake
+	}
 }
 
 // ============================================================================
@@ -255,6 +286,13 @@ export interface StageMessageCreateData {
 export interface StageInteractionResponseData {
 	interactionId: Snowflake
 	response: unknown
+	// Phase 5O: Additional fields for "Bot is thinking..." indicator
+	channelId?: Snowflake
+	bot?: {
+		id?: string
+		username?: string
+		avatar?: string | null
+	}
 }
 
 /**
@@ -344,6 +382,11 @@ export interface StageSendMessageData {
 	}
 	embeds?: unknown[]
 	components?: unknown[]
+	message_reference?: {
+		message_id?: Snowflake
+		channel_id?: Snowflake
+		guild_id?: Snowflake
+	}
 }
 
 /**
@@ -463,8 +506,46 @@ export interface StageSubscribeChannelData {
  */
 export interface StageSetPlaybackData {
 	action: 'play' | 'pause' | 'seek' | 'stop'
-	position?: number  // For seek, in milliseconds
-	speed?: number     // Playback speed multiplier
+	position?: number // For seek, in milliseconds
+	speed?: number // Playback speed multiplier
+}
+
+/**
+ * Data for join_voice command (Phase 5P)
+ */
+export interface StageJoinVoiceData {
+	channel_id: Snowflake
+	guild_id: Snowflake
+	self_mute?: boolean
+	self_deaf?: boolean
+	user?: {
+		id?: Snowflake
+		username?: string
+	}
+}
+
+/**
+ * Data for leave_voice command (Phase 5P)
+ */
+export interface StageLeaveVoiceData {
+	guild_id: Snowflake
+	user?: {
+		id?: Snowflake
+		username?: string
+	}
+}
+
+/**
+ * Data for update_voice_state command (Phase 5P)
+ */
+export interface StageUpdateVoiceStateData {
+	guild_id: Snowflake
+	self_mute?: boolean
+	self_deaf?: boolean
+	user?: {
+		id?: Snowflake
+		username?: string
+	}
 }
 
 // ============================================================================

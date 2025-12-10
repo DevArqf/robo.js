@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react'
 import { usePlaybackControls, type RecordedEvent } from '../../stores/playbackStore'
 import { useSession } from '../../hooks/useSession'
-import { useSessionDispatch } from '../../stores/sessionStore'
+import { useSessionDispatch, type PendingInteraction } from '../../stores/sessionStore'
 import { useToaster } from '../common/Toaster'
-import type { StageEventType, StageMessage, StageChannel, StageMember, StageGuild, StateSyncPayload } from '../../types/stage'
+import type { StageEventType, StageMessage, StageChannel, StageMember, StageGuild, StateSyncPayload, StageVoiceState } from '../../types/stage'
 import styles from './ToolsPanel.module.css'
 
 export function ToolsPanel() {
@@ -12,6 +12,13 @@ export function ToolsPanel() {
 	const { addEvents } = usePlaybackControls()
 	const { showToast } = useToaster()
 	const [isGenerating, setIsGenerating] = useState(false)
+
+	// Detect API prefix from current URL (e.g., /mock/stage -> /mock)
+	const getApiPrefix = useCallback(() => {
+		const pathname = window.location.pathname
+		const stageIndex = pathname.indexOf('/stage')
+		return stageIndex !== -1 ? pathname.slice(0, stageIndex) : ''
+	}, [])
 
 	// Generate test data for visual testing (moved from PlaybackControls)
 	const generateTestData = useCallback(async () => {
@@ -23,6 +30,7 @@ export function ToolsPanel() {
 		setIsGenerating(true)
 		const now = Date.now()
 		const testEvents: RecordedEvent[] = []
+		const apiPrefix = getApiPrefix()
 
 		// Use the currently selected channel ID for test messages
 		const testChannelId = selectedChannelId || 'test_channel_001'
@@ -275,7 +283,7 @@ export function ToolsPanel() {
 							{
 								type: 1,
 								components: [
-									{ type: 2, style: 1, label: 'Commands', custom_id: 'help_commands', emoji: { name: '📋' } },
+									{ type: 2, style: 1, label: 'Open Modal', custom_id: 'test_modal', emoji: { name: '📝' } },
 									{ type: 2, style: 2, label: 'Settings', custom_id: 'help_settings', emoji: { name: '⚙️' } },
 									{ type: 2, style: 3, label: 'Support', custom_id: 'help_support', emoji: { name: '💬' } },
 									{ type: 2, style: 5, label: 'Website', url: 'https://robojs.dev' }
@@ -651,6 +659,46 @@ export function ToolsPanel() {
 						attachments: []
 					}
 				})
+			},
+			// Phase 5O: Edited message test
+			{
+				type: 'message_create',
+				getData: (time) => ({
+					source: 'injected',
+					message: {
+						id: nextMsgId(),
+						channel_id: testChannelId,
+						content: 'This message was edited (hover over "edited" to see timestamp)',
+						timestamp: new Date(time - 60000).toISOString(), // 1 minute ago
+						edited_timestamp: new Date(time).toISOString(),
+						author: testUser1,
+						embeds: [],
+						components: [],
+						attachments: []
+					}
+				})
+			},
+			// Phase 5O: Ephemeral message test (only you can see this)
+			{
+				type: 'message_create',
+				getData: (time) => ({
+					source: 'bot',
+					message: {
+						id: nextMsgId(),
+						channel_id: testChannelId,
+						content: '🔒 This is an **ephemeral message** - only visible to you!',
+						timestamp: new Date(time).toISOString(),
+						author: botUser,
+						embeds: [{
+							color: 5793266,
+							description: 'Ephemeral messages are private responses that only the command invoker can see. They appear with a special indicator.',
+							footer: { text: 'This message will disappear when you dismiss it or refresh' }
+						}],
+						components: [],
+						attachments: [],
+						flags: 64 // EPHEMERAL flag
+					}
+				})
 			}
 		]
 
@@ -667,7 +715,8 @@ export function ToolsPanel() {
 			roles: [],
 			messages: {},
 			users: testUsers,
-			commands: []
+			commands: [],
+			voice_states: []
 		}
 
 		// Add state_sync as the first event
@@ -703,11 +752,48 @@ export function ToolsPanel() {
 				return data.message
 			})
 
-		// Dispatch messages to server-side session for reactions to work
-		// This creates the messages in the mock server's state
+		// Dispatch to server-side session for interactions to work
+		// This creates the data in the mock server's state
+		const baseUrl = `${apiPrefix}/api/control/sessions/${sessionId}`
 		try {
+			// First, create the guild with channels if we're using test IDs
+			// (Skip if using existing selected channel/guild)
+			if (!selectedGuildId || !selectedChannelId) {
+				await fetch(`${baseUrl}/dispatch`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						event: 'GUILD_CREATE',
+						data: {
+							id: testGuildId,
+							name: testGuild.name,
+							icon: null,
+							owner_id: testUser1.id,
+							member_count: testMembers.length,
+							channels: allChannels.map(c => ({
+								id: c.id,
+								type: c.type,
+								name: c.name,
+								position: c.position,
+								guild_id: c.guild_id,
+								topic: c.topic
+							})),
+							roles: [],
+							members: testMembers.map(m => ({
+								user: m.user,
+								roles: m.roles,
+								joined_at: m.joined_at
+							}))
+						}
+					})
+				})
+				// Small delay to let state propagate
+				await new Promise(resolve => setTimeout(resolve, 100))
+			}
+
+			// Then create messages
 			for (const message of messages) {
-				await fetch(`/api/control/sessions/${sessionId}/dispatch`, {
+				await fetch(`${baseUrl}/dispatch`, {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({
@@ -724,9 +810,11 @@ export function ToolsPanel() {
 						}
 					})
 				})
+				// Small delay between messages
+				await new Promise(resolve => setTimeout(resolve, 30))
 			}
 		} catch (error) {
-			console.warn('Failed to dispatch test messages to server:', error)
+			console.warn('Failed to dispatch test data to server:', error)
 		}
 
 		if (messages.length > 0 && testChannelId) {
@@ -750,7 +838,7 @@ export function ToolsPanel() {
 
 		setIsGenerating(false)
 		showToast('Test data generated successfully!', 'success')
-	}, [addEvents, selectedChannelId, selectedGuildId, sessionDispatch, sessionId, showToast])
+	}, [addEvents, getApiPrefix, selectedChannelId, selectedGuildId, sessionDispatch, sessionId, showToast])
 
 	return (
 		<div className={styles.container}>
@@ -768,6 +856,690 @@ export function ToolsPanel() {
 					<BeakerIcon />
 					{isGenerating ? 'Generating...' : 'Generate Test Data'}
 				</button>
+			</section>
+
+			{/* Phase 5O: Visual States Testing */}
+			<section className={styles.section}>
+				<h3 className={styles.sectionTitle}>Message States (Phase 5O)</h3>
+				<p className={styles.description}>
+					Test ephemeral messages, edited indicators, and loading states.
+				</p>
+				<div className={styles.buttonGroup}>
+					<button
+						className={styles.actionButton}
+						onClick={() => {
+							if (!selectedChannelId) {
+								showToast('Select a channel first', 'warning')
+								return
+							}
+							// Add a "Bot is thinking..." indicator
+							const pendingInteraction: PendingInteraction = {
+								id: `thinking_${Date.now()}`,
+								channelId: selectedChannelId,
+								botName: 'Robo',
+								botAvatar: null,
+								botId: 'test_bot_001',
+								createdAt: Date.now()
+							}
+							sessionDispatch({ type: 'ADD_PENDING_INTERACTION', payload: pendingInteraction })
+							showToast('Added "Bot is thinking..." indicator', 'info')
+							// Auto-remove after 5 seconds
+							setTimeout(() => {
+								sessionDispatch({ type: 'REMOVE_PENDING_INTERACTION', payload: { id: pendingInteraction.id } })
+							}, 5000)
+						}}
+					>
+						<ThinkingIcon />
+						Show "Bot is thinking..."
+					</button>
+					<button
+						className={styles.actionButton}
+						onClick={() => {
+							if (!selectedChannelId) {
+								showToast('Select a channel first', 'warning')
+								return
+							}
+							// Add a failed pending message
+							sessionDispatch({
+								type: 'ADD_PENDING_MESSAGE',
+								payload: {
+									id: `failed_${Date.now()}`,
+									content: 'This message failed to send (test)',
+									channelId: selectedChannelId,
+									state: 'failed',
+									error: 'Network error: Connection timeout',
+									author: { id: 'user_0', username: 'You', avatar: null },
+									createdAt: Date.now()
+								}
+							})
+							showToast('Added failed message indicator', 'info')
+						}}
+					>
+						<ErrorIcon />
+						Show Failed Message
+					</button>
+				</div>
+			</section>
+
+			{/* Phase 5P: Voice States Testing */}
+			<section className={styles.section}>
+				<h3 className={styles.sectionTitle}>Voice States (Phase 5P)</h3>
+				<p className={styles.description}>
+					Test voice channel member display and state indicators. Click &quot;Generate Test Data&quot; first to create voice channels.
+				</p>
+				<div className={styles.buttonGroup}>
+					<button
+						className={styles.actionButton}
+						onClick={async () => {
+							if (!sessionId || !selectedGuildId) {
+								showToast('No active session or guild selected', 'warning')
+								return
+							}
+							const apiPrefix = getApiPrefix()
+							const baseUrl = `${apiPrefix}/api/control/sessions/${sessionId}`
+
+							// Find a voice channel in the current state
+							const voiceChannelId = 'test_voice_general'
+
+							// Add Alice to voice channel
+							try {
+								await fetch(`${baseUrl}/dispatch`, {
+									method: 'POST',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({
+										event: 'VOICE_STATE_UPDATE',
+										data: {
+											guild_id: selectedGuildId,
+											channel_id: voiceChannelId,
+											user_id: 'test_user_001',
+											self_mute: false,
+											self_deaf: false,
+											mute: false,
+											deaf: false,
+											member: {
+												user: { id: 'test_user_001', username: 'Alice', discriminator: '0001', avatar: null },
+												roles: [],
+												joined_at: new Date().toISOString()
+											}
+										}
+									})
+								})
+								showToast('Alice joined voice channel', 'success')
+							} catch (error) {
+								showToast('Failed to add user to voice', 'error')
+							}
+						}}
+					>
+						<VoiceIcon />
+						Add User to Voice
+					</button>
+					<button
+						className={styles.actionButton}
+						onClick={async () => {
+							if (!sessionId || !selectedGuildId) {
+								showToast('No active session or guild selected', 'warning')
+								return
+							}
+							const apiPrefix = getApiPrefix()
+							const baseUrl = `${apiPrefix}/api/control/sessions/${sessionId}`
+							const voiceChannelId = 'test_voice_general'
+
+							// Add multiple users with various states
+							const voiceUsers = [
+								{ user_id: 'test_user_001', username: 'Alice', self_mute: false, self_deaf: false },
+								{ user_id: 'test_user_002', username: 'Bob', self_mute: true, self_deaf: false },
+								{ user_id: 'test_user_003', username: 'Charlie', self_mute: false, self_deaf: true }
+							]
+
+							try {
+								for (const vu of voiceUsers) {
+									await fetch(`${baseUrl}/dispatch`, {
+										method: 'POST',
+										headers: { 'Content-Type': 'application/json' },
+										body: JSON.stringify({
+											event: 'VOICE_STATE_UPDATE',
+											data: {
+												guild_id: selectedGuildId,
+												channel_id: voiceChannelId,
+												user_id: vu.user_id,
+												self_mute: vu.self_mute,
+												self_deaf: vu.self_deaf,
+												mute: false,
+												deaf: false,
+												member: {
+													user: { id: vu.user_id, username: vu.username, discriminator: '0001', avatar: null },
+													roles: [],
+													joined_at: new Date().toISOString()
+												}
+											}
+										})
+									})
+									await new Promise(r => setTimeout(r, 50))
+								}
+								showToast('Multiple users joined voice channel', 'success')
+							} catch (error) {
+								showToast('Failed to add users to voice', 'error')
+							}
+						}}
+					>
+						<VoiceGroupIcon />
+						Add Multiple Users
+					</button>
+					<button
+						className={styles.actionButton}
+						onClick={async () => {
+							if (!sessionId || !selectedGuildId) {
+								showToast('No active session or guild selected', 'warning')
+								return
+							}
+							const apiPrefix = getApiPrefix()
+							const baseUrl = `${apiPrefix}/api/control/sessions/${sessionId}`
+
+							// Remove user from voice (set channel_id to null)
+							try {
+								await fetch(`${baseUrl}/dispatch`, {
+									method: 'POST',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({
+										event: 'VOICE_STATE_UPDATE',
+										data: {
+											guild_id: selectedGuildId,
+											channel_id: null,
+											user_id: 'test_user_001',
+											self_mute: false,
+											self_deaf: false,
+											mute: false,
+											deaf: false
+										}
+									})
+								})
+								showToast('User left voice channel', 'success')
+							} catch (error) {
+								showToast('Failed to remove user from voice', 'error')
+							}
+						}}
+					>
+						<LeaveVoiceIcon />
+						Remove User from Voice
+					</button>
+					<button
+						className={styles.actionButton}
+						onClick={async () => {
+							if (!sessionId || !selectedGuildId) {
+								showToast('No active session or guild selected', 'warning')
+								return
+							}
+							const apiPrefix = getApiPrefix()
+							const baseUrl = `${apiPrefix}/api/control/sessions/${sessionId}`
+							const voiceChannelId = 'test_voice_general'
+
+							// Toggle speaking state for Alice (simulated)
+							try {
+								await fetch(`${baseUrl}/dispatch`, {
+									method: 'POST',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({
+										event: 'VOICE_STATE_UPDATE',
+										data: {
+											guild_id: selectedGuildId,
+											channel_id: voiceChannelId,
+											user_id: 'test_user_001',
+											self_mute: false,
+											self_deaf: false,
+											mute: false,
+											deaf: false,
+											speaking: true,
+											member: {
+												user: { id: 'test_user_001', username: 'Alice', discriminator: '0001', avatar: null },
+												roles: [],
+												joined_at: new Date().toISOString()
+											}
+										}
+									})
+								})
+								showToast('Simulating Alice speaking...', 'success')
+								// Auto-stop speaking after 3 seconds
+								setTimeout(async () => {
+									try {
+										await fetch(`${baseUrl}/dispatch`, {
+											method: 'POST',
+											headers: { 'Content-Type': 'application/json' },
+											body: JSON.stringify({
+												event: 'VOICE_STATE_UPDATE',
+												data: {
+													guild_id: selectedGuildId,
+													channel_id: voiceChannelId,
+													user_id: 'test_user_001',
+													self_mute: false,
+													self_deaf: false,
+													mute: false,
+													deaf: false,
+													speaking: false,
+													member: {
+														user: { id: 'test_user_001', username: 'Alice', discriminator: '0001', avatar: null },
+														roles: [],
+														joined_at: new Date().toISOString()
+													}
+												}
+											})
+										})
+									} catch {
+										// Ignore errors when stopping
+									}
+								}, 3000)
+							} catch (error) {
+								showToast('Failed to simulate speaking', 'error')
+							}
+						}}
+					>
+						<SpeakingIcon />
+						Simulate Speaking
+					</button>
+				</div>
+			</section>
+
+			{/* Phase 5Q: Components V2 Testing */}
+			<section className={styles.section}>
+				<h3 className={styles.sectionTitle}>Components V2 (Phase 5Q)</h3>
+				<p className={styles.description}>
+					Test Discord Components V2 message format with TextDisplay, Section, MediaGallery, Container, and more.
+				</p>
+				<div className={styles.buttonGroup}>
+					<button
+						className={styles.actionButton}
+						onClick={async () => {
+							if (!sessionId || !selectedChannelId) {
+								showToast('Select a channel first', 'warning')
+								return
+							}
+							const apiPrefix = getApiPrefix()
+							const baseUrl = `${apiPrefix}/api/control/sessions/${sessionId}`
+
+							// TextDisplay + Separator message
+							const v2Message1 = {
+								id: `v2_${Date.now()}_1`,
+								channel_id: selectedChannelId,
+								content: '', // V2 replaces content
+								timestamp: new Date().toISOString(),
+								author: { id: 'test_bot_001', username: 'Robo', discriminator: '0000', avatar: null, bot: true },
+								embeds: [], // V2 replaces embeds
+								attachments: [],
+								flags: 32768, // IS_COMPONENTS_V2
+								components: [
+									{ type: 10, content: '# Welcome to Components V2! 🎉' },
+									{ type: 10, content: 'This message uses the new **Components V2** format introduced in Discord April 2025.' },
+									{ type: 14, divider: true, spacing: 'large' },
+									{ type: 10, content: '### Features\n- TextDisplay with markdown\n- Separators with spacing options\n- Sections with accessories\n- Media galleries\n- Containers with accent colors' }
+								]
+							}
+
+							try {
+								await fetch(`${baseUrl}/dispatch`, {
+									method: 'POST',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({
+										event: 'MESSAGE_CREATE',
+										data: v2Message1
+									})
+								})
+								sessionDispatch({
+									type: 'INJECT_MESSAGES',
+									payload: { channelId: selectedChannelId, messages: [v2Message1 as StageMessage] }
+								})
+								showToast('TextDisplay + Separator message created', 'success')
+							} catch (error) {
+								showToast('Failed to create V2 message', 'error')
+							}
+						}}
+					>
+						<ComponentsIcon />
+						TextDisplay + Separator
+					</button>
+					<button
+						className={styles.actionButton}
+						onClick={async () => {
+							if (!sessionId || !selectedChannelId) {
+								showToast('Select a channel first', 'warning')
+								return
+							}
+							const apiPrefix = getApiPrefix()
+							const baseUrl = `${apiPrefix}/api/control/sessions/${sessionId}`
+
+							// Section with Thumbnail accessory
+							const v2Message2 = {
+								id: `v2_${Date.now()}_2`,
+								channel_id: selectedChannelId,
+								content: '',
+								timestamp: new Date().toISOString(),
+								author: { id: 'test_bot_001', username: 'Robo', discriminator: '0000', avatar: null, bot: true },
+								embeds: [],
+								attachments: [],
+								flags: 32768,
+								components: [
+									{
+										type: 9, // Section
+										components: [
+											{ type: 10, content: '## Robo.js Framework' },
+											{ type: 10, content: 'Build powerful Discord bots, activities, and web servers with ease.' },
+											{ type: 10, content: '⚡ Fast • 🔌 Pluggable • 🎯 Type-safe' }
+										],
+										accessory: {
+											type: 11, // Thumbnail
+											media: { url: 'https://picsum.photos/80/80?random=10' },
+											description: 'Robo.js logo'
+										}
+									}
+								]
+							}
+
+							try {
+								await fetch(`${baseUrl}/dispatch`, {
+									method: 'POST',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({
+										event: 'MESSAGE_CREATE',
+										data: v2Message2
+									})
+								})
+								sessionDispatch({
+									type: 'INJECT_MESSAGES',
+									payload: { channelId: selectedChannelId, messages: [v2Message2 as StageMessage] }
+								})
+								showToast('Section with Thumbnail created', 'success')
+							} catch (error) {
+								showToast('Failed to create V2 message', 'error')
+							}
+						}}
+					>
+						<SectionIcon />
+						Section + Thumbnail
+					</button>
+					<button
+						className={styles.actionButton}
+						onClick={async () => {
+							if (!sessionId || !selectedChannelId) {
+								showToast('Select a channel first', 'warning')
+								return
+							}
+							const apiPrefix = getApiPrefix()
+							const baseUrl = `${apiPrefix}/api/control/sessions/${sessionId}`
+
+							// Section with Button accessory
+							const v2Message3 = {
+								id: `v2_${Date.now()}_3`,
+								channel_id: selectedChannelId,
+								content: '',
+								timestamp: new Date().toISOString(),
+								author: { id: 'test_bot_001', username: 'Robo', discriminator: '0000', avatar: null, bot: true },
+								embeds: [],
+								attachments: [],
+								flags: 32768,
+								components: [
+									{
+										type: 9, // Section
+										components: [
+											{ type: 10, content: '### Get Started' },
+											{ type: 10, content: 'Click the button to visit our documentation and start building!' }
+										],
+										accessory: {
+											type: 2, // Button
+											style: 5, // Link
+											label: 'Documentation',
+											url: 'https://robojs.dev',
+											emoji: { name: '📚' }
+										}
+									}
+								]
+							}
+
+							try {
+								await fetch(`${baseUrl}/dispatch`, {
+									method: 'POST',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({
+										event: 'MESSAGE_CREATE',
+										data: v2Message3
+									})
+								})
+								sessionDispatch({
+									type: 'INJECT_MESSAGES',
+									payload: { channelId: selectedChannelId, messages: [v2Message3 as StageMessage] }
+								})
+								showToast('Section with Button created', 'success')
+							} catch (error) {
+								showToast('Failed to create V2 message', 'error')
+							}
+						}}
+					>
+						<ButtonIcon />
+						Section + Button
+					</button>
+					<button
+						className={styles.actionButton}
+						onClick={async () => {
+							if (!sessionId || !selectedChannelId) {
+								showToast('Select a channel first', 'warning')
+								return
+							}
+							const apiPrefix = getApiPrefix()
+							const baseUrl = `${apiPrefix}/api/control/sessions/${sessionId}`
+
+							// MediaGallery message
+							const v2Message4 = {
+								id: `v2_${Date.now()}_4`,
+								channel_id: selectedChannelId,
+								content: '',
+								timestamp: new Date().toISOString(),
+								author: { id: 'test_user_002', username: 'Bob', discriminator: '0002', avatar: null, bot: false },
+								embeds: [],
+								attachments: [],
+								flags: 32768,
+								components: [
+									{ type: 10, content: '📸 Check out these screenshots from our hackathon!' },
+									{
+										type: 12, // MediaGallery
+										items: [
+											{ media: { url: 'https://picsum.photos/300/200?random=20' }, description: 'Team brainstorming' },
+											{ media: { url: 'https://picsum.photos/300/200?random=21' }, description: 'Coding session' },
+											{ media: { url: 'https://picsum.photos/300/200?random=22' }, description: 'Demo time!' },
+											{ media: { url: 'https://picsum.photos/300/200?random=23' }, description: 'Winner announcement', spoiler: true }
+										]
+									}
+								]
+							}
+
+							try {
+								await fetch(`${baseUrl}/dispatch`, {
+									method: 'POST',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({
+										event: 'MESSAGE_CREATE',
+										data: v2Message4
+									})
+								})
+								sessionDispatch({
+									type: 'INJECT_MESSAGES',
+									payload: { channelId: selectedChannelId, messages: [v2Message4 as StageMessage] }
+								})
+								showToast('MediaGallery message created', 'success')
+							} catch (error) {
+								showToast('Failed to create V2 message', 'error')
+							}
+						}}
+					>
+						<GalleryIcon />
+						MediaGallery
+					</button>
+					<button
+						className={styles.actionButton}
+						onClick={async () => {
+							if (!sessionId || !selectedChannelId) {
+								showToast('Select a channel first', 'warning')
+								return
+							}
+							const apiPrefix = getApiPrefix()
+							const baseUrl = `${apiPrefix}/api/control/sessions/${sessionId}`
+
+							// Container with accent color
+							const v2Message5 = {
+								id: `v2_${Date.now()}_5`,
+								channel_id: selectedChannelId,
+								content: '',
+								timestamp: new Date().toISOString(),
+								author: { id: 'test_bot_002', username: 'ModBot', discriminator: '0000', avatar: null, bot: true },
+								embeds: [],
+								attachments: [],
+								flags: 32768,
+								components: [
+									{
+										type: 17, // Container
+										accent_color: 15158332, // Red
+										components: [
+											{ type: 10, content: '⚠️ **Warning: Auto-Moderation Alert**' },
+											{ type: 14, divider: true, spacing: 'small' },
+											{ type: 10, content: 'A message was flagged for potential spam.' },
+											{ type: 10, content: '**Action taken:** Warning issued\n**Severity:** Low' },
+											{
+												type: 1, // ActionRow
+												components: [
+													{ type: 2, style: 4, label: 'Appeal', custom_id: 'mod_appeal', emoji: { name: '📝' } },
+													{ type: 2, style: 2, label: 'Dismiss', custom_id: 'mod_dismiss' }
+												]
+											}
+										]
+									}
+								]
+							}
+
+							try {
+								await fetch(`${baseUrl}/dispatch`, {
+									method: 'POST',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({
+										event: 'MESSAGE_CREATE',
+										data: v2Message5
+									})
+								})
+								sessionDispatch({
+									type: 'INJECT_MESSAGES',
+									payload: { channelId: selectedChannelId, messages: [v2Message5 as StageMessage] }
+								})
+								showToast('Container message created', 'success')
+							} catch (error) {
+								showToast('Failed to create V2 message', 'error')
+							}
+						}}
+					>
+						<ContainerIcon />
+						Container + Buttons
+					</button>
+					<button
+						className={styles.actionButton}
+						onClick={async () => {
+							if (!sessionId || !selectedChannelId) {
+								showToast('Select a channel first', 'warning')
+								return
+							}
+							const apiPrefix = getApiPrefix()
+							const baseUrl = `${apiPrefix}/api/control/sessions/${sessionId}`
+
+							// File component with spoiler
+							const v2Message6 = {
+								id: `v2_${Date.now()}_6`,
+								channel_id: selectedChannelId,
+								content: '',
+								timestamp: new Date().toISOString(),
+								author: { id: 'test_user_001', username: 'Alice', discriminator: '0001', avatar: null, bot: false },
+								embeds: [],
+								attachments: [],
+								flags: 32768,
+								components: [
+									{ type: 10, content: 'Here are the project files:' },
+									{ type: 13, file: { url: 'attachment://project-spec.pdf' } },
+									{ type: 13, file: { url: 'attachment://SPOILER_secret-plans.docx' }, spoiler: true }
+								]
+							}
+
+							try {
+								await fetch(`${baseUrl}/dispatch`, {
+									method: 'POST',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({
+										event: 'MESSAGE_CREATE',
+										data: v2Message6
+									})
+								})
+								sessionDispatch({
+									type: 'INJECT_MESSAGES',
+									payload: { channelId: selectedChannelId, messages: [v2Message6 as StageMessage] }
+								})
+								showToast('File component message created', 'success')
+							} catch (error) {
+								showToast('Failed to create V2 message', 'error')
+							}
+						}}
+					>
+						<FileIcon />
+						File + Spoiler
+					</button>
+					<button
+						className={styles.actionButton}
+						onClick={async () => {
+							if (!sessionId || !selectedChannelId) {
+								showToast('Select a channel first', 'warning')
+								return
+							}
+							const apiPrefix = getApiPrefix()
+							const baseUrl = `${apiPrefix}/api/control/sessions/${sessionId}`
+
+							// Container with spoiler (entire container blurred)
+							const v2Message7 = {
+								id: `v2_${Date.now()}_7`,
+								channel_id: selectedChannelId,
+								content: '',
+								timestamp: new Date().toISOString(),
+								author: { id: 'test_bot_001', username: 'Robo', discriminator: '0000', avatar: null, bot: true },
+								embeds: [],
+								attachments: [],
+								flags: 32768,
+								components: [
+									{ type: 10, content: '🔒 Click the spoiler container below to reveal:' },
+									{
+										type: 17, // Container with spoiler
+										accent_color: 10181046, // Purple
+										spoiler: true,
+										components: [
+											{ type: 10, content: '### 🎁 Secret Announcement!' },
+											{ type: 10, content: 'You found the hidden message! 🎉' },
+											{ type: 10, content: '*This is a spoiler container demo*' }
+										]
+									}
+								]
+							}
+
+							try {
+								await fetch(`${baseUrl}/dispatch`, {
+									method: 'POST',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({
+										event: 'MESSAGE_CREATE',
+										data: v2Message7
+									})
+								})
+								sessionDispatch({
+									type: 'INJECT_MESSAGES',
+									payload: { channelId: selectedChannelId, messages: [v2Message7 as StageMessage] }
+								})
+								showToast('Spoiler Container message created', 'success')
+							} catch (error) {
+								showToast('Failed to create V2 message', 'error')
+							}
+						}}
+					>
+						<SpoilerIcon />
+						Spoiler Container
+					</button>
+				</div>
 			</section>
 
 			{/* Toast Testing Section */}
@@ -812,6 +1584,112 @@ function BeakerIcon() {
 	return (
 		<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
 			<path d="M5 0v1h1v5.2L2 14v1h12v-1l-4-7.8V1h1V0H5zm2 1h2v5.4l3.5 6.6h-9L7 6.4V1z" />
+		</svg>
+	)
+}
+
+function ThinkingIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+			<path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zm0 14A6 6 0 1 1 8 2a6 6 0 0 1 0 12zm.5-9H7v5l4.25 2.5.75-1.23-3.5-2.08V5z" />
+		</svg>
+	)
+}
+
+function ErrorIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+			<path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 12.5a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11zm-.75-8.25h1.5v4.5h-1.5v-4.5zm0 5.5h1.5v1.5h-1.5v-1.5z" />
+		</svg>
+	)
+}
+
+function VoiceIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M12 3a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1v8a4 4 0 0 0 8 0V3a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1v8a1 1 0 1 1-2 0V3zm-4 8a4 4 0 1 0 8 0V3a1 1 0 0 1 2 0v8a6 6 0 0 1-12 0V3a1 1 0 0 1 2 0v8zm-2 0a6 6 0 0 0 12 0v-1h2v1a8 8 0 0 1-7 7.93V21h3v2H8v-2h3v-2.07A8 8 0 0 1 4 11v-1h2v1z" />
+		</svg>
+	)
+}
+
+function VoiceGroupIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+		</svg>
+	)
+}
+
+function LeaveVoiceIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 0 1-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.1-.7-.28-.79-.73-1.68-1.36-2.66-1.85a1 1 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z" />
+		</svg>
+	)
+}
+
+function SpeakingIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+		</svg>
+	)
+}
+
+// Phase 5Q: Components V2 Icons
+function ComponentsIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h16v2H4v-2z" />
+		</svg>
+	)
+}
+
+function SectionIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M3 5v14h18V5H3zm16 12H5V7h14v10zM7 9h7v2H7V9zm0 4h10v2H7v-2z" />
+		</svg>
+	)
+}
+
+function ButtonIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M19 7H5c-1.1 0-2 .9-2 2v6c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zm0 8H5V9h14v6z" />
+		</svg>
+	)
+}
+
+function GalleryIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z" />
+		</svg>
+	)
+}
+
+function ContainerIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z" />
+			<path d="M7 7h2v2H7V7zm0 4h2v2H7v-2zm0 4h2v2H7v-2z" />
+		</svg>
+	)
+}
+
+function FileIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z" />
+		</svg>
+	)
+}
+
+function SpoilerIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" />
 		</svg>
 	)
 }

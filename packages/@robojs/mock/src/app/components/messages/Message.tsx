@@ -11,7 +11,8 @@ import styles from './Message.module.css'
 
 // Discord message flags
 const MESSAGE_FLAGS = {
-	EPHEMERAL: 64  // 1 << 6
+	EPHEMERAL: 64,           // 1 << 6
+	IS_COMPONENTS_V2: 32768  // 1 << 15
 }
 
 interface MessageProps {
@@ -37,14 +38,22 @@ export function Message({
 	onContextMenu,
 	onUserContextMenu
 }: MessageProps) {
-	const { author, content, timestamp, edited_timestamp, embeds, attachments, components, reactions, flags } = message
+	const { author, content, timestamp, edited_timestamp, embeds, attachments, components, reactions, flags, pinned, message_reference } = message
 	const isEphemeral = ((flags ?? 0) & MESSAGE_FLAGS.EPHEMERAL) !== 0
+	const isV2 = ((flags ?? 0) & MESSAGE_FLAGS.IS_COMPONENTS_V2) !== 0
 
 	return (
 		<div
 			className={`${styles.message} ${isHighlighted ? styles.highlighted : ''} ${isEphemeral ? styles.ephemeral : ''}`}
 			onContextMenu={onContextMenu ? (e) => onContextMenu(e, message) : undefined}
 		>
+			{/* Reply reference indicator */}
+			{message_reference && (
+				<div className={styles.replyReference}>
+					<ReplyIcon />
+					<span className={styles.replyText}>Replying to a message</span>
+				</div>
+			)}
 			{isFirstInGroup ? (
 				<>
 					<div className={styles.avatar}>
@@ -83,6 +92,7 @@ export function Message({
 								{author.username}
 							</span>
 							{author.bot && <span className={styles.botBadge}>BOT</span>}
+							{pinned && <span className={styles.pinnedBadge} title="Pinned"><PinIcon /></span>}
 							<span className={styles.timestamp}>{formatTimestamp(timestamp)}</span>
 						</div>
 						<MessageContent
@@ -95,6 +105,7 @@ export function Message({
 							messageId={message.id}
 							channelId={message.channel_id}
 							isEphemeral={isEphemeral}
+							isV2={isV2}
 							onButtonClick={onButtonClick}
 							onSelectOption={onSelectOption}
 							onAddReaction={onAddReaction}
@@ -118,6 +129,7 @@ export function Message({
 							messageId={message.id}
 							channelId={message.channel_id}
 							isEphemeral={isEphemeral}
+							isV2={isV2}
 							onButtonClick={onButtonClick}
 							onSelectOption={onSelectOption}
 							onAddReaction={onAddReaction}
@@ -140,6 +152,7 @@ interface MessageContentProps {
 	messageId: string
 	channelId: string
 	isEphemeral?: boolean
+	isV2?: boolean
 	onButtonClick?: (messageId: string, customId: string) => Promise<void>
 	onSelectOption?: (messageId: string, customId: string, values: string[]) => Promise<void>
 	onAddReaction?: (messageId: string, emoji: string) => Promise<void>
@@ -156,6 +169,7 @@ function MessageContent({
 	messageId,
 	channelId,
 	isEphemeral,
+	isV2,
 	onButtonClick,
 	onSelectOption,
 	onAddReaction,
@@ -193,7 +207,8 @@ function MessageContent({
 
 	return (
 		<div className={styles.messageContent}>
-			{content && (
+			{/* V2 replaces content and embeds - only render these in V1 mode */}
+			{!isV2 && content && (
 				<div className={styles.textContent}>
 					<Markdown text={content} />
 					{editedTimestamp && (
@@ -207,8 +222,8 @@ function MessageContent({
 				</div>
 			)}
 
-			{/* Render embeds */}
-			{typedEmbeds && typedEmbeds.length > 0 && (
+			{/* Render embeds (V1 only) */}
+			{!isV2 && typedEmbeds && typedEmbeds.length > 0 && (
 				<div className={styles.embeds}>
 					{typedEmbeds.map((embed, i) => (
 						<Embed key={i} embed={embed} />
@@ -221,7 +236,7 @@ function MessageContent({
 				<Attachments attachments={typedAttachments} />
 			)}
 
-			{/* Render components (buttons, selects) */}
+			{/* Render components (V1 action rows or V2 display components) */}
 			{components && components.length > 0 && onButtonClick && onSelectOption && (
 				<ComponentsContainer
 					components={components}
@@ -229,6 +244,7 @@ function MessageContent({
 					channelId={channelId}
 					onButtonClick={(customId) => onButtonClick(messageId, customId)}
 					onSelectOption={(customId, values) => onSelectOption(messageId, customId, values)}
+					isV2={isV2}
 				/>
 			)}
 
@@ -245,5 +261,22 @@ function MessageContent({
 			{/* Ephemeral badge */}
 			{isEphemeral && <EphemeralBadge />}
 		</div>
+	)
+}
+
+// Icon components for message indicators
+function PinIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l5.59-5.59L19 10l-7 7z" />
+		</svg>
+	)
+}
+
+function ReplyIcon() {
+	return (
+		<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z" />
+		</svg>
 	)
 }

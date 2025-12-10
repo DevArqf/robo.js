@@ -301,6 +301,12 @@ export class Session implements ISession {
 		}>
 		/** Message type (default 0 = DEFAULT, 7 = USER_JOIN, 8 = GUILD_BOOST, etc.) */
 		type?: number
+		/** Reference to another message (for replies) */
+		messageReference?: {
+			message_id?: string
+			channel_id?: string
+			guild_id?: string
+		}
 	}): Promise<MockMessage> {
 		if (this.ending) {
 			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
@@ -348,7 +354,8 @@ export class Session implements ISession {
 			attachments: options.attachments ?? [],
 			components: options.components ?? [],
 			mentions: options.mentions ?? [],
-			type: options.type
+			type: options.messageReference ? 19 : options.type, // Type 19 = REPLY when messageReference is present
+			message_reference: options.messageReference
 		})
 
 		// Apply reactions if provided

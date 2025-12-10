@@ -47,11 +47,21 @@ export class StageBridge {
 	 * @param sessionId - The session
 	 * @param interactionId - The interaction that was responded to
 	 * @param response - The response data
+	 * @param channelId - Optional channel ID for deferred responses (Phase 5O)
+	 * @param bot - Optional bot info for deferred responses (Phase 5O)
 	 */
-	onInteractionResponse(sessionId: string, interactionId: string, response: unknown): void {
+	onInteractionResponse(
+		sessionId: string,
+		interactionId: string,
+		response: unknown,
+		channelId?: string,
+		bot?: { id?: string; username?: string; avatar?: string | null }
+	): void {
 		const stageData: StageInteractionResponseData = {
 			interactionId,
-			response
+			response,
+			channelId,
+			bot
 		}
 
 		const stageServer = getStageServer()
@@ -75,6 +85,23 @@ export class StageBridge {
 			data: {
 				interactionId,
 				message
+			}
+		})
+	}
+
+	/**
+	 * Called when a bot edits an interaction message (e.g., editReply after deferReply).
+	 * Phase 5O: This clears the "Bot is thinking..." indicator.
+	 *
+	 * @param sessionId - The session
+	 * @param interactionId - The interaction that was edited
+	 */
+	onInteractionEdit(sessionId: string, interactionId: string): void {
+		const stageServer = getStageServer()
+		stageServer.broadcastToSession(sessionId, {
+			type: 'interaction_edit',
+			data: {
+				interactionId
 			}
 		})
 	}

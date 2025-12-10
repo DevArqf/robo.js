@@ -6,7 +6,7 @@ interface MarkdownProps {
 }
 
 interface ParsedNode {
-	type: 'text' | 'bold' | 'italic' | 'strikethrough' | 'code' | 'codeblock' | 'link'
+	type: 'text' | 'bold' | 'italic' | 'strikethrough' | 'code' | 'codeblock' | 'link' | 'h1' | 'h2' | 'h3' | 'newline'
 	content: string
 	language?: string
 	url?: string
@@ -20,16 +20,22 @@ export function Markdown({ text }: MarkdownProps) {
 	const nodes = useMemo(() => parseMarkdown(text), [text])
 
 	return (
-		<span className={styles.markdown}>
+		<div className={styles.markdown}>
 			{nodes.map((node, i) => (
 				<MarkdownNode key={i} node={node} />
 			))}
-		</span>
+		</div>
 	)
 }
 
 function MarkdownNode({ node }: { node: ParsedNode }) {
 	switch (node.type) {
+		case 'h1':
+			return <h1 className={styles.h1}>{node.content}</h1>
+		case 'h2':
+			return <h2 className={styles.h2}>{node.content}</h2>
+		case 'h3':
+			return <h3 className={styles.h3}>{node.content}</h3>
 		case 'bold':
 			return <strong className={styles.bold}>{node.content}</strong>
 		case 'italic':
@@ -50,6 +56,8 @@ function MarkdownNode({ node }: { node: ParsedNode }) {
 					{node.content}
 				</a>
 			)
+		case 'newline':
+			return <br />
 		default:
 			return <>{node.content}</>
 	}
@@ -57,14 +65,72 @@ function MarkdownNode({ node }: { node: ParsedNode }) {
 
 /**
  * Parse Discord markdown into nodes
- * Order matters: code blocks first, then inline patterns
+ * Order: code blocks first (multi-line), then headers, then inline patterns
  */
 function parseMarkdown(text: string): ParsedNode[] {
 	const nodes: ParsedNode[] = []
+
+	// Split by code block markers - more reliable than regex exec with global flag
+	const parts = text.split(/(```[\s\S]*?```)/g)
+
+	for (const part of parts) {
+		if (!part) continue
+
+		// Check if this part is a code block
+		const codeBlockMatch = /^```(\w*)\n?([\s\S]*?)```$/.exec(part)
+		if (codeBlockMatch) {
+			nodes.push({
+				type: 'codeblock',
+				language: codeBlockMatch[1] || undefined,
+				content: codeBlockMatch[2]
+			})
+		} else {
+			// Process as regular text with headers
+			parseTextWithHeaders(part, nodes)
+		}
+	}
+
+	return nodes
+}
+
+/**
+ * Parse text that may contain headers and inline markdown
+ */
+function parseTextWithHeaders(text: string, nodes: ParsedNode[]): void {
+	const lines = text.split('\n')
+
+	for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+		const line = lines[lineIndex]
+
+		// Check for headers at start of line (must check ### before ## before #)
+		const h3Match = /^### (.+)$/.exec(line)
+		const h2Match = /^## (.+)$/.exec(line)
+		const h1Match = /^# (.+)$/.exec(line)
+
+		if (h3Match) {
+			nodes.push({ type: 'h3', content: h3Match[1] })
+		} else if (h2Match) {
+			nodes.push({ type: 'h2', content: h2Match[1] })
+		} else if (h1Match) {
+			nodes.push({ type: 'h1', content: h1Match[1] })
+		} else if (line.length > 0) {
+			// Parse inline markdown for non-empty lines
+			parseInlineMarkdown(line, nodes)
+		}
+
+		// Add newline between lines (but not after the last line)
+		if (lineIndex < lines.length - 1) {
+			nodes.push({ type: 'newline', content: '' })
+		}
+	}
+}
+
+/**
+ * Parse inline markdown (bold, italic, code, etc.)
+ */
+function parseInlineMarkdown(text: string, nodes: ParsedNode[]): void {
 	let remaining = text
 
-	// Code block regex: ```language\ncode``` or ```code```
-	const codeBlockRegex = /```(\w*)\n?([\s\S]*?)```/
 	// Inline code regex: `code`
 	const inlineCodeRegex = /`([^`]+)`/
 	// Bold regex: **text**
@@ -75,20 +141,22 @@ function parseMarkdown(text: string): ParsedNode[] {
 	const strikethroughRegex = /~~([^~]+)~~/
 	// Link regex: [text](url)
 	const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/
+	// Auto-link regex: https://... or http://...
+	const autoLinkRegex = /https?:\/\/[^\s<>)\]]+/
 
 	while (remaining.length > 0) {
 		let match: RegExpExecArray | null = null
-		let matchType: ParsedNode['type'] = 'text'
+		let matchType: ParsedNode['type'] | 'autolink' = 'text'
 		let matchIndex = remaining.length
 
 		// Find the earliest match
-		const checks: Array<{ regex: RegExp; type: ParsedNode['type'] }> = [
-			{ regex: codeBlockRegex, type: 'codeblock' },
+		const checks: Array<{ regex: RegExp; type: ParsedNode['type'] | 'autolink' }> = [
 			{ regex: inlineCodeRegex, type: 'code' },
 			{ regex: boldRegex, type: 'bold' },
 			{ regex: italicRegex, type: 'italic' },
 			{ regex: strikethroughRegex, type: 'strikethrough' },
-			{ regex: linkRegex, type: 'link' }
+			{ regex: linkRegex, type: 'link' },
+			{ regex: autoLinkRegex, type: 'autolink' }
 		]
 
 		for (const { regex, type } of checks) {
@@ -107,13 +175,6 @@ function parseMarkdown(text: string): ParsedNode[] {
 
 		if (match) {
 			switch (matchType) {
-				case 'codeblock':
-					nodes.push({
-						type: 'codeblock',
-						language: match[1] || undefined,
-						content: match[2]
-					})
-					break
 				case 'code':
 					nodes.push({ type: 'code', content: match[1] })
 					break
@@ -129,12 +190,13 @@ function parseMarkdown(text: string): ParsedNode[] {
 				case 'link':
 					nodes.push({ type: 'link', content: match[1], url: match[2] })
 					break
+				case 'autolink':
+					nodes.push({ type: 'link', content: match[0], url: match[0] })
+					break
 			}
 			remaining = remaining.slice(matchIndex + match[0].length)
 		} else {
 			break
 		}
 	}
-
-	return nodes
 }

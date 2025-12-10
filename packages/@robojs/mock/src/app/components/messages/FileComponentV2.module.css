@@ -1,0 +1,79 @@
+.file {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 12px;
+	background: var(--background-secondary);
+	border-radius: 8px;
+	border: 1px solid var(--background-tertiary);
+	max-width: 400px;
+}
+
+.fileIcon {
+	width: 40px;
+	height: 40px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: var(--background-tertiary);
+	border-radius: 4px;
+	font-size: 20px;
+	flex-shrink: 0;
+}
+
+.fileInfo {
+	flex: 1;
+	min-width: 0;
+}
+
+.fileName {
+	display: block;
+	color: var(--text-link);
+	text-decoration: none;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+a.fileName:hover {
+	text-decoration: underline;
+}
+
+.downloadButton {
+	padding: 8px;
+	color: var(--interactive-normal);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 4px;
+	text-decoration: none;
+}
+
+.downloadButton:hover {
+	color: var(--interactive-hover);
+	background: var(--background-modifier-hover);
+}
+
+/* Spoiler state */
+.spoiler {
+	cursor: pointer;
+}
+
+.spoiler .fileIcon {
+	filter: blur(4px);
+}
+
+.spoiler .fileName {
+	color: var(--text-muted);
+}
+
+.spoilerBadge {
+	padding: 4px 8px;
+	background: var(--background-tertiary);
+	border-radius: 4px;
+	font-size: 10px;
+	font-weight: 600;
+	color: var(--text-muted);
+	letter-spacing: 0.5px;
+}

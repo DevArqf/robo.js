@@ -2,6 +2,31 @@
 	word-wrap: break-word;
 }
 
+/* Headers */
+.h1 {
+	font-size: 1.5em;
+	font-weight: 700;
+	color: var(--header-primary);
+	margin: 0;
+	line-height: 1.375;
+}
+
+.h2 {
+	font-size: 1.25em;
+	font-weight: 700;
+	color: var(--header-primary);
+	margin: 0;
+	line-height: 1.375;
+}
+
+.h3 {
+	font-size: 1em;
+	font-weight: 700;
+	color: var(--header-primary);
+	margin: 0;
+	line-height: 1.375;
+}
+
 .bold {
 	font-weight: 700;
 }
