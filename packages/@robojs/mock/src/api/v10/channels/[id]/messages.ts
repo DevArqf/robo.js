@@ -7,7 +7,7 @@ import { isMultipartRequest, parseMultipartMessage, MultipartError } from '../..
 import { getImageDimensions, isImageContentType } from '../../../../utils/image.js'
 import type { MockAttachment, AttachmentPayload, StoredAttachment } from '../../../../types/index.js'
 import { MessageFlags, createComponentValidationError, createV2ConflictError } from '../../../../types/index.js'
-import { validateComponentsV2 } from '../../../../session/state.js'
+import { validateComponents, validateComponentsV2 } from '../../../../session/state.js'
 import { enforcePermissions } from '../../../../utils/permission-check.js'
 import { getGatewayServer } from '../../../../core/gateway.js'
 
@@ -272,6 +272,15 @@ export default async (request: RoboRequest) => {
 		// Validate V2 component structure
 		const attachmentFilenames = new Set(attachments.map((a) => a.filename))
 		const validation = validateComponentsV2(body.components ?? [], attachmentFilenames)
+		if (!validation.valid) {
+			return new Response(JSON.stringify(createComponentValidationError(validation.errors)), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+	} else if (body.components && body.components.length > 0) {
+		// Validate classic (V1) components
+		const validation = validateComponents(body.components)
 		if (!validation.valid) {
 			return new Response(JSON.stringify(createComponentValidationError(validation.errors)), {
 				status: 400,

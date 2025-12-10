@@ -63,9 +63,7 @@ describe('Phase 14: Multiple Action Rows', () => {
 		expect(message.components.length).toBe(5)
 	})
 
-	// Note: Mock server does not validate component limits - this is Discord API behavior
-	// Discord.js builders don't validate action row count at build time either
-	it.skip('should enforce max 5 action rows', async () => {
+	it('should enforce max 5 action rows', async () => {
 		const rows = []
 		for (let i = 0; i < 6; i++) {
 			rows.push(
@@ -75,7 +73,7 @@ describe('Phase 14: Multiple Action Rows', () => {
 			)
 		}
 
-		await expect(channel.send({ content: '6 Rows', components: rows })).rejects.toBeDefined()
+		await expect(channel.send({ content: '6 Rows', components: rows })).rejects.toThrow()
 	})
 
 	it('should mix buttons and select menu in different rows', async () => {
@@ -114,5 +112,32 @@ describe('Phase 14: Multiple Action Rows', () => {
 		// Both are valid when separate
 		expect(buttonRow.components.length).toBe(2)
 		expect(selectRow.components.length).toBe(1)
+	})
+
+	it('should reject mixing buttons and select menu in same row', async () => {
+		// Build a button row, then manually inject a select menu to bypass TypeScript checks
+		const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+			new ButtonBuilder().setCustomId('btn_mix').setLabel('Button').setStyle(ButtonStyle.Primary)
+		)
+
+		// Get the raw JSON and manually add a select menu (bypassing type safety)
+		const rowJson = buttonRow.toJSON() as { type: number; components: unknown[] }
+		rowJson.components.push({
+			type: ComponentType.StringSelect,
+			custom_id: 'select_mix',
+			options: [{ label: 'Option', value: 'opt' }]
+		})
+
+		// Reconstruct as ActionRowBuilder with mixed components
+		const mixedRow = { type: 1, components: rowJson.components }
+
+		// Server should reject this invalid combination
+		await expect(
+			channel.send({
+				content: 'Mixed in same row',
+				// @ts-expect-error - intentionally sending invalid component structure
+				components: [mixedRow]
+			})
+		).rejects.toThrow()
 	})
 })

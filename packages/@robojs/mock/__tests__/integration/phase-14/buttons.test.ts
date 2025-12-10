@@ -145,15 +145,13 @@ describe('Phase 14: Button Variations', () => {
 		expect(message.components[0].components.length).toBe(5)
 	})
 
-	// Note: Mock server does not validate component limits - this is Discord API behavior
-	// Discord.js builders also don't validate button count per row at build time
-	it.skip('should enforce max 5 buttons per row', async () => {
+	it('should enforce max 5 buttons per row', async () => {
 		const row = new ActionRowBuilder<ButtonBuilder>()
 
 		for (let i = 0; i < 6; i++) {
 			row.addComponents(new ButtonBuilder().setCustomId(`btn${i}`).setLabel(`${i}`).setStyle(ButtonStyle.Primary))
 		}
 
-		await expect(channel.send({ content: 'Too many', components: [row] })).rejects.toBeDefined()
+		await expect(channel.send({ content: 'Too many', components: [row] })).rejects.toThrow()
 	})
 })

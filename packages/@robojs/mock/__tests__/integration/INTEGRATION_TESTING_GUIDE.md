@@ -108,6 +108,12 @@ Tests are organized into phases matching the mock server implementation:
 | Phase 14 | Thread Archive/Unarchive | `phase-14/thread-archive.test.ts` |
 | Phase 14 | Audit Log Details | `phase-14/audit-logs.test.ts` |
 | Phase 14 | Scheduled Event Subscribers | `phase-14/scheduled-event-subscribers.test.ts` |
+| Phase 16 | VoiceState Properties | `phase-16/voice-state-properties.test.ts` |
+| Phase 16 | Stage Channel & Instance | `phase-16/stage-instance.test.ts` |
+| Phase 16 | VoiceChannel Members Collection | `phase-16/voice-channel-members.test.ts` |
+| Phase 16 | Presence & Activity Details | `phase-16/presence-activity.test.ts` |
+| Phase 16 | User Properties | `phase-16/user-properties.test.ts` |
+| Phase 16 | Attachment Properties | `phase-16/attachment-properties.test.ts` |
 
 ---
 
@@ -208,14 +214,21 @@ __tests__/integration/
 │   ├── guild-integrations.test.ts   # Guild integrations & vanity
 │   ├── guild-templates.test.ts      # Guild templates
 │   └── error-handling.test.ts       # Error classes & handling
-└── phase-14/
-    ├── buttons.test.ts              # Button style variations
-    ├── select-menus.test.ts         # Select menu types & options
-    ├── modals.test.ts               # Modal & TextInput variations
-    ├── action-rows.test.ts          # Action row limits & mixing
-    ├── thread-archive.test.ts       # Thread archive/unarchive edge cases
-    ├── audit-logs.test.ts           # Audit log entry details
-    └── scheduled-event-subscribers.test.ts # Scheduled event subscribers
+├── phase-14/
+│   ├── buttons.test.ts              # Button style variations
+│   ├── select-menus.test.ts         # Select menu types & options
+│   ├── modals.test.ts               # Modal & TextInput variations
+│   ├── action-rows.test.ts          # Action row limits & mixing
+│   ├── thread-archive.test.ts       # Thread archive/unarchive edge cases
+│   ├── audit-logs.test.ts           # Audit log entry details
+│   └── scheduled-event-subscribers.test.ts # Scheduled event subscribers
+└── phase-16/
+    ├── voice-state-properties.test.ts # VoiceState flags & properties
+    ├── stage-instance.test.ts        # Stage channel & instance ops
+    ├── voice-channel-members.test.ts # Voice channel member tracking
+    ├── presence-activity.test.ts     # Presence & activity details
+    ├── user-properties.test.ts       # User extended properties
+    └── attachment-properties.test.ts # Attachment metadata
 ```
 
 ### Server Lifecycle

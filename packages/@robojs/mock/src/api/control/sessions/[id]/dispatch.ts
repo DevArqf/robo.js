@@ -881,6 +881,142 @@ export default async (request: RoboRequest) => {
 		}
 	}
 
+	// Handle MESSAGE_REACTION_ADD - update state AND dispatch
+	if (body.event === 'MESSAGE_REACTION_ADD') {
+		const data = body.data as {
+			message_id: string
+			channel_id: string
+			guild_id?: string
+			user_id: string
+			emoji: { id: string | null; name: string }
+		}
+
+		if (!data.message_id || !data.channel_id || !data.user_id || !data.emoji) {
+			return badRequest('MESSAGE_REACTION_ADD requires "message_id", "channel_id", "user_id", and "emoji" in data')
+		}
+
+		// Add reaction to message state so fetch() returns complete data
+		session.state.addReaction(data.message_id, data.user_id, data.emoji)
+
+		// Dispatch the event
+		await session.dispatch(body.event, body.data)
+
+		return {
+			success: true,
+			dispatched: session.connections.size,
+			message_id: data.message_id,
+			emoji: data.emoji.name
+		}
+	}
+
+	// Handle MESSAGE_REACTION_REMOVE - update state AND dispatch
+	if (body.event === 'MESSAGE_REACTION_REMOVE') {
+		const data = body.data as {
+			message_id: string
+			channel_id: string
+			guild_id?: string
+			user_id: string
+			emoji: { id: string | null; name: string }
+		}
+
+		if (!data.message_id || !data.channel_id || !data.user_id || !data.emoji) {
+			return badRequest('MESSAGE_REACTION_REMOVE requires "message_id", "channel_id", "user_id", and "emoji" in data')
+		}
+
+		// Remove reaction from message state
+		session.state.removeReaction(data.message_id, data.user_id, data.emoji)
+
+		// Dispatch the event
+		await session.dispatch(body.event, body.data)
+
+		return {
+			success: true,
+			dispatched: session.connections.size,
+			message_id: data.message_id,
+			emoji: data.emoji.name
+		}
+	}
+
+	// Handle VOICE_STATE_UPDATE - update state AND broadcast to Stage clients (Phase 5P)
+	if (body.event === 'VOICE_STATE_UPDATE') {
+		const data = body.data as {
+			guild_id: string
+			channel_id: string | null
+			user_id: string
+			self_mute?: boolean
+			self_deaf?: boolean
+			mute?: boolean
+			deaf?: boolean
+			speaking?: boolean
+			member?: {
+				user: { id: string; username: string; discriminator?: string; avatar?: string | null }
+				roles?: string[]
+				joined_at?: string
+			}
+		}
+
+		if (!data.guild_id || !data.user_id) {
+			return badRequest('VOICE_STATE_UPDATE requires "guild_id" and "user_id" in data')
+		}
+
+		// Update session state
+		const voiceStateKey = `${data.guild_id}:${data.user_id}`
+		if (data.channel_id === null) {
+			// User left voice
+			session.state.voiceStates.delete(voiceStateKey)
+		} else {
+			// User joined or updated voice state
+			const existingState = session.state.voiceStates.get(voiceStateKey)
+			session.state.voiceStates.set(voiceStateKey, {
+				guild_id: data.guild_id,
+				channel_id: data.channel_id,
+				user_id: data.user_id,
+				self_mute: data.self_mute ?? existingState?.self_mute ?? false,
+				self_deaf: data.self_deaf ?? existingState?.self_deaf ?? false,
+				mute: data.mute ?? existingState?.mute ?? false,
+				deaf: data.deaf ?? existingState?.deaf ?? false,
+				speaking: data.speaking
+			})
+
+			// Ensure user exists in state if member data provided
+			if (data.member?.user && !session.state.users.has(data.member.user.id)) {
+				session.state.users.set(data.member.user.id, {
+					id: data.member.user.id,
+					username: data.member.user.username,
+					discriminator: data.member.user.discriminator ?? '0',
+					globalName: null,
+					avatar: data.member.user.avatar ?? null,
+					bot: false
+				})
+			}
+		}
+
+		// Dispatch to gateway
+		await session.dispatch(body.event, body.data)
+
+		// Broadcast to Stage clients
+		getStageServer().broadcastToSession(id, {
+			type: 'voice_state_update',
+			data: {
+				guild_id: data.guild_id,
+				channel_id: data.channel_id,
+				user_id: data.user_id,
+				self_mute: data.self_mute ?? false,
+				self_deaf: data.self_deaf ?? false,
+				mute: data.mute ?? false,
+				deaf: data.deaf ?? false,
+				speaking: data.speaking
+			}
+		})
+
+		return {
+			success: true,
+			dispatched: session.connections.size,
+			user_id: data.user_id,
+			channel_id: data.channel_id
+		}
+	}
+
 	// For other events, dispatch raw data
 	await session.dispatch(body.event, body.data)
 

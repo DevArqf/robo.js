@@ -11,7 +11,7 @@ import type {
 	StoredAttachment
 } from '../../../../../types/index.js'
 import { MessageFlags, createComponentValidationError, createV2ConflictError } from '../../../../../types/index.js'
-import { validateComponentsV2 } from '../../../../../session/state.js'
+import { validateComponents, validateComponentsV2 } from '../../../../../session/state.js'
 
 // Default port for CDN URLs (can be overridden via environment)
 const CDN_BASE_URL = process.env.MOCK_CDN_URL || 'http://localhost:53596'
@@ -254,6 +254,15 @@ export default async (request: RoboRequest) => {
 				headers: { 'Content-Type': 'application/json' }
 			})
 		}
+	} else if (responseData?.components && responseData.components.length > 0) {
+		// Validate classic (V1) components
+		const validation = validateComponents(responseData.components)
+		if (!validation.valid) {
+			return new Response(JSON.stringify(createComponentValidationError(validation.errors)), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
 	}
 
 	// 10. Store response on interaction
@@ -359,10 +368,22 @@ export default async (request: RoboRequest) => {
 
 	// 12. Notify stage clients of interaction response
 	try {
-		getStageBridge().onInteractionResponse(session.id, interaction.id, {
-			type: body.type,
-			data: responseData
-		})
+		// Phase 5O: Include channel and bot info for "Bot is thinking..." indicator
+		const botUser = session.state.botUser
+		getStageBridge().onInteractionResponse(
+			session.id,
+			interaction.id,
+			{
+				type: body.type,
+				data: responseData
+			},
+			interaction.channelId,
+			{
+				id: botUser.id,
+				username: botUser.username,
+				avatar: botUser.avatar ?? null
+			}
+		)
 	} catch {
 		// Stage bridge may not be initialized
 	}

@@ -2,6 +2,7 @@ import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../../../../core/manager.js'
 import { mockMessageToAPIMessage } from '../../../../../../discord/payloads.js'
 import { getGatewayServer } from '../../../../../../core/gateway.js'
+import { getStageBridge } from '../../../../../../core/stage-bridge.js'
 import { generateSnowflake } from '../../../../../../utils/snowflake.js'
 import { isMultipartRequest, parseMultipartMessage, MultipartError } from '../../../../../../utils/multipart.js'
 import { getImageDimensions, isImageContentType } from '../../../../../../utils/image.js'
@@ -674,6 +675,13 @@ async function handlePatch(
 	}
 
 	getGatewayServer().dispatchToSession(session.id, 'MESSAGE_UPDATE', dispatchData, channel?.guildId)
+
+	// Phase 5O: Notify stage that interaction edit is complete (clears "Bot is thinking..." indicator)
+	try {
+		getStageBridge().onInteractionEdit(session.id, interaction.id)
+	} catch {
+		// Stage bridge may not be initialized
+	}
 
 	// Return updated message
 	return mockMessageToAPIMessage(updatedMessage, author)
