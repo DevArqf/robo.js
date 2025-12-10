@@ -14,7 +14,15 @@ export function useSession() {
 	const selectedChannel = state.channels.find((c) => c.id === state.selectedChannelId) || null
 	const guildChannels = state.channels.filter((c) => c.guild_id === state.selectedGuildId)
 	const guildMembers = state.members.filter((m) => m.guild_id === state.selectedGuildId)
+	const guildRoles = state.roles.filter((r) => r.guild_id === state.selectedGuildId)
 	const channelMessages = state.selectedChannelId ? state.messages[state.selectedChannelId] || [] : []
+	// Filter to only slash commands (type 1 = ChatInput) for autocomplete
+	const slashCommands = state.commands.filter((c) => c.type === 1)
+	// Get typing users for current channel (filter out expired)
+	const now = Date.now()
+	const channelTypingUsers = state.selectedChannelId
+		? (state.typingUsers[state.selectedChannelId] || []).filter((t) => t.expiresAt > now)
+		: []
 
 	// Actions
 	const setSessionId = (sessionId: string) => {
@@ -60,6 +68,35 @@ export function useSession() {
 		})
 	}
 
+	// Click a button component
+	const clickButton = async (messageId: string, customId: string, channelId?: string) => {
+		const targetChannelId = channelId || state.selectedChannelId
+		if (!targetChannelId) {
+			throw new Error('No channel selected')
+		}
+
+		return sendCommand('click_button', {
+			channel_id: targetChannelId,
+			message_id: messageId,
+			custom_id: customId
+		})
+	}
+
+	// Select option(s) from a select menu
+	const selectOption = async (messageId: string, customId: string, values: string[], channelId?: string) => {
+		const targetChannelId = channelId || state.selectedChannelId
+		if (!targetChannelId) {
+			throw new Error('No channel selected')
+		}
+
+		return sendCommand('select_option', {
+			channel_id: targetChannelId,
+			message_id: messageId,
+			custom_id: customId,
+			values
+		})
+	}
+
 	return {
 		// State
 		...state,
@@ -72,7 +109,10 @@ export function useSession() {
 		selectedChannel,
 		guildChannels,
 		guildMembers,
+		guildRoles,
 		channelMessages,
+		channelTypingUsers,
+		slashCommands,
 
 		// Connection
 		connect,
@@ -87,6 +127,8 @@ export function useSession() {
 		// Commands
 		sendCommand,
 		sendMessage,
-		invokeCommand
+		invokeCommand,
+		clickButton,
+		selectOption
 	}
 }

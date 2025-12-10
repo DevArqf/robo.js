@@ -1,0 +1,54 @@
+.markdown {
+	word-wrap: break-word;
+}
+
+.bold {
+	font-weight: 700;
+}
+
+.italic {
+	font-style: italic;
+}
+
+.strikethrough {
+	text-decoration: line-through;
+}
+
+.code {
+	font-family: Consolas, 'Andale Mono WT', 'Andale Mono', 'Lucida Console', 'Lucida Sans Typewriter',
+		'DejaVu Sans Mono', 'Bitstream Vera Sans Mono', 'Liberation Mono', 'Nimbus Mono L', Monaco, 'Courier New',
+		Courier, monospace;
+	font-size: 85%;
+	background: var(--background-secondary);
+	padding: 0.2em 0.4em;
+	border-radius: 3px;
+}
+
+.codeblock {
+	font-family: Consolas, 'Andale Mono WT', 'Andale Mono', 'Lucida Console', 'Lucida Sans Typewriter',
+		'DejaVu Sans Mono', 'Bitstream Vera Sans Mono', 'Liberation Mono', 'Nimbus Mono L', Monaco, 'Courier New',
+		Courier, monospace;
+	font-size: 14px;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-tertiary);
+	border-radius: 4px;
+	padding: 8px;
+	margin: 8px 0;
+	overflow-x: auto;
+	white-space: pre;
+	display: block;
+}
+
+.codeblock code {
+	background: none;
+	padding: 0;
+}
+
+.link {
+	color: var(--text-link);
+	text-decoration: none;
+}
+
+.link:hover {
+	text-decoration: underline;
+}

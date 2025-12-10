@@ -1,0 +1,180 @@
+.overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+}
+
+.popout {
+	width: 340px;
+	background: var(--background-floating);
+	border-radius: var(--radius-lg);
+	overflow: hidden;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.banner {
+	height: 60px;
+	background: linear-gradient(135deg, var(--brand-500) 0%, var(--brand-560) 100%);
+}
+
+.avatarContainer {
+	display: flex;
+	justify-content: flex-start;
+	padding: 0 16px;
+	margin-top: -40px;
+}
+
+.avatar {
+	position: relative;
+	width: 80px;
+	height: 80px;
+	border-radius: 50%;
+	border: 6px solid var(--background-floating);
+	background: var(--background-secondary);
+}
+
+.avatarImage {
+	width: 100%;
+	height: 100%;
+	border-radius: 50%;
+	object-fit: cover;
+}
+
+.defaultAvatar {
+	width: 100%;
+	height: 100%;
+	border-radius: 50%;
+	background: var(--brand-500);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: white;
+	font-size: 32px;
+	font-weight: 600;
+}
+
+.statusDot {
+	position: absolute;
+	bottom: 2px;
+	right: 2px;
+	width: 20px;
+	height: 20px;
+	border-radius: 50%;
+	border: 4px solid var(--background-floating);
+}
+
+.statusDot.online {
+	background: var(--status-online);
+}
+
+.statusDot.idle {
+	background: var(--status-idle);
+}
+
+.statusDot.dnd {
+	background: var(--status-dnd);
+}
+
+.statusDot.offline {
+	background: var(--status-offline);
+}
+
+.content {
+	padding: 12px 16px 16px;
+}
+
+.header {
+	margin-bottom: 12px;
+}
+
+.displayName {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0;
+	font-size: 20px;
+	font-weight: 600;
+	color: var(--header-primary);
+}
+
+.botTag {
+	padding: 2px 6px;
+	background: var(--brand-500);
+	border-radius: 3px;
+	font-size: 10px;
+	font-weight: 600;
+	color: white;
+}
+
+.username {
+	margin: 4px 0 0;
+	font-size: 14px;
+	color: var(--header-secondary);
+}
+
+.divider {
+	height: 1px;
+	background: var(--background-modifier-accent);
+	margin: 12px 0;
+}
+
+.section {
+	margin-bottom: 16px;
+}
+
+.section:last-child {
+	margin-bottom: 0;
+}
+
+.sectionTitle {
+	margin: 0 0 8px;
+	font-size: 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+	color: var(--header-secondary);
+}
+
+.sectionValue {
+	margin: 0;
+	font-size: 14px;
+	color: var(--text-normal);
+}
+
+.roles {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.rolePill {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	background: var(--background-secondary);
+	border-radius: var(--radius-sm);
+}
+
+.roleDot {
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	flex-shrink: 0;
+}
+
+.roleName {
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 120px;
+}

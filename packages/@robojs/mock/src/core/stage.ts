@@ -14,7 +14,10 @@ import type {
 	StageChannel,
 	StageUser,
 	StageMember,
+	StageRole,
 	StageMessage,
+	StageApplicationCommand,
+	StageApplicationCommandOption,
 	StageCommandResponseData,
 	StageSendMessageData,
 	StageInvokeCommandData,
@@ -25,6 +28,7 @@ import type {
 	StageStartTypingData,
 	StageAddReactionData
 } from '../types/stage.js'
+import type { MockApplicationCommand, MockApplicationCommandOption } from '../types/index.js'
 import type { Session } from '../types/index.js'
 
 // Default configuration values
@@ -190,8 +194,10 @@ export class StageServer {
 			guilds: Array.from(state.guilds.values()).map(g => this.toStageGuild(g)),
 			channels: Array.from(state.channels.values()).map(c => this.toStageChannel(c)),
 			members: this.getStageMembers(state),
+			roles: this.getStageRoles(state),
 			messages: this.getRecentMessagesByChannel(state),
-			users: Array.from(state.users.values()).map(u => this.toStageUser(u))
+			users: Array.from(state.users.values()).map(u => this.toStageUser(u)),
+			commands: Array.from(state.commands.values()).map(c => this.toStageCommand(c))
 		}
 
 		this.pushEvent(ws, connState, {
@@ -261,6 +267,39 @@ export class StageServer {
 	}
 
 	/**
+	 * Convert MockApplicationCommand to StageApplicationCommand
+	 */
+	private toStageCommand(cmd: MockApplicationCommand): StageApplicationCommand {
+		return {
+			id: cmd.id,
+			name: cmd.name,
+			description: cmd.description,
+			type: cmd.type,
+			options: cmd.options?.map(opt => this.toStageCommandOption(opt))
+		}
+	}
+
+	/**
+	 * Convert MockApplicationCommandOption to StageApplicationCommandOption
+	 */
+	private toStageCommandOption(opt: MockApplicationCommandOption): StageApplicationCommandOption {
+		return {
+			type: opt.type,
+			name: opt.name,
+			description: opt.description,
+			required: opt.required,
+			choices: opt.choices?.map(c => ({ name: c.name, value: c.value })),
+			options: opt.options?.map(o => this.toStageCommandOption(o)),
+			channel_types: opt.channel_types,
+			min_value: opt.min_value,
+			max_value: opt.max_value,
+			min_length: opt.min_length,
+			max_length: opt.max_length,
+			autocomplete: opt.autocomplete
+		}
+	}
+
+	/**
 	 * Get all guild members as StageMember array
 	 */
 	private getStageMembers(state: Session['state']): StageMember[] {
@@ -279,6 +318,25 @@ export class StageServer {
 			}
 		}
 		return members
+	}
+
+	/**
+	 * Get all guild roles as StageRole array (Phase 5H)
+	 */
+	private getStageRoles(state: Session['state']): StageRole[] {
+		const roles: StageRole[] = []
+		for (const role of state.roles.values()) {
+			roles.push({
+				id: role.id,
+				name: role.name,
+				color: role.color,
+				position: role.position,
+				guild_id: role.guildId,
+				hoist: role.hoist
+			})
+		}
+		// Sort by position descending (highest first)
+		return roles.sort((a, b) => b.position - a.position)
 	}
 
 	/**
@@ -685,10 +743,50 @@ export class StageServer {
 	}
 
 	/**
+	 * Broadcast a state refresh to all connected stage clients for a session.
+	 * Called after state changes like GUILD_CREATE to update stage clients.
+	 */
+	broadcastStateRefresh(sessionId: string): void {
+		const session = sessionManager.get(sessionId)
+		if (!session) return
+
+		// Send state_sync to all connected clients for this session
+		for (const [ws, connState] of this.connections) {
+			if (connState.sessionId === sessionId && connState.authenticated && ws.readyState === WebSocket.OPEN) {
+				this.sendStateSync(ws, connState, session)
+			}
+		}
+	}
+
+	/**
 	 * Clear event buffer for a session (call when session is deleted)
 	 */
 	clearSessionBuffer(sessionId: string): void {
 		this.eventBuffers.delete(sessionId)
+	}
+
+	/**
+	 * Refresh state for all connections in a session
+	 * Sends a new state_sync to all connected stage clients
+	 */
+	refreshSessionState(sessionId: string): void {
+		const session = sessionManager.get(sessionId)
+		if (!session) {
+			mockLogger.warn(`Cannot refresh state: session ${sessionId} not found`)
+			return
+		}
+
+		let refreshCount = 0
+		for (const [ws, connState] of this.connections) {
+			if (connState.sessionId === sessionId && connState.authenticated && ws.readyState === WebSocket.OPEN) {
+				this.sendStateSync(ws, connState, session)
+				refreshCount++
+			}
+		}
+
+		if (refreshCount > 0) {
+			mockLogger.debug(`Refreshed state for ${refreshCount} stage client(s) in session ${sessionId}`)
+		}
 	}
 
 	/**

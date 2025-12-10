@@ -82,8 +82,10 @@ export interface StateSyncPayload {
 	guilds: StageGuild[]
 	channels: StageChannel[]
 	members: StageMember[]
+	roles: StageRole[]  // Phase 5H: Guild roles
 	messages: Record<string, StageMessage[]>  // channelId -> messages
 	users: StageUser[]
+	commands: StageApplicationCommand[]  // Phase 5G: Available slash commands
 }
 
 /**
@@ -108,6 +110,15 @@ export interface StageChannel {
 	parent_id?: Snowflake | null
 	position?: number
 	topic?: string | null
+	// Thread-specific fields (types 10, 11, 12)
+	thread_metadata?: {
+		archived: boolean
+		auto_archive_duration: number
+		archive_timestamp: string
+		locked: boolean
+	}
+	message_count?: number
+	owner_id?: Snowflake
 }
 
 /**
@@ -134,6 +145,18 @@ export interface StageMember {
 }
 
 /**
+ * Simplified role data for stage clients (Phase 5H)
+ */
+export interface StageRole {
+	id: Snowflake
+	name: string
+	color: number  // RGB integer (0 = no color)
+	position: number
+	guild_id: Snowflake
+	hoist: boolean  // Whether to show separately in member list
+}
+
+/**
  * Simplified message data for stage clients
  */
 export interface StageMessage {
@@ -148,6 +171,49 @@ export interface StageMessage {
 	components: unknown[]
 	attachments: unknown[]
 	reactions?: unknown[]
+}
+
+// ============================================================================
+// Phase 5G: Application Command Types for Stage UI
+// ============================================================================
+
+/**
+ * Application command option choice for stage clients
+ */
+export interface StageApplicationCommandOptionChoice {
+	name: string
+	value: string | number
+}
+
+/**
+ * Application command option for stage clients
+ */
+export interface StageApplicationCommandOption {
+	/** Option type (1=SubCommand, 2=SubCommandGroup, 3=String, 4=Integer, 5=Boolean, 6=User, 7=Channel, 8=Role, 9=Mentionable, 10=Number, 11=Attachment) */
+	type: number
+	name: string
+	description: string
+	required?: boolean
+	choices?: StageApplicationCommandOptionChoice[]
+	options?: StageApplicationCommandOption[] // For subcommands
+	channel_types?: number[]
+	min_value?: number
+	max_value?: number
+	min_length?: number
+	max_length?: number
+	autocomplete?: boolean
+}
+
+/**
+ * Simplified application command for stage clients
+ */
+export interface StageApplicationCommand {
+	id: Snowflake
+	name: string
+	description: string
+	/** Command type (1=ChatInput, 2=User, 3=Message) */
+	type: number
+	options?: StageApplicationCommandOption[]
 }
 
 /**

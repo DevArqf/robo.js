@@ -146,6 +146,13 @@ export class Session implements ISession {
 			}
 		}
 
+		// Create commands from config (for Stage UI testing)
+		if (options?.config?.commands) {
+			for (const commandConfig of options.config.commands) {
+				this.state.createCommand(commandConfig)
+			}
+		}
+
 		mockLogger.debug(`Session created: ${this.id}${this.name ? ` (${this.name})` : ''}`)
 	}
 
@@ -209,6 +216,7 @@ export class Session implements ISession {
 		guildId?: string
 		embeds?: unknown[]
 		attachments?: unknown[]
+		components?: unknown[]
 		/** User IDs that are mentioned in this message */
 		mentions?: string[]
 	}): Promise<MockMessage> {
@@ -256,6 +264,7 @@ export class Session implements ISession {
 			content: options.content ?? '',
 			embeds: options.embeds ?? [],
 			attachments: options.attachments ?? [],
+			components: options.components ?? [],
 			mentions: options.mentions ?? []
 		})
 

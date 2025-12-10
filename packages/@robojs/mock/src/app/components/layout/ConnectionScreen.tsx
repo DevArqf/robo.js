@@ -1,10 +1,69 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSession } from '../../hooks/useSession'
 import styles from './ConnectionScreen.module.css'
 
 export function ConnectionScreen() {
 	const { sessionId, isConnecting, error, setSessionId, connect } = useSession()
 	const [inputValue, setInputValue] = useState(sessionId || '')
+	const [isCreating, setIsCreating] = useState(false)
+	const [createError, setCreateError] = useState<string | null>(null)
+
+	// Detect API prefix from current URL
+	const getApiPrefix = useCallback(() => {
+		const pathname = window.location.pathname
+		const stageIndex = pathname.indexOf('/stage')
+		return stageIndex !== -1 ? pathname.slice(0, stageIndex) : ''
+	}, [])
+
+	// Create a new session via control API
+	const createNewSession = useCallback(async () => {
+		setIsCreating(true)
+		setCreateError(null)
+
+		try {
+			const prefix = getApiPrefix()
+			const response = await fetch(`${prefix}/api/control/sessions`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({})
+			})
+
+			if (!response.ok) {
+				throw new Error(`Failed to create session: ${response.statusText}`)
+			}
+
+			const data = await response.json()
+			const newSessionId = data.sessionId || data.id || data.session_id
+
+			if (newSessionId) {
+				setInputValue(newSessionId)
+				// Focus the input after creating
+				const input = document.querySelector('input[type="text"]') as HTMLInputElement
+				input?.focus()
+			} else {
+				throw new Error('No session ID returned')
+			}
+		} catch (err) {
+			setCreateError(err instanceof Error ? err.message : 'Failed to create session')
+		} finally {
+			setIsCreating(false)
+		}
+	}, [getApiPrefix])
+
+	// Keyboard shortcut: Cmd/Ctrl+N to create new session
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+				e.preventDefault()
+				if (!isCreating && !isConnecting) {
+					createNewSession()
+				}
+			}
+		}
+
+		window.addEventListener('keydown', handleKeyDown)
+		return () => window.removeEventListener('keydown', handleKeyDown)
+	}, [createNewSession, isCreating, isConnecting])
 
 	const handleConnect = () => {
 		if (inputValue.trim()) {
@@ -34,15 +93,25 @@ export function ConnectionScreen() {
 
 				<div className={styles.form}>
 					<label className={styles.label}>Session ID</label>
-					<input
-						type="text"
-						className={styles.input}
-						placeholder="Enter session ID (e.g., sess_abc123)"
-						value={inputValue}
-						onChange={(e) => setInputValue(e.target.value)}
-						onKeyDown={handleKeyDown}
-						disabled={isConnecting}
-					/>
+					<div className={styles.inputRow}>
+						<input
+							type="text"
+							className={styles.input}
+							placeholder="Enter session ID (e.g., sess_abc123)"
+							value={inputValue}
+							onChange={(e) => setInputValue(e.target.value)}
+							onKeyDown={handleKeyDown}
+							disabled={isConnecting || isCreating}
+						/>
+						<button
+							className={styles.createButton}
+							onClick={createNewSession}
+							disabled={isCreating || isConnecting}
+							title="Create new session (⌘N / Ctrl+N)"
+						>
+							{isCreating ? <span className={styles.spinner} /> : '+'}
+						</button>
+					</div>
 
 					<button className={styles.button} onClick={handleConnect} disabled={isConnecting || !inputValue.trim()}>
 						{isConnecting ? (
@@ -55,12 +124,14 @@ export function ConnectionScreen() {
 						)}
 					</button>
 
-					{error && <div className={styles.error}>{error}</div>}
+					{(error || createError) && <div className={styles.error}>{error || createError}</div>}
 				</div>
 
 				<div className={styles.help}>
-					<p>Create a session using the control API:</p>
-					<code className={styles.code}>POST /control/sessions</code>
+					<p>
+						Press <kbd className={styles.kbd}>⌘N</kbd> or <kbd className={styles.kbd}>Ctrl+N</kbd> to create a new
+						session
+					</p>
 				</div>
 			</div>
 		</div>

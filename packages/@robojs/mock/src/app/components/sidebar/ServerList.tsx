@@ -1,13 +1,437 @@
+import { useState, useCallback } from 'react'
 import type { StageGuild } from '../../types/stage'
+import { useSession } from '../../hooks/useSession'
 import styles from './ServerList.module.css'
 
 interface ServerListProps {
 	guilds: StageGuild[]
 	selectedId: string | null
 	onSelect: (id: string | null) => void
+	unreadGuildIds?: Set<string>
+	sessionId: string | null
 }
 
-export function ServerList({ guilds, selectedId, onSelect }: ServerListProps) {
+export function ServerList({ guilds, selectedId, onSelect, unreadGuildIds, sessionId }: ServerListProps) {
+	const { sendCommand } = useSession()
+	const [isSeeding, setIsSeeding] = useState(false)
+	const [seedError, setSeedError] = useState<string | null>(null)
+
+	// Detect API prefix from current URL
+	const getApiPrefix = useCallback(() => {
+		const pathname = window.location.pathname
+		const stageIndex = pathname.indexOf('/stage')
+		return stageIndex !== -1 ? pathname.slice(0, stageIndex) : ''
+	}, [])
+
+	// Seed test data when there are no guilds
+	const handleSeedData = useCallback(async () => {
+		if (!sessionId || isSeeding) return
+
+		setIsSeeding(true)
+		setSeedError(null)
+
+		try {
+			const prefix = getApiPrefix()
+			const baseUrl = `${prefix}/api/control/sessions/${sessionId}`
+
+			// 1. Create a test guild with channels
+			const guildResponse = await fetch(`${baseUrl}/dispatch`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					event: 'GUILD_CREATE',
+					data: {
+						id: '123456789012345678',
+						name: 'Test Server',
+						icon: null,
+						owner_id: '987654321098765432',
+						member_count: 3,
+						channels: [
+							{
+								id: '111111111111111111',
+								type: 0,
+								name: 'general',
+								position: 1,
+								guild_id: '123456789012345678',
+								parent_id: '333333333333333333'
+							},
+							{
+								id: '222222222222222222',
+								type: 0,
+								name: 'bot-testing',
+								position: 2,
+								guild_id: '123456789012345678',
+								parent_id: '333333333333333333'
+							},
+							{
+								id: '333333333333333333',
+								type: 4,
+								name: 'Text Channels',
+								position: 0,
+								guild_id: '123456789012345678'
+							}
+						],
+						roles: [
+							{
+								id: '123456789012345678',
+								name: '@everyone',
+								color: 0,
+								position: 0,
+								hoist: false,
+								permissions: '0'
+							},
+							{
+								id: '444444444444444444',
+								name: 'Admin',
+								color: 15158332,
+								position: 3,
+								hoist: true,
+								permissions: '8'
+							},
+							{
+								id: '555555555555555555',
+								name: 'Moderator',
+								color: 3447003,
+								position: 2,
+								hoist: true,
+								permissions: '0'
+							},
+							{
+								id: '666666666666666666',
+								name: 'Bot',
+								color: 5793266,
+								position: 1,
+								hoist: true,
+								permissions: '0'
+							}
+						],
+						members: [
+							{
+								user: {
+									id: '100000000000000001',
+									username: 'TestUser',
+									discriminator: '0',
+									avatar: null,
+									bot: false
+								},
+								roles: ['444444444444444444'],
+								joined_at: '2024-01-01T00:00:00.000Z'
+							},
+							{
+								user: {
+									id: '100000000000000002',
+									username: 'MockBot',
+									discriminator: '0',
+									avatar: null,
+									bot: true
+								},
+								roles: ['666666666666666666'],
+								joined_at: '2024-01-01T00:00:00.000Z'
+							},
+							{
+								user: {
+									id: '100000000000000003',
+									username: 'AnotherUser',
+									discriminator: '0',
+									avatar: null,
+									bot: false
+								},
+								roles: ['555555555555555555'],
+								joined_at: '2024-01-02T00:00:00.000Z'
+							}
+						]
+					}
+				})
+			})
+
+			if (!guildResponse.ok) {
+				throw new Error('Failed to create guild')
+			}
+
+			// Small delay to let state propagate
+			await new Promise((resolve) => setTimeout(resolve, 200))
+
+			// 2. Send test messages with various content types
+			const messages: Array<{
+				content: string
+				author: { id: string; username: string; bot?: boolean }
+				embeds?: unknown[]
+				attachments?: unknown[]
+				components?: unknown[]
+			}> = [
+				{
+					content: 'Hello! Welcome to the test server. 👋',
+					author: { id: '100000000000000001', username: 'TestUser', bot: false }
+				},
+				{
+					content: 'Hi there! I am a bot responding to your message.',
+					author: { id: '100000000000000002', username: 'MockBot', bot: true }
+				},
+				{
+					content: 'This second message should be grouped with my first one!',
+					author: { id: '100000000000000001', username: 'TestUser', bot: false }
+				},
+				{
+					content: 'And I am a different user joining the conversation!',
+					author: { id: '100000000000000003', username: 'AnotherUser', bot: false }
+				},
+				// Message with markdown
+				{
+					content: 'Here is some **bold text**, *italic*, and `inline code`.\n```js\nconsole.log("Hello!")\n```',
+					author: { id: '100000000000000002', username: 'MockBot', bot: true }
+				},
+				// Message with embed
+				{
+					content: 'Check out this embed:',
+					author: { id: '100000000000000002', username: 'MockBot', bot: true },
+					embeds: [
+						{
+							title: 'Example Embed',
+							description: 'This is an example embed with **markdown** support and various fields.',
+							color: 0x5865f2,
+							url: 'https://discord.com',
+							author: {
+								name: 'Embed Author',
+								icon_url: 'https://cdn.discordapp.com/embed/avatars/0.png'
+							},
+							fields: [
+								{ name: 'Inline Field 1', value: 'Value 1', inline: true },
+								{ name: 'Inline Field 2', value: 'Value 2', inline: true },
+								{ name: 'Inline Field 3', value: 'Value 3', inline: true },
+								{ name: 'Regular Field', value: 'This is a full-width field with more content.' }
+							],
+							thumbnail: {
+								url: 'https://cdn.discordapp.com/embed/avatars/1.png'
+							},
+							image: {
+								url: 'https://picsum.photos/400/200',
+								width: 400,
+								height: 200
+							},
+							footer: {
+								text: 'Footer text here',
+								icon_url: 'https://cdn.discordapp.com/embed/avatars/2.png'
+							},
+							timestamp: new Date().toISOString()
+						}
+					]
+				},
+				// Message with image attachment
+				{
+					content: 'Here is an image attachment:',
+					author: { id: '100000000000000001', username: 'TestUser', bot: false },
+					attachments: [
+						{
+							id: '444444444444444444',
+							filename: 'sample-image.png',
+							content_type: 'image/png',
+							size: 102400,
+							url: 'https://picsum.photos/300/200',
+							proxy_url: 'https://picsum.photos/300/200',
+							width: 300,
+							height: 200,
+							description: 'A sample image for testing'
+						}
+					]
+				},
+				// Message with file attachment
+				{
+					content: 'And here is a file download:',
+					author: { id: '100000000000000002', username: 'MockBot', bot: true },
+					attachments: [
+						{
+							id: '555555555555555555',
+							filename: 'document.pdf',
+							content_type: 'application/pdf',
+							size: 256000,
+							url: '#',
+							proxy_url: '#'
+						}
+					]
+				},
+				// Message with spoiler image
+				{
+					content: 'Spoiler image below:',
+					author: { id: '100000000000000003', username: 'AnotherUser', bot: false },
+					attachments: [
+						{
+							id: '666666666666666666',
+							filename: 'SPOILER_hidden.jpg',
+							content_type: 'image/jpeg',
+							size: 51200,
+							url: 'https://picsum.photos/250/150',
+							proxy_url: 'https://picsum.photos/250/150',
+							width: 250,
+							height: 150,
+							spoiler: true
+						}
+					]
+				},
+				// Message with buttons
+				{
+					content: 'Here are some interactive buttons:',
+					author: { id: '100000000000000002', username: 'MockBot', bot: true },
+					components: [
+						{
+							type: 1, // ActionRow
+							components: [
+								{
+									type: 2, // Button
+									style: 1, // Primary (blurple)
+									label: 'Primary',
+									custom_id: 'btn_primary'
+								},
+								{
+									type: 2,
+									style: 2, // Secondary (grey)
+									label: 'Secondary',
+									custom_id: 'btn_secondary'
+								},
+								{
+									type: 2,
+									style: 3, // Success (green)
+									label: 'Success',
+									custom_id: 'btn_success'
+								},
+								{
+									type: 2,
+									style: 4, // Danger (red)
+									label: 'Danger',
+									custom_id: 'btn_danger'
+								},
+								{
+									type: 2,
+									style: 5, // Link
+									label: 'Link',
+									url: 'https://discord.com'
+								}
+							]
+						},
+						{
+							type: 1,
+							components: [
+								{
+									type: 2,
+									style: 1,
+									label: 'With Emoji',
+									emoji: { name: '🎉' },
+									custom_id: 'btn_emoji'
+								},
+								{
+									type: 2,
+									style: 2,
+									label: 'Disabled',
+									custom_id: 'btn_disabled',
+									disabled: true
+								}
+							]
+						}
+					]
+				},
+				// Message with select menu
+				{
+					content: 'Choose your favorite color:',
+					author: { id: '100000000000000002', username: 'MockBot', bot: true },
+					components: [
+						{
+							type: 1,
+							components: [
+								{
+									type: 3, // String Select
+									custom_id: 'select_color',
+									placeholder: 'Select a color...',
+									options: [
+										{
+											label: 'Red',
+											value: 'red',
+											description: 'The color of passion',
+											emoji: { name: '🔴' }
+										},
+										{
+											label: 'Green',
+											value: 'green',
+											description: 'The color of nature',
+											emoji: { name: '🟢' }
+										},
+										{
+											label: 'Blue',
+											value: 'blue',
+											description: 'The color of the sky',
+											emoji: { name: '🔵' }
+										},
+										{
+											label: 'Yellow',
+											value: 'yellow',
+											description: 'The color of sunshine',
+											emoji: { name: '🟡' }
+										},
+										{
+											label: 'Purple',
+											value: 'purple',
+											description: 'The color of royalty',
+											emoji: { name: '🟣' }
+										}
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+
+			for (const msg of messages) {
+				await fetch(`${baseUrl}/dispatch`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						event: 'MESSAGE_CREATE',
+						data: {
+							channel_id: '111111111111111111',
+							content: msg.content,
+							author: msg.author,
+							embeds: msg.embeds || [],
+							attachments: msg.attachments || [],
+							components: msg.components || []
+						}
+					})
+				})
+				// Small delay between messages
+				await new Promise((resolve) => setTimeout(resolve, 50))
+			}
+
+			// 3. Dispatch a typing indicator to demonstrate that feature
+			await fetch(`${baseUrl}/dispatch`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					event: 'TYPING_START',
+					data: {
+						channel_id: '111111111111111111',
+						guild_id: '123456789012345678',
+						user_id: '100000000000000001',
+						user: {
+							id: '100000000000000001',
+							username: 'TestUser'
+						},
+						member: {
+							nick: null
+						}
+					}
+				})
+			})
+
+			// Request state refresh to update the UI
+			await sendCommand('request_state', {})
+		} catch (err) {
+			setSeedError(err instanceof Error ? err.message : 'Failed to seed data')
+			console.error('Seed error:', err)
+		} finally {
+			setIsSeeding(false)
+		}
+	}, [sessionId, isSeeding, getApiPrefix, sendCommand])
+
+	const hasNoGuilds = guilds.length === 0
+
 	return (
 		<nav className={styles.container}>
 			{/* Home/DM button */}
@@ -21,26 +445,41 @@ export function ServerList({ guilds, selectedId, onSelect }: ServerListProps) {
 			<div className={styles.separator} />
 
 			{/* Guild icons */}
-			{guilds.map((guild) => (
-				<div key={guild.id} className={`${styles.serverWrapper} ${selectedId === guild.id ? styles.selected : ''}`}>
-					<div className={styles.pill} />
-					<button className={styles.serverIcon} onClick={() => onSelect(guild.id)} title={guild.name}>
-						{guild.icon ? (
-							<img src={getGuildIconUrl(guild)} alt={guild.name} className={styles.iconImage} />
-						) : (
-							<span className={styles.serverAcronym}>{getGuildAcronym(guild.name)}</span>
-						)}
-					</button>
-				</div>
-			))}
+			{guilds.map((guild) => {
+				const isSelected = selectedId === guild.id
+				const hasUnread = unreadGuildIds?.has(guild.id) && !isSelected
 
-			{/* Add server button */}
+				return (
+					<div
+						key={guild.id}
+						className={`${styles.serverWrapper} ${isSelected ? styles.selected : ''} ${hasUnread ? styles.unread : ''}`}
+					>
+						<div className={styles.pill} />
+						<button className={styles.serverIcon} onClick={() => onSelect(guild.id)} title={guild.name}>
+							{guild.icon ? (
+								<img src={getGuildIconUrl(guild)} alt={guild.name} className={styles.iconImage} />
+							) : (
+								<span className={styles.serverAcronym}>{getGuildAcronym(guild.name)}</span>
+							)}
+						</button>
+					</div>
+				)
+			})}
+
+			{/* Add server / Seed data button */}
 			<div className={styles.serverWrapper}>
 				<div className={styles.pill} />
-				<button className={`${styles.serverIcon} ${styles.addButton}`} title="Add a Server">
-					<span className={styles.plus}>+</span>
+				<button
+					className={`${styles.serverIcon} ${styles.addButton} ${isSeeding ? styles.seeding : ''}`}
+					onClick={hasNoGuilds ? handleSeedData : undefined}
+					disabled={isSeeding}
+					title={hasNoGuilds ? 'Seed Test Data' : 'Add a Server'}
+				>
+					{isSeeding ? <span className={styles.spinner} /> : <span className={styles.plus}>+</span>}
 				</button>
 			</div>
+
+			{seedError && <div className={styles.seedError}>{seedError}</div>}
 		</nav>
 	)
 }

@@ -1,6 +1,7 @@
 import { useSession } from '../../hooks/useSession'
 import { ServerList } from '../sidebar/ServerList'
 import { ChannelList } from '../sidebar/ChannelList'
+import { UserArea } from '../sidebar/UserArea'
 import { Header } from './Header'
 import { StatusBar } from './StatusBar'
 import { MessageArea } from '../messages/MessageArea'
@@ -9,19 +10,20 @@ import { PlaybackControls } from '../playback/PlaybackControls'
 import styles from './AppShell.module.css'
 
 export function AppShell() {
-	const { guilds, guildChannels, guildMembers, selectedGuildId, selectedChannelId, showMembers, selectGuild, selectChannel, toggleMembers, selectedChannel } =
+	const { guilds, guildChannels, guildMembers, guildRoles, selectedGuildId, selectedChannelId, showMembers, selectGuild, selectChannel, toggleMembers, selectedChannel, selectedGuild, botUser, sessionId } =
 		useSession()
 
 	return (
 		<div className={styles.shell}>
 			{/* Server list (far left - guild icons) */}
 			<div className={styles.serverList}>
-				<ServerList guilds={guilds} selectedId={selectedGuildId} onSelect={selectGuild} />
+				<ServerList guilds={guilds} selectedId={selectedGuildId} onSelect={selectGuild} sessionId={sessionId} />
 			</div>
 
 			{/* Channel list */}
 			<div className={styles.channelList}>
-				<ChannelList channels={guildChannels} selectedId={selectedChannelId} onSelect={selectChannel} />
+				<ChannelList guild={selectedGuild} channels={guildChannels} selectedId={selectedChannelId} onSelect={selectChannel} />
+				<UserArea user={botUser} />
 			</div>
 
 			{/* Main content area */}
@@ -31,7 +33,7 @@ export function AppShell() {
 				<div className={styles.content}>
 					<MessageArea channelId={selectedChannelId} />
 
-					{showMembers && <MemberList members={guildMembers} />}
+					{showMembers && <MemberList members={guildMembers} roles={guildRoles} />}
 				</div>
 
 				{/* Playback controls */}

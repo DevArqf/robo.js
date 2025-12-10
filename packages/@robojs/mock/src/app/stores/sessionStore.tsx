@@ -4,7 +4,9 @@ import type {
 	StageChannel,
 	StageUser,
 	StageMember,
+	StageRole,
 	StageMessage,
+	StageApplicationCommand,
 	StateSyncPayload,
 	StageMessageCreateData,
 	StageEvent,
@@ -23,14 +25,19 @@ export interface SessionState {
 	guilds: StageGuild[]
 	channels: StageChannel[]
 	members: StageMember[]
+	roles: StageRole[]  // Phase 5H: Guild roles
 	users: StageUser[]
 	messages: Record<string, StageMessage[]>
+	commands: StageApplicationCommand[]  // Phase 5G: Available slash commands
 	botUser: StageUser | null
 
 	// UI state
 	selectedGuildId: string | null
 	selectedChannelId: string | null
 	showMembers: boolean
+
+	// Typing indicators (Phase 5H)
+	typingUsers: Record<string, { userId: string; username: string; expiresAt: number }[]>
 
 	// Stats
 	eventCount: number
@@ -47,6 +54,7 @@ type SessionAction =
 	| { type: 'HANDLE_MESSAGE_CREATE'; payload: StageMessageCreateData }
 	| { type: 'HANDLE_MESSAGE_UPDATE'; payload: { channelId: string; message: StageMessage } }
 	| { type: 'HANDLE_MESSAGE_DELETE'; payload: { channelId: string; messageId: string } }
+	| { type: 'HANDLE_TYPING_START'; payload: { channelId: string; userId: string; username: string } }
 	| { type: 'SELECT_GUILD'; payload: string | null }
 	| { type: 'SELECT_CHANNEL'; payload: string | null }
 	| { type: 'TOGGLE_MEMBERS' }
@@ -63,12 +71,15 @@ const initialState: SessionState = {
 	guilds: [],
 	channels: [],
 	members: [],
+	roles: [],
 	users: [],
 	messages: {},
+	commands: [],
 	botUser: null,
 	selectedGuildId: null,
 	selectedChannelId: null,
 	showMembers: true,
+	typingUsers: {},
 	eventCount: 0,
 	lastHeartbeat: null
 }
@@ -89,7 +100,7 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 			return { ...state, error: action.payload, isConnecting: false, isConnected: false }
 
 		case 'HANDLE_STATE_SYNC': {
-			const { session, guilds, channels, members, messages, users } = action.payload
+			const { session, guilds, channels, members, roles, messages, users, commands } = action.payload
 			const firstGuild = guilds[0]
 			const firstChannel = firstGuild ? channels.find((c) => c.guild_id === firstGuild.id) : null
 
@@ -98,8 +109,10 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 				guilds,
 				channels,
 				members,
+				roles: roles || [],
 				users,
 				messages,
+				commands: commands || [],
 				botUser: session.bot,
 				selectedGuildId: state.selectedGuildId || firstGuild?.id || null,
 				selectedChannelId: state.selectedChannelId || firstChannel?.id || null,
@@ -145,6 +158,25 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 				messages: {
 					...state.messages,
 					[channelId]: existingMessages.filter((m) => m.id !== messageId)
+				},
+				eventCount: state.eventCount + 1
+			}
+		}
+
+		case 'HANDLE_TYPING_START': {
+			const { channelId, userId, username } = action.payload
+			const existingTyping = state.typingUsers[channelId] || []
+			const expiresAt = Date.now() + 10000  // 10 second timeout
+
+			// Update or add typing user
+			const filtered = existingTyping.filter((t) => t.userId !== userId)
+			const newTyping = [...filtered, { userId, username, expiresAt }]
+
+			return {
+				...state,
+				typingUsers: {
+					...state.typingUsers,
+					[channelId]: newTyping
 				},
 				eventCount: state.eventCount + 1
 			}
@@ -288,6 +320,19 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 					dispatch({
 						type: 'HANDLE_MESSAGE_DELETE',
 						payload: { channelId: deleteData.channel_id, messageId: deleteData.message_id }
+					})
+					break
+				}
+
+				case 'typing_start': {
+					const typingData = event.data as { channel_id: string; user_id: string; member?: { nick?: string }; user?: { username: string } }
+					dispatch({
+						type: 'HANDLE_TYPING_START',
+						payload: {
+							channelId: typingData.channel_id,
+							userId: typingData.user_id,
+							username: typingData.member?.nick || typingData.user?.username || 'Someone'
+						}
 					})
 					break
 				}

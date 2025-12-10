@@ -102,11 +102,15 @@
 	white-space: nowrap;
 }
 
-.member:hover .name {
+.member:hover .name:not([style]) {
 	color: var(--interactive-hover);
 }
 
-.name.bot {
+.member:hover .name[style] {
+	filter: brightness(1.2);
+}
+
+.name.bot:not([style]) {
 	color: var(--text-normal);
 }
 

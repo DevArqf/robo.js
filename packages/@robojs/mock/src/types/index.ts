@@ -84,6 +84,8 @@ export interface SessionConfig {
 	users?: MockUserConfig[]
 	botUser?: MockUserConfig
 	applicationId?: Snowflake
+	/** Commands to seed in the session (for Stage UI testing) */
+	commands?: MockApplicationCommandConfig[]
 	/** Maximum number of recorded actions before LRU eviction (default: 10000) */
 	maxActions?: number
 	/**

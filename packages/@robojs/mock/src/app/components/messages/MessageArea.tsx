@@ -1,12 +1,100 @@
+import { useRef, useEffect, useMemo } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { useSession } from '../../hooks/useSession'
+import { Message } from './Message'
+import { MessageInput } from './MessageInput'
+import { TypingIndicator } from './TypingIndicator'
+import type { StageMessage } from '../../types/stage'
 import styles from './MessageArea.module.css'
 
 interface MessageAreaProps {
 	channelId: string | null
 }
 
+interface MessageGroup {
+	message: StageMessage
+	isFirstInGroup: boolean
+	isHighlighted: boolean
+}
+
 export function MessageArea({ channelId }: MessageAreaProps) {
-	const { channelMessages, selectedChannel } = useSession()
+	const { channelMessages, channelTypingUsers, selectedChannel, clickButton, selectOption } = useSession()
+	const containerRef = useRef<HTMLDivElement>(null)
+	const prevMessageCountRef = useRef(0)
+
+	// Group consecutive messages from same author
+	const groupedMessages = useMemo(() => groupMessages(channelMessages), [channelMessages])
+
+	// Virtual scrolling for performance
+	const virtualizer = useVirtualizer({
+		count: groupedMessages.length,
+		getScrollElement: () => containerRef.current,
+		estimateSize: (index) => {
+			const group = groupedMessages[index]
+			const message = group.message
+			// Estimate: header (if first in group) + content lines + embeds + attachments
+			const hasHeader = group.isFirstInGroup
+			const lineCount = Math.ceil((message.content?.length || 0) / 80) || 1
+
+			// Better embed height estimation
+			let embedHeight = 0
+			if (message.embeds?.length) {
+				for (const embed of message.embeds as Array<{ image?: unknown; fields?: unknown[] }>) {
+					// Base embed: padding + author + title + description
+					embedHeight += 120
+					// Fields add height
+					if (embed.fields?.length) {
+						embedHeight += Math.ceil(embed.fields.length / 3) * 50
+					}
+					// Image adds significant height
+					if (embed.image) {
+						embedHeight += 320
+					}
+				}
+			}
+
+			// Better attachment height estimation
+			let attachmentHeight = 0
+			if (message.attachments?.length) {
+				for (const att of message.attachments as Array<{ content_type?: string; height?: number }>) {
+					if (att.content_type?.startsWith('image/')) {
+						// Image: constrained to max 300px height + margin
+						attachmentHeight += Math.min(att.height || 200, 300) + 16
+					} else if (att.content_type?.startsWith('video/')) {
+						attachmentHeight += 320
+					} else {
+						// File attachment card
+						attachmentHeight += 72
+					}
+				}
+			}
+
+			// Component height estimation (buttons, selects)
+			let componentHeight = 0
+			if (message.components?.length) {
+				// Each action row is about 40px (button/select height + gap)
+				componentHeight = message.components.length * 44
+			}
+
+			return (hasHeader ? 44 : 0) + lineCount * 22 + embedHeight + attachmentHeight + componentHeight + 16
+		},
+		overscan: 10
+	})
+
+	// Auto-scroll to bottom on new messages
+	useEffect(() => {
+		if (channelMessages.length > prevMessageCountRef.current && containerRef.current) {
+			containerRef.current.scrollTop = containerRef.current.scrollHeight
+		}
+		prevMessageCountRef.current = channelMessages.length
+	}, [channelMessages.length])
+
+	// Scroll to bottom when channel changes
+	useEffect(() => {
+		if (containerRef.current) {
+			containerRef.current.scrollTop = containerRef.current.scrollHeight
+		}
+	}, [channelId])
 
 	if (!channelId || !selectedChannel) {
 		return (
@@ -26,7 +114,7 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 
 	return (
 		<div className={styles.container}>
-			<div className={styles.messages}>
+			<div className={styles.messages} ref={containerRef}>
 				{channelMessages.length === 0 ? (
 					<div className={styles.welcome}>
 						<div className={styles.welcomeIcon}>
@@ -36,22 +124,63 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 						<p className={styles.welcomeDescription}>This is the start of the #{selectedChannel.name} channel.</p>
 					</div>
 				) : (
-					<div className={styles.messageList}>
-						{/* Messages will be rendered in Phase 5D */}
-						<div className={styles.placeholder}>
-							<p>{channelMessages.length} messages in this channel</p>
-							<p className={styles.note}>Message rendering coming in Phase 5D</p>
-						</div>
+					<div
+						className={styles.virtualContainer}
+						style={{
+							height: virtualizer.getTotalSize(),
+							position: 'relative'
+						}}
+					>
+						{virtualizer.getVirtualItems().map((virtualItem) => {
+							const group = groupedMessages[virtualItem.index]
+							return (
+								<div
+									key={group.message.id}
+									style={{
+										position: 'absolute',
+										top: virtualItem.start,
+										left: 0,
+										right: 0
+									}}
+								>
+									<Message
+										message={group.message}
+										isFirstInGroup={group.isFirstInGroup}
+										isHighlighted={group.isHighlighted}
+										onButtonClick={clickButton}
+										onSelectOption={selectOption}
+									/>
+								</div>
+							)
+						})}
 					</div>
 				)}
 			</div>
 
-			{/* Message input placeholder */}
-			<div className={styles.inputContainer}>
-				<div className={styles.input}>
-					<span className={styles.inputPlaceholder}>Message #{selectedChannel.name}</span>
-				</div>
-			</div>
+			{/* Typing indicator */}
+			<TypingIndicator typingUsers={channelTypingUsers} />
+
+			{/* Message input */}
+			<MessageInput channelId={selectedChannel.id} channelName={selectedChannel.name} />
 		</div>
 	)
+}
+
+/**
+ * Group consecutive messages from the same author within 5 minutes
+ */
+function groupMessages(messages: StageMessage[]): MessageGroup[] {
+	return messages.map((message, index) => {
+		const prevMessage = messages[index - 1]
+		const isFirstInGroup =
+			!prevMessage ||
+			prevMessage.author.id !== message.author.id ||
+			new Date(message.timestamp).getTime() - new Date(prevMessage.timestamp).getTime() > 5 * 60 * 1000
+
+		return {
+			message,
+			isFirstInGroup,
+			isHighlighted: false // Set when interaction response (can be extended later)
+		}
+	})
 }

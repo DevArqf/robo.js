@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import type { StageChannel } from '../../types/stage'
+import type { StageChannel, StageGuild } from '../../types/stage'
 import styles from './ChannelList.module.css'
 
 interface ChannelListProps {
+	guild: StageGuild | undefined
 	channels: StageChannel[]
 	selectedId: string | null
 	onSelect: (id: string | null) => void
+	unreadChannelIds?: Set<string>
 }
 
 // Discord channel types
@@ -26,14 +28,35 @@ const ChannelType = {
 	GUILD_MEDIA: 16
 } as const
 
-export function ChannelList({ channels, selectedId, onSelect }: ChannelListProps) {
+export function ChannelList({ guild, channels, selectedId, onSelect, unreadChannelIds }: ChannelListProps) {
 	const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
+	const [showArchivedThreads, setShowArchivedThreads] = useState(false)
 
-	// Group channels by category
-	const categories = channels.filter((c) => c.type === ChannelType.GUILD_CATEGORY)
-	const uncategorizedChannels = channels.filter(
+	// Separate threads from regular channels
+	const isThread = (type: number) =>
+		type === ChannelType.ANNOUNCEMENT_THREAD ||
+		type === ChannelType.PUBLIC_THREAD ||
+		type === ChannelType.PRIVATE_THREAD
+
+	const regularChannels = channels.filter((c) => !isThread(c.type))
+	const threads = channels.filter((c) => isThread(c.type))
+
+	// Group regular channels by category
+	const categories = regularChannels.filter((c) => c.type === ChannelType.GUILD_CATEGORY)
+	const uncategorizedChannels = regularChannels.filter(
 		(c) => c.type !== ChannelType.GUILD_CATEGORY && !c.parent_id
 	)
+
+	// Group threads by parent channel
+	const getThreadsForChannel = (channelId: string, includeArchived = false) => {
+		return threads.filter((t) => {
+			if (t.parent_id !== channelId) return false
+			if (!includeArchived && t.thread_metadata?.archived) return false
+			return true
+		})
+	}
+
+	const archivedThreads = threads.filter((t) => t.thread_metadata?.archived)
 
 	const toggleCategory = (categoryId: string) => {
 		setCollapsedCategories((prev) => {
@@ -48,77 +71,129 @@ export function ChannelList({ channels, selectedId, onSelect }: ChannelListProps
 	}
 
 	const getChannelsInCategory = (categoryId: string) => {
-		return channels.filter((c) => c.parent_id === categoryId && c.type !== ChannelType.GUILD_CATEGORY)
+		return regularChannels.filter((c) => c.parent_id === categoryId && c.type !== ChannelType.GUILD_CATEGORY)
 	}
 
 	return (
-		<nav className={styles.container}>
-			{/* Uncategorized channels */}
-			{uncategorizedChannels.map((channel) => (
-				<ChannelItem
-					key={channel.id}
-					channel={channel}
-					isSelected={selectedId === channel.id}
-					onClick={() => onSelect(channel.id)}
-				/>
-			))}
+		<div className={styles.container}>
+			{/* Server header */}
+			<div className={styles.header}>
+				<span className={styles.serverName}>{guild?.name ?? 'Select a server'}</span>
+				<ChevronDown className={styles.headerIcon} />
+			</div>
 
-			{/* Categories with their channels */}
-			{categories.map((category) => {
-				const categoryChannels = getChannelsInCategory(category.id)
-				const isCollapsed = collapsedCategories.has(category.id)
+			{/* Channel list */}
+			<nav className={styles.channels}>
+				{/* Uncategorized channels */}
+				{uncategorizedChannels.map((channel) => (
+					<ChannelItemWithThreads
+						key={channel.id}
+						channel={channel}
+						threads={getThreadsForChannel(channel.id)}
+						isSelected={selectedId === channel.id}
+						isUnread={unreadChannelIds?.has(channel.id)}
+						selectedThreadId={selectedId}
+						onClick={() => onSelect(channel.id)}
+						onThreadSelect={onSelect}
+					/>
+				))}
 
-				return (
-					<div key={category.id} className={styles.category}>
-						<button className={styles.categoryHeader} onClick={() => toggleCategory(category.id)}>
+				{/* Categories with their channels */}
+				{categories.map((category) => {
+					const categoryChannels = getChannelsInCategory(category.id)
+					const isCollapsed = collapsedCategories.has(category.id)
+
+					return (
+						<div key={category.id} className={styles.category}>
+							<button className={styles.categoryHeader} onClick={() => toggleCategory(category.id)}>
+								<svg
+									className={`${styles.collapseIcon} ${isCollapsed ? styles.collapsed : ''}`}
+									width="12"
+									height="12"
+									viewBox="0 0 12 12"
+								>
+									<path fill="currentColor" d="M2 4l4 4 4-4H2z" />
+								</svg>
+								<span className={styles.categoryName}>{category.name.toUpperCase()}</span>
+							</button>
+
+							{!isCollapsed && (
+								<div className={styles.categoryChannels}>
+									{categoryChannels.map((channel) => (
+										<ChannelItemWithThreads
+											key={channel.id}
+											channel={channel}
+											threads={getThreadsForChannel(channel.id)}
+											isSelected={selectedId === channel.id}
+											isUnread={unreadChannelIds?.has(channel.id)}
+											selectedThreadId={selectedId}
+											onClick={() => onSelect(channel.id)}
+											onThreadSelect={onSelect}
+										/>
+									))}
+								</div>
+							)}
+						</div>
+					)
+				})}
+
+				{/* Archived threads section */}
+				{archivedThreads.length > 0 && (
+					<div className={styles.category}>
+						<button
+							className={styles.categoryHeader}
+							onClick={() => setShowArchivedThreads(!showArchivedThreads)}
+						>
 							<svg
-								className={`${styles.collapseIcon} ${isCollapsed ? styles.collapsed : ''}`}
+								className={`${styles.collapseIcon} ${!showArchivedThreads ? styles.collapsed : ''}`}
 								width="12"
 								height="12"
 								viewBox="0 0 12 12"
 							>
 								<path fill="currentColor" d="M2 4l4 4 4-4H2z" />
 							</svg>
-							<span className={styles.categoryName}>{category.name.toUpperCase()}</span>
+							<span className={styles.categoryName}>ARCHIVED THREADS</span>
 						</button>
 
-						{!isCollapsed && (
+						{showArchivedThreads && (
 							<div className={styles.categoryChannels}>
-								{categoryChannels.map((channel) => (
-									<ChannelItem
-										key={channel.id}
-										channel={channel}
-										isSelected={selectedId === channel.id}
-										onClick={() => onSelect(channel.id)}
+								{archivedThreads.map((thread) => (
+									<ThreadItem
+										key={thread.id}
+										thread={thread}
+										isSelected={selectedId === thread.id}
+										onClick={() => onSelect(thread.id)}
 									/>
 								))}
 							</div>
 						)}
 					</div>
-				)
-			})}
+				)}
 
-			{/* Empty state */}
-			{channels.length === 0 && (
-				<div className={styles.empty}>
-					<p>No channels</p>
-				</div>
-			)}
-		</nav>
+				{/* Empty state */}
+				{channels.length === 0 && guild && (
+					<div className={styles.empty}>
+						<p>No channels</p>
+					</div>
+				)}
+			</nav>
+		</div>
 	)
 }
 
 interface ChannelItemProps {
 	channel: StageChannel
 	isSelected: boolean
+	isUnread?: boolean
 	onClick: () => void
 }
 
-function ChannelItem({ channel, isSelected, onClick }: ChannelItemProps) {
+function ChannelItem({ channel, isSelected, isUnread, onClick }: ChannelItemProps) {
 	const Icon = getChannelIcon(channel.type)
+	const hasUnread = isUnread && !isSelected
 
 	return (
-		<button className={`${styles.channel} ${isSelected ? styles.selected : ''}`} onClick={onClick}>
+		<button className={`${styles.channel} ${isSelected ? styles.selected : ''} ${hasUnread ? styles.unread : ''}`} onClick={onClick}>
 			<Icon className={styles.channelIcon} />
 			<span className={styles.channelName}>{channel.name}</span>
 		</button>
@@ -181,5 +256,86 @@ function ThreadIcon({ className }: { className?: string }) {
 		<svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
 			<path d="M5.43309 21C5.35842 21 5.30189 20.9325 5.31494 20.859L5.99991 17H2.14274C2.06819 17 2.01168 16.9327 2.02453 16.8593L2.33253 15.0993C2.34232 15.0419 2.39234 15 2.45074 15H6.34991L7.40991 9H3.55274C3.47819 9 3.42168 8.93274 3.43453 8.85931L3.74253 7.09931C3.75232 7.04189 3.80234 7 3.86074 7H7.75991L8.45667 3.14103C8.46646 3.08361 8.51648 3.04172 8.57488 3.04172H10.3349C10.4095 3.04172 10.466 3.10917 10.4532 3.18269L9.75991 7H15.7599L16.4567 3.14103C16.4665 3.08361 16.5165 3.04172 16.5749 3.04172H18.3349C18.4095 3.04172 18.466 3.10917 18.4532 3.18269L17.7599 7H21.6171C21.6916 7 21.7482 7.06726 21.7353 7.14069L21.4273 8.90069C21.4175 8.95811 21.3675 9 21.3091 9H17.4099L17.0495 11.03H15.05L15.4104 9H9.41035L8.35035 15H10.35L10.0895 16.97H8.00001L7.30326 20.829C7.29346 20.8864 7.24344 20.9283 7.18505 20.9283H5.43309V21Z" />
 		</svg>
+	)
+}
+
+function ChevronDown({ className }: { className?: string }) {
+	return (
+		<svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M5.3 9.3a1 1 0 0 1 1.4 0l5.3 5.29 5.3-5.3a1 1 0 1 1 1.4 1.42l-6 6a1 1 0 0 1-1.4 0l-6-6a1 1 0 0 1 0-1.42z" />
+		</svg>
+	)
+}
+
+function LockIcon({ className }: { className?: string }) {
+	return (
+		<svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M17 11V7a5 5 0 0 0-10 0v4H5v11h14V11h-2zm-3-4a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
+		</svg>
+	)
+}
+
+// Thread item component
+interface ThreadItemProps {
+	thread: StageChannel
+	isSelected: boolean
+	onClick: () => void
+}
+
+function ThreadItem({ thread, isSelected, onClick }: ThreadItemProps) {
+	const isPrivate = thread.type === ChannelType.PRIVATE_THREAD
+	const isArchived = thread.thread_metadata?.archived
+
+	return (
+		<button
+			className={`${styles.thread} ${isSelected ? styles.selected : ''} ${isArchived ? styles.archived : ''}`}
+			onClick={onClick}
+		>
+			{isPrivate ? <LockIcon className={styles.threadIcon} /> : <ThreadIcon className={styles.threadIcon} />}
+			<span className={styles.threadName}>{thread.name}</span>
+			{thread.message_count !== undefined && thread.message_count > 0 && (
+				<span className={styles.threadCount}>{thread.message_count}</span>
+			)}
+		</button>
+	)
+}
+
+// Channel with threads wrapper
+interface ChannelItemWithThreadsProps {
+	channel: StageChannel
+	threads: StageChannel[]
+	isSelected: boolean
+	isUnread?: boolean
+	selectedThreadId: string | null
+	onClick: () => void
+	onThreadSelect: (id: string | null) => void
+}
+
+function ChannelItemWithThreads({
+	channel,
+	threads,
+	isSelected,
+	isUnread,
+	selectedThreadId,
+	onClick,
+	onThreadSelect
+}: ChannelItemWithThreadsProps) {
+	return (
+		<>
+			<ChannelItem channel={channel} isSelected={isSelected} isUnread={isUnread} onClick={onClick} />
+
+			{threads.length > 0 && (
+				<div className={styles.threadList}>
+					{threads.map((thread) => (
+						<ThreadItem
+							key={thread.id}
+							thread={thread}
+							isSelected={selectedThreadId === thread.id}
+							onClick={() => onThreadSelect(thread.id)}
+						/>
+					))}
+				</div>
+			)}
+		</>
 	)
 }

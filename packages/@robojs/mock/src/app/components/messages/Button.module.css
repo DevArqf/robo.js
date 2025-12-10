@@ -1,0 +1,160 @@
+.button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	padding: 2px 16px;
+	min-width: 60px;
+	min-height: 32px;
+	font-size: 14px;
+	font-weight: 500;
+	font-family: inherit;
+	border: none;
+	border-radius: 3px;
+	cursor: pointer;
+	transition: background-color 0.17s ease, color 0.17s ease;
+	position: relative;
+	overflow: hidden;
+}
+
+.button:focus {
+	outline: none;
+}
+
+.button:focus-visible {
+	outline: 2px solid var(--brand-500);
+	outline-offset: 2px;
+}
+
+/* Primary (Blurple) */
+.primary {
+	background: var(--brand-500);
+	color: white;
+}
+
+.primary:hover:not(.disabled):not(.loading) {
+	background: var(--brand-560);
+}
+
+.primary:active:not(.disabled):not(.loading) {
+	background: #3c45a5;
+}
+
+/* Secondary (Grey) */
+.secondary {
+	background: var(--background-accent);
+	color: var(--text-normal);
+}
+
+.secondary:hover:not(.disabled):not(.loading) {
+	background: #6d6f78;
+}
+
+.secondary:active:not(.disabled):not(.loading) {
+	background: #5d5f66;
+}
+
+/* Success (Green) */
+.success {
+	background: var(--green-360);
+	color: white;
+}
+
+.success:hover:not(.disabled):not(.loading) {
+	background: #1a8346;
+}
+
+.success:active:not(.disabled):not(.loading) {
+	background: #156b39;
+}
+
+/* Danger (Red) */
+.danger {
+	background: var(--red-400);
+	color: white;
+}
+
+.danger:hover:not(.disabled):not(.loading) {
+	background: #a12d2f;
+}
+
+.danger:active:not(.disabled):not(.loading) {
+	background: #8a2729;
+}
+
+/* Link */
+.link {
+	background: transparent;
+	color: var(--text-link);
+	padding: 2px 8px;
+	min-width: auto;
+}
+
+.link:hover:not(.disabled):not(.loading) {
+	text-decoration: underline;
+}
+
+/* Disabled State */
+.disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* Loading State */
+.loading {
+	cursor: wait;
+}
+
+.loading .label,
+.loading .linkIcon {
+	opacity: 0.5;
+}
+
+/* Emoji */
+.emoji {
+	display: flex;
+	align-items: center;
+	font-size: 16px;
+	line-height: 1;
+}
+
+.emojiImage {
+	width: 16px;
+	height: 16px;
+	object-fit: contain;
+}
+
+/* Label */
+.label {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Link Icon */
+.linkIcon {
+	flex-shrink: 0;
+	margin-left: 4px;
+}
+
+/* Spinner */
+.spinner {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	animation: spin 1s linear infinite;
+}
+
+.spinner svg {
+	width: 16px;
+	height: 16px;
+}
+
+@keyframes spin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
+}

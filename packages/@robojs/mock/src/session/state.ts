@@ -186,6 +186,81 @@ export class MockServerState implements SessionState {
 
 		// Set application ID (defaults to bot user ID)
 		this.applicationId = options?.applicationId ?? this.botUser.id
+
+		// Add default test commands for Stage UI testing
+		this.seedDefaultCommands()
+	}
+
+	/**
+	 * Seed default test commands for Stage UI testing
+	 * These provide a baseline set of commands to test the slash command UI
+	 */
+	private seedDefaultCommands(): void {
+		const defaultCommands = [
+			{
+				name: 'ping',
+				description: 'Check if the bot is online',
+				type: 1 // CHAT_INPUT
+			},
+			{
+				name: 'echo',
+				description: 'Echo a message back',
+				type: 1,
+				options: [
+					{
+						name: 'message',
+						description: 'The message to echo',
+						type: 3, // STRING
+						required: true
+					}
+				]
+			},
+			{
+				name: 'roll',
+				description: 'Roll a dice',
+				type: 1,
+				options: [
+					{
+						name: 'sides',
+						description: 'Number of sides on the dice',
+						type: 4, // INTEGER
+						required: false,
+						min_value: 2,
+						max_value: 100
+					}
+				]
+			},
+			{
+				name: 'user-info',
+				description: 'Get information about a user',
+				type: 1,
+				options: [
+					{
+						name: 'user',
+						description: 'The user to get info about',
+						type: 6, // USER
+						required: false
+					}
+				]
+			},
+			{
+				name: 'channel-info',
+				description: 'Get information about a channel',
+				type: 1,
+				options: [
+					{
+						name: 'channel',
+						description: 'The channel to get info about',
+						type: 7, // CHANNEL
+						required: false
+					}
+				]
+			}
+		]
+
+		for (const cmd of defaultCommands) {
+			this.createCommand(cmd as Parameters<typeof this.createCommand>[0])
+		}
 	}
 
 	// ============================================================================
@@ -1561,6 +1636,14 @@ export class MockServerState implements SessionState {
 		// Remove from stickers map
 		this.stickers.delete(stickerId)
 		return true
+	}
+
+	/**
+	 * Add a sticker directly to state (for control API)
+	 * This allows adding standard/nitro stickers without a guild
+	 */
+	addSticker(sticker: MockSticker): void {
+		this.stickers.set(sticker.id, sticker)
 	}
 
 	// ============================================================================
