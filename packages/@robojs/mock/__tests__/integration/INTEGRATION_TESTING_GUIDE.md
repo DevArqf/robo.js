@@ -65,6 +65,20 @@ Tests are organized into phases matching the mock server implementation:
 | Phase 7 | Member Voice Methods | `phase-7/member-voice.test.ts` |
 | Phase 7 | Guild Asset Methods | `phase-7/guild-assets.test.ts` |
 | Phase 7 | Webhook Thread Operations | `phase-7/webhook-threads.test.ts` |
+| Phase 8 | User Methods (send, fetch, DM) | `phase-8/user-methods.test.ts` |
+| Phase 8 | GuildMember Shortcut Methods | `phase-8/member-shortcuts.test.ts` |
+| Phase 8 | Message Methods (reply, react, etc.) | `phase-8/message-methods.test.ts` |
+| Phase 8 | Reaction Methods | `phase-8/reaction-methods.test.ts` |
+| Phase 8 | Thread Methods | `phase-8/thread-methods.test.ts` |
+| Phase 8 | Role Methods | `phase-8/role-methods.test.ts` |
+| Phase 8 | Guild Methods | `phase-8/guild-methods.test.ts` |
+| Phase 8 | Collector Methods | `phase-8/collectors.test.ts` |
+| Phase 9 | Client-Level Methods | `phase-9/client-methods.test.ts` |
+| Phase 9 | GuildMemberManager Methods | `phase-9/member-manager.test.ts` |
+| Phase 9 | GuildChannelManager Methods | `phase-9/channel-manager.test.ts` |
+| Phase 9 | Permission Overwrites | `phase-9/permission-overwrites.test.ts` |
+| Phase 9 | Sticker Methods | `phase-9/stickers.test.ts` |
+| Phase 9 | Discord.js Utilities | `phase-9/utilities.test.ts` |
 
 ---
 
@@ -118,13 +132,29 @@ __tests__/integration/
     ├── forum-channels.test.ts      # Forum channel tests
     ├── guild-settings.test.ts      # Guild CRUD tests
     └── message-completeness.test.ts # Message validation tests
-└── phase-7/
-    ├── interaction-lifecycle.test.ts # Interaction response lifecycle
-    ├── channel-helpers.test.ts      # Channel helper methods
-    ├── message-helpers.test.ts      # Message helper methods
-    ├── member-voice.test.ts         # Member voice state methods
-    ├── guild-assets.test.ts         # Guild asset methods
-    └── webhook-threads.test.ts      # Webhook thread operations
+├── phase-7/
+│   ├── interaction-lifecycle.test.ts # Interaction response lifecycle
+│   ├── channel-helpers.test.ts      # Channel helper methods
+│   ├── message-helpers.test.ts      # Message helper methods
+│   ├── member-voice.test.ts         # Member voice state methods
+│   ├── guild-assets.test.ts         # Guild asset methods
+│   └── webhook-threads.test.ts      # Webhook thread operations
+├── phase-8/
+│   ├── user-methods.test.ts         # User methods (send, fetch, DM)
+│   ├── member-shortcuts.test.ts     # GuildMember shortcut methods
+│   ├── message-methods.test.ts      # Message methods (reply, react, etc.)
+│   ├── reaction-methods.test.ts     # Reaction methods
+│   ├── thread-methods.test.ts       # Thread methods
+│   ├── role-methods.test.ts         # Role methods
+│   ├── guild-methods.test.ts        # Guild methods
+│   └── collectors.test.ts           # Collector methods
+└── phase-9/
+    ├── client-methods.test.ts       # Client-level methods
+    ├── member-manager.test.ts       # GuildMemberManager methods
+    ├── channel-manager.test.ts      # GuildChannelManager methods
+    ├── permission-overwrites.test.ts # Permission overwrites
+    ├── stickers.test.ts             # Sticker methods
+    └── utilities.test.ts            # Discord.js utilities
 ```
 
 ### Server Lifecycle

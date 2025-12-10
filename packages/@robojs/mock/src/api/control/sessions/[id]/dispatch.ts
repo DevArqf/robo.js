@@ -1,6 +1,8 @@
 import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../../core/manager.js'
+import { getStageServer } from '../../../../core/stage.js'
 import { validateMethod, notFound, badRequest } from '../../utils.js'
+import { createMockGuild, createMockChannel } from '../../../../session/state.js'
 
 /**
  * POST /api/control/sessions/:id/dispatch - Dispatch an event to session connections
@@ -92,6 +94,7 @@ export default async (request: RoboRequest) => {
 			}
 			embeds?: unknown[]
 			attachments?: unknown[]
+			components?: unknown[]
 			mentions?: Array<{ id?: string; username?: string; bot?: boolean }>
 		}
 
@@ -110,6 +113,7 @@ export default async (request: RoboRequest) => {
 				author: data.author,
 				embeds: data.embeds,
 				attachments: data.attachments,
+				components: data.components,
 				mentions: mentionIds
 			})
 
@@ -639,11 +643,145 @@ export default async (request: RoboRequest) => {
 		// Dispatch the event
 		await session.dispatch(body.event, body.data)
 
+		// Notify stage clients of the update
+		getStageServer().broadcastStateRefresh(id)
+
 		return {
 			success: true,
 			dispatched: session.connections.size,
 			user_id: data.user.id,
 			guild_id: data.guild_id
+		}
+	}
+
+	// Handle GUILD_CREATE - create guild and channels in state
+	if (body.event === 'GUILD_CREATE') {
+		const data = body.data as {
+			id: string
+			name: string
+			icon?: string | null
+			owner_id?: string
+			member_count?: number
+			channels?: Array<{
+				id: string
+				type: number
+				name: string
+				position?: number
+				guild_id?: string
+				parent_id?: string | null
+				topic?: string | null
+			}>
+			roles?: Array<{
+				id: string
+				name: string
+				color?: number
+				position?: number
+				hoist?: boolean
+				permissions?: string
+			}>
+			members?: Array<{
+				user: {
+					id: string
+					username: string
+					discriminator?: string
+					avatar?: string | null
+					bot?: boolean
+				}
+				roles?: string[]
+				joined_at?: string
+			}>
+		}
+
+		if (!data.id || !data.name) {
+			return badRequest('GUILD_CREATE requires "id" and "name" in data')
+		}
+
+		// Create guild in state
+		const guild = createMockGuild({
+			id: data.id,
+			name: data.name,
+			ownerId: data.owner_id || session.state.botUser.id
+		})
+		session.state.addGuild(guild)
+
+		// Create channels from data
+		if (data.channels && data.channels.length > 0) {
+			for (const channelData of data.channels) {
+				const channel = createMockChannel({
+					id: channelData.id,
+					guildId: data.id,
+					name: channelData.name,
+					type: channelData.type,
+					parentId: channelData.parent_id
+				})
+				session.state.addChannelToGuild(data.id, channel)
+			}
+		}
+
+		// Create roles from data (Phase 5H)
+		if (data.roles && data.roles.length > 0) {
+			for (const roleData of data.roles) {
+				session.state.roles.set(roleData.id, {
+					id: roleData.id,
+					guildId: data.id,
+					name: roleData.name,
+					color: roleData.color ?? 0,
+					hoist: roleData.hoist ?? false,
+					position: roleData.position ?? 0,
+					permissions: roleData.permissions ?? '0',
+					managed: false,
+					mentionable: false,
+					flags: 0
+				})
+			}
+		}
+
+		// Create members from data (Phase 5H)
+		if (data.members && data.members.length > 0) {
+			for (const memberData of data.members) {
+				// Create or get user
+				let user = session.state.users.get(memberData.user.id)
+				if (!user) {
+					user = {
+						id: memberData.user.id,
+						username: memberData.user.username,
+						discriminator: memberData.user.discriminator ?? '0',
+						globalName: null,
+						avatar: memberData.user.avatar ?? null,
+						bot: memberData.user.bot ?? false
+					}
+					session.state.users.set(user.id, user)
+				}
+
+				// Create guild member
+				const memberKey = `${data.id}:${user.id}`
+				session.state.guildMembers.set(memberKey, {
+					userId: user.id,
+					guildId: data.id,
+					roles: memberData.roles ?? [],
+					nick: null,
+					joinedAt: memberData.joined_at ?? new Date().toISOString(),
+					deaf: false,
+					mute: false,
+					pending: false,
+					flags: 0
+				})
+			}
+		}
+
+		// Dispatch to gateway
+		await session.dispatch(body.event, body.data)
+
+		// Notify stage clients of the update via state_sync refresh
+		getStageServer().broadcastStateRefresh(id)
+
+		return {
+			success: true,
+			dispatched: session.connections.size,
+			guild_id: data.id,
+			channel_count: data.channels?.length ?? 0,
+			role_count: data.roles?.length ?? 0,
+			member_count: data.members?.length ?? 0
 		}
 	}
 

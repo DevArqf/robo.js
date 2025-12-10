@@ -101,9 +101,10 @@ export default async (request: RoboRequest) => {
 
 	// 7. Handle based on method
 	if (request.method === 'GET') {
-		// GET - Return the message
-		const author = session.state.getUser(message.authorId) || session.state.botUser
-		return mockMessageToAPIMessage(message, author)
+		// GET - Return the message (re-fetch to ensure latest state)
+		const freshMessage = session.state.getMessage(messageId)!
+		const author = session.state.getUser(freshMessage.authorId) || session.state.botUser
+		return mockMessageToAPIMessage(freshMessage, author)
 	} else if (request.method === 'PATCH') {
 		return handlePatch(request, session, channel, message, channelId, messageId)
 	} else {
