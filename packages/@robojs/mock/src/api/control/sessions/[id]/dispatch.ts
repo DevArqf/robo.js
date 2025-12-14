@@ -106,6 +106,20 @@ export default async (request: RoboRequest) => {
 			}>
 			/** Message type (0 = DEFAULT, 7 = USER_JOIN, 8 = GUILD_BOOST, etc.) */
 			type?: number
+			/** Call info for DM call messages */
+			call?: {
+				participants: string[]
+				ended_timestamp?: string | null
+			}
+			/** Role subscription data for subscription purchase messages */
+			role_subscription_data?: {
+				role_subscription_listing_id?: string
+				tier_name?: string
+				total_months_subscribed?: number
+				is_renewal?: boolean
+			}
+			/** Message position (for threads/forums) */
+			position?: number
 		}
 
 		if (!data.channel_id) {
@@ -143,7 +157,15 @@ export default async (request: RoboRequest) => {
 				components: data.components,
 				mentions: mentionIds,
 				reactions: data.reactions,
-				type: data.type
+				type: data.type,
+				call: data.call,
+				roleSubscriptionData: data.role_subscription_data ? {
+					roleSubscriptionListingId: data.role_subscription_data.role_subscription_listing_id ?? '',
+					tierName: data.role_subscription_data.tier_name ?? '',
+					totalMonthsSubscribed: data.role_subscription_data.total_months_subscribed ?? 0,
+					isRenewal: data.role_subscription_data.is_renewal ?? false
+				} : undefined,
+				position: data.position
 			})
 
 			return {
@@ -624,6 +646,7 @@ export default async (request: RoboRequest) => {
 			}
 			roles?: string[]
 			joined_at?: string
+			premium_since?: string | null
 			deaf?: boolean
 			mute?: boolean
 			nick?: string | null
@@ -654,7 +677,7 @@ export default async (request: RoboRequest) => {
 				roles: data.roles ?? [],
 				nick: data.nick ?? null,
 				joinedAt: data.joined_at ?? new Date().toISOString(),
-				premiumSince: null,
+				premiumSince: data.premium_since ?? null,
 				deaf: data.deaf ?? false,
 				mute: data.mute ?? false,
 				pending: false,

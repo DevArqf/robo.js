@@ -114,6 +114,38 @@ Tests are organized into phases matching the mock server implementation:
 | Phase 16 | Presence & Activity Details | `phase-16/presence-activity.test.ts` |
 | Phase 16 | User Properties | `phase-16/user-properties.test.ts` |
 | Phase 16 | Attachment Properties | `phase-16/attachment-properties.test.ts` |
+| Phase 17 | Client Debug Events | `phase-17/client-events.test.ts` |
+| Phase 17 | Shard Events | `phase-17/shard-events.test.ts` |
+| Phase 17 | GuildMember Communication Disabled | `phase-17/member-communication.test.ts` |
+| Phase 17 | Webhook Types & Properties | `phase-17/webhook-types.test.ts` |
+| Phase 17 | ThreadMember Properties | `phase-17/thread-member-properties.test.ts` |
+| Phase 17 | GuildBan Properties | `phase-17/guild-ban-properties.test.ts` |
+| Phase 17 | Invite Targeting | `phase-17/invite-targeting.test.ts` |
+| Phase 17 | Emoji fetchAuthor | `phase-17/emoji-author.test.ts` |
+| Phase 17 | Scheduled Event Status Methods | `phase-17/scheduled-event-status.test.ts` |
+| Phase 20 | Message roleSubscriptionData | `phase-20/role-subscription.test.ts` |
+| Phase 20 | Interaction Response States | `phase-20/interaction-response-states.test.ts` |
+| Phase 20 | Button Interaction Properties | `phase-20/button-interaction.test.ts` |
+| Phase 20 | Autocomplete Interaction | `phase-20/autocomplete.test.ts` |
+| Phase 20 | Message Position | `phase-20/message-position.test.ts` |
+| Phase 20 | Application Emojis | `phase-20/application-emojis.test.ts` |
+| Phase 20 | EntryPoint Command | `phase-20/entrypoint-command.test.ts` |
+| Phase 20 | Interaction Entitlements | `phase-20/interaction-entitlements.test.ts` |
+| Phase 20 | GuildMember Boost Info | `phase-20/member-boost.test.ts` |
+| Phase 20 | Client Statistics | `phase-20/client-statistics.test.ts` |
+| Phase 21 | Guild AFK Settings | `phase-21/guild-afk-settings.test.ts` |
+| Phase 21 | Guild System Channel | `phase-21/guild-system-channel.test.ts` |
+| Phase 21 | Guild Verification & Content Filter | `phase-21/guild-verification.test.ts` |
+| Phase 21 | Guild Splash & Banner | `phase-21/guild-splash-banner.test.ts` |
+| Phase 21 | Guild Approximate Counts | `phase-21/guild-counts.test.ts` |
+| Phase 21 | Guild Max Properties | `phase-21/guild-max-properties.test.ts` |
+| Phase 21 | Guild Preview | `phase-21/guild-preview.test.ts` |
+| Phase 21 | Guild Widget | `phase-21/guild-widget.test.ts` |
+| Phase 21 | Channel Default Settings | `phase-21/channel-defaults.test.ts` |
+| Phase 21 | Forum Channel Settings | `phase-21/forum-settings.test.ts` |
+| Phase 22 | Permission & Intent Enforcement | `phase-22/permissions-intents.test.ts` |
+| Phase 22 | Collection Methods on Mock Data | `phase-22/collection-methods.test.ts` |
+| Phase 22 | Formatters & Embeds Round-Trip | `phase-22/formatters-embeds.test.ts` |
 
 ---
 
@@ -222,13 +254,45 @@ __tests__/integration/
 │   ├── thread-archive.test.ts       # Thread archive/unarchive edge cases
 │   ├── audit-logs.test.ts           # Audit log entry details
 │   └── scheduled-event-subscribers.test.ts # Scheduled event subscribers
-└── phase-16/
-    ├── voice-state-properties.test.ts # VoiceState flags & properties
-    ├── stage-instance.test.ts        # Stage channel & instance ops
-    ├── voice-channel-members.test.ts # Voice channel member tracking
-    ├── presence-activity.test.ts     # Presence & activity details
-    ├── user-properties.test.ts       # User extended properties
-    └── attachment-properties.test.ts # Attachment metadata
+├── phase-16/
+│   ├── voice-state-properties.test.ts # VoiceState flags & properties
+│   ├── stage-instance.test.ts        # Stage channel & instance ops
+│   ├── voice-channel-members.test.ts # Voice channel member tracking
+│   ├── presence-activity.test.ts     # Presence & activity details
+│   ├── user-properties.test.ts       # User extended properties
+│   └── attachment-properties.test.ts # Attachment metadata
+├── phase-17/
+│   ├── client-events.test.ts         # Client debug, warn, error, invalidated
+│   ├── shard-events.test.ts          # Shard lifecycle events
+│   ├── member-communication.test.ts  # Communication disabled & member flags
+│   ├── webhook-types.test.ts         # Webhook type checks & properties
+│   ├── thread-member-properties.test.ts # ThreadMember properties
+│   ├── guild-ban-properties.test.ts  # GuildBan properties
+│   ├── invite-targeting.test.ts      # Invite targeting & date properties
+│   ├── emoji-author.test.ts          # Emoji fetchAuthor method
+│   └── scheduled-event-status.test.ts # Scheduled event status methods
+├── phase-20/
+│   ├── role-subscription.test.ts     # Message roleSubscriptionData
+│   ├── interaction-response-states.test.ts # Interaction state tracking
+│   ├── button-interaction.test.ts    # Button interaction properties
+│   ├── autocomplete.test.ts          # Autocomplete interactions
+│   ├── message-position.test.ts      # Message position property
+│   ├── application-emojis.test.ts    # Application emoji management
+│   ├── entrypoint-command.test.ts    # PrimaryEntryPoint command type
+│   ├── interaction-entitlements.test.ts # Interaction entitlements
+│   ├── member-boost.test.ts          # GuildMember boost info
+│   └── client-statistics.test.ts     # Client cache statistics
+└── phase-21/
+    ├── guild-afk-settings.test.ts    # Guild AFK channel & timeout settings
+    ├── guild-system-channel.test.ts  # Guild system channel & flags
+    ├── guild-verification.test.ts    # Verification level & content filter
+    ├── guild-splash-banner.test.ts   # Guild splash, banner, discovery splash
+    ├── guild-counts.test.ts          # Guild member & presence counts (read-only)
+    ├── guild-max-properties.test.ts  # Guild max limits (read-only)
+    ├── guild-preview.test.ts         # Guild preview (discoverable guilds)
+    ├── guild-widget.test.ts          # Guild widget settings & data
+    ├── channel-defaults.test.ts      # Channel default settings & slowmode
+    └── forum-settings.test.ts        # Forum channel settings & tags
 ```
 
 ### Server Lifecycle

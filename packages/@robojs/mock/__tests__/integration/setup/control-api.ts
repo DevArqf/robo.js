@@ -474,6 +474,74 @@ export async function getDetailedSessionStatus(sessionId: string): Promise<Detai
 }
 
 /**
+ * Add a vote to a poll answer
+ *
+ * @param sessionId - Session ID
+ * @param messageId - Message ID containing the poll
+ * @param answerId - Answer ID (1-indexed)
+ * @param userId - User ID who is voting
+ */
+export async function addPollVote(
+	sessionId: string,
+	messageId: string,
+	answerId: number,
+	userId: string
+): Promise<{ success: boolean; message_id: string; answer_id: number; user_id: string; action: 'add' }> {
+	return controlAPI(`/sessions/${sessionId}/poll-vote`, {
+		method: 'POST',
+		body: { message_id: messageId, answer_id: answerId, user_id: userId }
+	})
+}
+
+/**
+ * Remove a vote from a poll answer
+ *
+ * @param sessionId - Session ID
+ * @param messageId - Message ID containing the poll
+ * @param answerId - Answer ID (1-indexed)
+ * @param userId - User ID who voted
+ */
+export async function removePollVote(
+	sessionId: string,
+	messageId: string,
+	answerId: number,
+	userId: string
+): Promise<{ success: boolean; message_id: string; answer_id: number; user_id: string; action: 'remove' }> {
+	return controlAPI(`/sessions/${sessionId}/poll-vote`, {
+		method: 'DELETE',
+		body: { message_id: messageId, answer_id: answerId, user_id: userId }
+	})
+}
+
+/**
+ * Set bot permissions for a channel (can be used to deny permissions)
+ *
+ * @param sessionId - Session ID
+ * @param guildId - Guild ID
+ * @param channelId - Channel ID (optional - for channel overwrites)
+ * @param options - Permission options
+ */
+export async function setBotPermissions(
+	sessionId: string,
+	guildId: string,
+	channelId?: string,
+	options?: {
+		permissions?: string
+		deny?: string
+		role_id?: string
+	}
+): Promise<{ success: boolean }> {
+	return controlAPI(`/sessions/${sessionId}/permissions`, {
+		method: 'POST',
+		body: {
+			guild_id: guildId,
+			channel_id: channelId,
+			...options
+		}
+	})
+}
+
+/**
  * Make a raw request to the mock server REST API
  * Useful for testing API endpoints directly
  *
@@ -507,4 +575,33 @@ export async function mockRestAPI<T = unknown>(
 	}
 
 	return response.json() as Promise<T>
+}
+
+/**
+ * Add audit log entries to a session
+ *
+ * @param sessionId - Session ID
+ * @param guildId - Guild ID to add entries to
+ * @param entries - Array of audit log entries
+ */
+export async function addAuditLogEntries(
+	sessionId: string,
+	guildId: string,
+	entries: Array<{
+		action_type: number
+		user_id?: string
+		target_id?: string
+		reason?: string
+		changes?: Array<{
+			key: string
+			old_value?: unknown
+			new_value?: unknown
+		}>
+		options?: Record<string, string>
+	}>
+): Promise<{ success: boolean; added: number; entry_ids: string[] }> {
+	return controlAPI(`/sessions/${sessionId}/audit-log`, {
+		method: 'POST',
+		body: { guild_id: guildId, entries }
+	})
 }
