@@ -25,7 +25,8 @@ import type {
 	DispatchThreadCreateOptions,
 	SessionRecording,
 	SessionConfig,
-	SeedMessageConfig
+	SeedMessageConfig,
+	VoiceServerState
 } from '../types/index.js'
 import { AutoModerationTriggerType } from '../types/index.js'
 import { generateSessionId, createMockToken, generateInteractionToken } from '../utils/id.js'
@@ -91,6 +92,12 @@ export class Session implements ISession {
 	readonly connections: Map<string, ConnectionState>
 	readonly config?: SessionConfig
 
+	/**
+	 * Voice server state by guild ID
+	 * Tracks active voice connections for @discordjs/voice support
+	 */
+	readonly voiceServers: Map<string, VoiceServerState>
+
 	private readonly recorder: ActionRecorder
 	private ending = false
 	private autoArchiveInterval: ReturnType<typeof setInterval> | null = null
@@ -106,6 +113,7 @@ export class Session implements ISession {
 		this.createdAt = Date.now()
 		this.expiresAt = this.createdAt + (options?.ttl ?? DEFAULT_TTL)
 		this.connections = new Map()
+		this.voiceServers = new Map()
 		this.config = options?.config
 
 		// Initialize action recorder with optional max actions
@@ -307,6 +315,20 @@ export class Session implements ISession {
 			channel_id?: string
 			guild_id?: string
 		}
+		/** Call info for DM call messages (MessageType.Call = 3) */
+		call?: {
+			participants: string[]
+			ended_timestamp?: string | null
+		}
+		/** Role subscription data for subscription purchase messages (MessageType.RoleSubscriptionPurchase = 25) */
+		roleSubscriptionData?: {
+			roleSubscriptionListingId: string
+			tierName: string
+			totalMonthsSubscribed: number
+			isRenewal: boolean
+		}
+		/** Message position (for threads/forums) */
+		position?: number
 	}): Promise<MockMessage> {
 		if (this.ending) {
 			throw new Error(`Cannot dispatch to ending session: ${this.id}`)
@@ -355,7 +377,10 @@ export class Session implements ISession {
 			components: options.components ?? [],
 			mentions: options.mentions ?? [],
 			type: options.messageReference ? 19 : options.type, // Type 19 = REPLY when messageReference is present
-			message_reference: options.messageReference
+			message_reference: options.messageReference,
+			call: options.call,
+			roleSubscriptionData: options.roleSubscriptionData,
+			position: options.position
 		})
 
 		// Apply reactions if provided
@@ -2133,6 +2158,7 @@ export class Session implements ISession {
 	reset(): void {
 		this.state.reset()
 		this.recorder.clear()
+		this.voiceServers.clear()
 
 		mockLogger.debug(`Session reset: ${this.id}`)
 	}
@@ -2212,6 +2238,9 @@ export class Session implements ISession {
 			// _conn.socket.close() - when WebSocket is implemented
 		}
 		this.connections.clear()
+
+		// Clear voice server state
+		this.voiceServers.clear()
 
 		// Clear state using the reset method
 		this.state.reset()

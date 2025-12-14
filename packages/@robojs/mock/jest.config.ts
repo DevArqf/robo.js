@@ -58,7 +58,8 @@ const config: Config = {
 				'^robo\\.js$': '<rootDir>/__mocks__/robo.js.ts'
 			},
 			globalSetup: '<rootDir>/__tests__/integration/global-setup.js',
-			globalTeardown: '<rootDir>/__tests__/integration/global-teardown.js'
+			globalTeardown: '<rootDir>/__tests__/integration/global-teardown.js',
+			setupFilesAfterEnv: ['<rootDir>/__tests__/integration/test-setup.js']
 		}
 	]
 }

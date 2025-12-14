@@ -146,6 +146,33 @@ Tests are organized into phases matching the mock server implementation:
 | Phase 22 | Permission & Intent Enforcement | `phase-22/permissions-intents.test.ts` |
 | Phase 22 | Collection Methods on Mock Data | `phase-22/collection-methods.test.ts` |
 | Phase 22 | Formatters & Embeds Round-Trip | `phase-22/formatters-embeds.test.ts` |
+| Phase 25 | Client Options | `phase-25/client-options.test.ts` |
+| Phase 25 | Interaction Webhook | `phase-25/interaction-webhook.test.ts` |
+| Phase 25 | Permission Overwrites Manager | `phase-25/permission-overwrites-manager.test.ts` |
+| Phase 25 | GuildMember Permissions | `phase-25/member-permissions.test.ts` |
+| Phase 25 | Role Permissions | `phase-25/role-permissions.test.ts` |
+| Phase 25 | Message Mentions | `phase-25/message-mentions.test.ts` |
+| Phase 25 | Final Client Properties | `phase-25/client-properties.test.ts` |
+| Phase 26 | Sharding (Shard Calc, Config, Events, Multi-Client) | `phase-26/sharding.test.ts` |
+| Phase 27 | Voice Connection Basics | `phase-27/voice-connections.test.ts` |
+| Phase 27 | Audio Player | `phase-27/audio-player.test.ts` |
+| Phase 27 | Audio Resource | `phase-27/audio-resource.test.ts` |
+| Phase 27 | Voice Connection Events | `phase-27/voice-events.test.ts` |
+| Phase 27 | Voice Adapter Creator | `phase-27/voice-adapter.test.ts` |
+| Phase 28 | Burst Reactions (Super Reactions) | `phase-28/burst-reactions.test.ts` |
+| Phase 28 | Role Connection Metadata | `phase-28/role-connections.test.ts` |
+| Phase 28 | Interaction Context Types | `phase-28/interaction-contexts.test.ts` |
+| Phase 28 | Message Snapshot Details | `phase-28/message-snapshots.test.ts` |
+| Phase 28 | Command Permissions V2 | `phase-28/command-permissions-v2.test.ts` |
+| Phase 28 | Guild Member Search Extended | `phase-28/member-search.test.ts` |
+| Phase 28 | Webhooks in Threads Extended | `phase-28/webhooks-threads-extended.test.ts` |
+| Phase 29 | ChannelManager Methods | `phase-29/channel-manager.test.ts` |
+| Phase 29 | GuildManager Methods | `phase-29/guild-manager.test.ts` |
+| Phase 29 | UserManager Methods | `phase-29/user-manager.test.ts` |
+| Phase 29 | All Client Events | `phase-29/all-client-events.test.ts` |
+| Phase 29 | Premium Required Responses | `phase-29/premium-responses.test.ts` |
+| Phase 29 | MessageManager Additional Methods | `phase-29/message-manager.test.ts` |
+| Phase 30 | Final Gap Coverage | `phase-30/final-gap-coverage.test.ts` |
 
 ---
 
@@ -282,17 +309,52 @@ __tests__/integration/
 │   ├── interaction-entitlements.test.ts # Interaction entitlements
 │   ├── member-boost.test.ts          # GuildMember boost info
 │   └── client-statistics.test.ts     # Client cache statistics
-└── phase-21/
-    ├── guild-afk-settings.test.ts    # Guild AFK channel & timeout settings
-    ├── guild-system-channel.test.ts  # Guild system channel & flags
-    ├── guild-verification.test.ts    # Verification level & content filter
-    ├── guild-splash-banner.test.ts   # Guild splash, banner, discovery splash
-    ├── guild-counts.test.ts          # Guild member & presence counts (read-only)
-    ├── guild-max-properties.test.ts  # Guild max limits (read-only)
-    ├── guild-preview.test.ts         # Guild preview (discoverable guilds)
-    ├── guild-widget.test.ts          # Guild widget settings & data
-    ├── channel-defaults.test.ts      # Channel default settings & slowmode
-    └── forum-settings.test.ts        # Forum channel settings & tags
+├── phase-21/
+│   ├── guild-afk-settings.test.ts    # Guild AFK channel & timeout settings
+│   ├── guild-system-channel.test.ts  # Guild system channel & flags
+│   ├── guild-verification.test.ts    # Verification level & content filter
+│   ├── guild-splash-banner.test.ts   # Guild splash, banner, discovery splash
+│   ├── guild-counts.test.ts          # Guild member & presence counts (read-only)
+│   ├── guild-max-properties.test.ts  # Guild max limits (read-only)
+│   ├── guild-preview.test.ts         # Guild preview (discoverable guilds)
+│   ├── guild-widget.test.ts          # Guild widget settings & data
+│   ├── channel-defaults.test.ts      # Channel default settings & slowmode
+│   └── forum-settings.test.ts        # Forum channel settings & tags
+├── phase-25/
+│   ├── client-options.test.ts        # Client configuration options
+│   ├── interaction-webhook.test.ts   # Interaction webhook property & methods
+│   ├── permission-overwrites-manager.test.ts # PermissionOverwriteManager methods
+│   ├── member-permissions.test.ts    # GuildMember permission methods
+│   ├── role-permissions.test.ts      # Role permission methods
+│   ├── message-mentions.test.ts      # Message mentions properties
+│   └── client-properties.test.ts     # Final client properties
+├── phase-26/
+│   ├── sharding.test.ts              # Sharding configuration & multi-client tests
+│   └── fixtures/
+│       └── shard-bot.js              # Bot script for ShardingManager tests
+├── phase-27/
+│   ├── voice-connections.test.ts     # Voice connection basics
+│   ├── audio-player.test.ts          # Audio player functionality
+│   ├── audio-resource.test.ts        # Audio resource handling
+│   ├── voice-events.test.ts          # Voice connection events
+│   └── voice-adapter.test.ts         # Voice adapter creator
+├── phase-28/
+│   ├── burst-reactions.test.ts       # Burst/super reactions
+│   ├── role-connections.test.ts      # Role connection metadata
+│   ├── interaction-contexts.test.ts  # Interaction context types
+│   ├── message-snapshots.test.ts     # Message snapshot details
+│   ├── command-permissions-v2.test.ts # Command permissions V2
+│   ├── member-search.test.ts         # Guild member search extended
+│   └── webhooks-threads-extended.test.ts # Webhooks in threads extended
+├── phase-29/
+│   ├── channel-manager.test.ts       # ChannelManager methods
+│   ├── guild-manager.test.ts         # GuildManager methods
+│   ├── user-manager.test.ts          # UserManager methods
+│   ├── all-client-events.test.ts     # All client events
+│   ├── premium-responses.test.ts     # Premium required responses
+│   └── message-manager.test.ts       # MessageManager additional methods
+└── phase-30/
+    └── final-gap-coverage.test.ts    # Final gap coverage tests
 ```
 
 ### Server Lifecycle
@@ -579,6 +641,39 @@ createDeferred()                  // Create externally-controlled promise
 |--------|----------|-------------|
 | GET | `/sessions/:id/intents` | Get intent configuration |
 | POST | `/sessions/:id/intents` | Update intent configuration |
+
+### Voice Control (Phase 27)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/sessions/:id/voice-server` | Get all voice server states |
+| GET | `/sessions/:id/voice-server?guild_id=xxx` | Get voice server state for guild |
+| POST | `/sessions/:id/voice-server` | Trigger VOICE_SERVER_UPDATE |
+| DELETE | `/sessions/:id/voice-server?guild_id=xxx` | Clear voice server state |
+| POST | `/sessions/:id/voice-error` | Simulate voice connection error |
+
+**Voice Server Request Body:**
+```json
+{
+  "guild_id": "123456789",
+  "channel_id": "987654321",
+  "endpoint": "localhost:50001"
+}
+```
+
+**Voice Error Request Body:**
+```json
+{
+  "guild_id": "123456789",
+  "message": "Voice connection error",
+  "code": 4000,
+  "recoverable": false
+}
+```
+
+**Note:** The mock server runs a separate Voice Gateway WebSocket server on port 50001 with TLS (wss://). When bots join voice channels via VOICE_STATE_UPDATE dispatch, the server automatically sends VOICE_SERVER_UPDATE with the mock voice gateway endpoint.
+
+**TLS Limitation:** The voice gateway uses self-signed certificates. @discordjs/voice always connects via `wss://` with no option to disable TLS verification. In test environments, TLS handshake issues may occur even with `NODE_TLS_REJECT_UNAUTHORIZED=0`. Tests that require actual voice connections (voice-connections.test.ts, voice-events.test.ts, and some audio-player tests) are skipped by default. Tests that don't require voice connections (audio-resource.test.ts, voice-adapter.test.ts, basic audio-player tests) work correctly.
 
 ---
 

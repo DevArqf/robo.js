@@ -3,11 +3,12 @@ import type { NodeEngine } from '@robojs/server/engines.js'
 import { getGatewayServer } from '../core/gateway.js'
 import { getStageServer } from '../core/stage.js'
 import { getStageBridge } from '../core/stage-bridge.js'
+import { startVoiceGateway, VOICE_GATEWAY_PORT } from '../core/voice-gateway.js'
 import { mockLogger } from '../core/logger.js'
 
 /**
  * Lifecycle hook: Called when the Robo starts
- * Initializes the Gateway WebSocket server and Stage WebSocket server
+ * Initializes the Gateway WebSocket server, Voice Gateway server, and Stage WebSocket server
  */
 export default async () => {
 	// Wait for @robojs/server to be ready
@@ -32,6 +33,15 @@ export default async () => {
 
 	// Initialize the stage bridge (connects session events to stage server)
 	getStageBridge()
+
+	// Start Voice Gateway server on separate port
+	// @discordjs/voice connects to: ws://host:50001/?v=4
+	try {
+		await startVoiceGateway(VOICE_GATEWAY_PORT)
+	} catch (error) {
+		// Voice gateway is optional - log warning but don't fail startup
+		mockLogger.warn(`Failed to start Voice Gateway: ${(error as Error).message}`)
+	}
 
 	mockLogger.info('Gateway WebSocket server ready')
 	mockLogger.info('Stage WebSocket server ready')

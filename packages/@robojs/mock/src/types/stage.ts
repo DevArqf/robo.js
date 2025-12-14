@@ -138,6 +138,16 @@ export interface StageChannel {
 }
 
 /**
+ * Activity data for stage clients (custom status, game, streaming, etc.)
+ */
+export interface StageActivity {
+	name: string
+	type: number // 0=Playing, 1=Streaming, 2=Listening, 3=Watching, 4=Custom, 5=Competing
+	state?: string // Custom status text
+	url?: string // Streaming URL
+}
+
+/**
  * Simplified user data for stage clients
  */
 export interface StageUser {
@@ -147,6 +157,7 @@ export interface StageUser {
 	avatar: string | null
 	bot?: boolean
 	status?: 'online' | 'offline' | 'idle' | 'dnd'
+	activities?: StageActivity[]
 }
 
 /**
@@ -217,6 +228,7 @@ export interface StageMessage {
 	reactions?: StageReaction[]
 	flags?: number  // Message flags (64 = EPHEMERAL)
 	pinned?: boolean  // Whether message is pinned
+	type?: number  // Message type (0=DEFAULT, 7=GUILD_MEMBER_JOIN, etc.)
 	message_reference?: {  // Reference for reply messages
 		message_id?: Snowflake
 		channel_id?: Snowflake

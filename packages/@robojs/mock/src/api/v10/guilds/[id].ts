@@ -140,6 +140,10 @@ export default async (request: RoboRequest) => {
 		if (body.preferred_locale !== undefined) {
 			guild.preferredLocale = String(body.preferred_locale)
 		}
+		// Phase 30: Guild ownership transfer
+		if (body.owner_id !== undefined) {
+			guild.ownerId = String(body.owner_id)
+		}
 
 		// Dispatch GUILD_UPDATE event
 		session.state.sequence++

@@ -9,7 +9,9 @@ import { generateGatewaySessionId } from '../utils/id.js'
 import { sessionManager } from './manager.js'
 import { mockLogger } from './logger.js'
 import { getStageBridge } from './stage-bridge.js'
-import type { ActionType, ConnectionState } from '../types/index.js'
+import type { ActionType, ConnectionState, VoiceServerState } from '../types/index.js'
+import { VOICE_GATEWAY_PORT } from './voice-gateway.js'
+import { generateSnowflake } from '../utils/snowflake.js'
 import {
 	shouldDispatchEvent,
 	stripMessageContent,
@@ -246,6 +248,16 @@ export class GatewayServer {
 					return
 				}
 				this.handleRequestGuildMembers(ws, connState, payload.d)
+				break
+
+			case GatewayOpcodes.VoiceStateUpdate:
+				// Handle VOICE_STATE_UPDATE (op 4) - for @discordjs/voice support
+				if (!connState.identified) {
+					mockLogger.warn(`Received VOICE_STATE_UPDATE before IDENTIFY, closing connection`)
+					ws.close(GatewayCloseCodes.NotAuthenticated, 'Not authenticated')
+					return
+				}
+				this.handleVoiceStateUpdate(ws, connState, payload.d)
 				break
 
 			default:
@@ -700,6 +712,117 @@ export class GatewayServer {
 	clearControlFlags(sessionId: string): void {
 		this.controlFlags.delete(sessionId)
 		mockLogger.debug(`Control flags cleared for session ${sessionId}`)
+	}
+
+	/**
+	 * Handle VOICE_STATE_UPDATE (op 4) from client
+	 * When @discordjs/voice joins a voice channel, it sends this opcode
+	 * We need to respond with VOICE_STATE_UPDATE and VOICE_SERVER_UPDATE events
+	 */
+	private handleVoiceStateUpdate(ws: WebSocket, connState: ConnectionState, data: unknown): void {
+		if (!data || typeof data !== 'object') {
+			mockLogger.warn('Invalid VOICE_STATE_UPDATE payload')
+			return
+		}
+
+		const d = data as {
+			guild_id: string
+			channel_id: string | null
+			self_mute: boolean
+			self_deaf: boolean
+		}
+
+		if (typeof d.guild_id !== 'string') {
+			mockLogger.warn('VOICE_STATE_UPDATE missing guild_id')
+			return
+		}
+
+		// Get session
+		const session = sessionManager.get(connState.sessionId)
+		if (!session) {
+			mockLogger.warn(`No session found for VOICE_STATE_UPDATE: ${connState.sessionId}`)
+			return
+		}
+
+		const userId = session.state.botUser.id
+		const voiceSessionId = generateSnowflake()
+
+		// Update voice state in session
+		const voiceStateKey = `${d.guild_id}:${userId}`
+
+		if (d.channel_id === null) {
+			// Leaving voice channel
+			session.state.voiceStates.delete(voiceStateKey)
+			session.voiceServers.delete(d.guild_id)
+			mockLogger.debug(`Bot left voice channel in guild ${d.guild_id}`)
+		} else {
+			// Joining/moving voice channel
+			session.state.voiceStates.set(voiceStateKey, {
+				guild_id: d.guild_id,
+				channel_id: d.channel_id,
+				user_id: userId,
+				session_id: voiceSessionId,
+				self_mute: d.self_mute ?? false,
+				self_deaf: d.self_deaf ?? false,
+				mute: false,
+				deaf: false
+			})
+			mockLogger.debug(`Bot joined voice channel ${d.channel_id} in guild ${d.guild_id}`)
+		}
+
+		// Send VOICE_STATE_UPDATE event back to client
+		connState.sequence++
+		const voiceStatePayload = {
+			op: GatewayOpcodes.Dispatch,
+			t: 'VOICE_STATE_UPDATE',
+			s: connState.sequence,
+			d: {
+				guild_id: d.guild_id,
+				channel_id: d.channel_id,
+				user_id: userId,
+				session_id: voiceSessionId,
+				self_mute: d.self_mute ?? false,
+				self_deaf: d.self_deaf ?? false,
+				mute: false,
+				deaf: false,
+				suppress: false
+			}
+		}
+		this.send(ws, voiceStatePayload)
+		mockLogger.debug(`Sent VOICE_STATE_UPDATE event to connection ${connState.id}`)
+
+		// If joining a voice channel, also send VOICE_SERVER_UPDATE
+		if (d.channel_id !== null) {
+			const voiceToken = `mock-voice-${generateSnowflake()}`
+			const endpoint = `localhost:${VOICE_GATEWAY_PORT}`
+
+			// Store voice server state
+			const voiceServerState: VoiceServerState = {
+				token: voiceToken,
+				endpoint,
+				sessionId: voiceSessionId,
+				guildId: d.guild_id,
+				channelId: d.channel_id,
+				userId,
+				createdAt: Date.now()
+			}
+			session.voiceServers.set(d.guild_id, voiceServerState)
+
+			// Send VOICE_SERVER_UPDATE event
+			connState.sequence++
+			const voiceServerPayload = {
+				op: GatewayOpcodes.Dispatch,
+				t: 'VOICE_SERVER_UPDATE',
+				s: connState.sequence,
+				d: {
+					token: voiceToken,
+					guild_id: d.guild_id,
+					endpoint
+				}
+			}
+			this.send(ws, voiceServerPayload)
+			mockLogger.debug(`Sent VOICE_SERVER_UPDATE event to connection ${connState.id} (endpoint: ${endpoint})`)
+		}
 	}
 
 	/**

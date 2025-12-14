@@ -35,6 +35,7 @@ export interface SessionState {
 	stickers: Map<Snowflake, MockSticker> // Phase 4I: Sticker storage
 	webhooks: Map<Snowflake, MockWebhook> // Phase 4J: Webhook storage
 	emojis: Map<Snowflake, MockEmoji> // Phase 4K: Emoji storage
+	applicationEmojis: Map<Snowflake, MockEmoji> // Phase 20: Application-level emojis
 	roles: Map<Snowflake, MockRole> // Phase 4L: Role storage
 	guildMembers: Map<string, MockGuildMember> // Phase 4L: key = `${guildId}:${userId}`
 	bans: Map<string, MockBan> // Phase 4L-B: key = `${guildId}:${userId}`
@@ -163,6 +164,10 @@ export interface MockGuild {
 	features?: string[] // Phase 7: Guild features array
 	premiumProgressBarEnabled?: boolean // Phase 11: Whether premium progress bar is enabled
 	preferredLocale?: string // Phase 11: Guild's preferred locale
+	// Phase 19: Welcome Screen
+	welcomeScreen?: MockWelcomeScreen
+	// Phase 19: Guild Onboarding
+	onboarding?: MockGuildOnboarding
 }
 
 /**
@@ -444,6 +449,15 @@ export interface MockMessage {
 		channel_id?: Snowflake
 		guild_id?: Snowflake
 	}
+	// Phase 20: Role subscription data
+	roleSubscriptionData?: {
+		roleSubscriptionListingId: Snowflake
+		tierName: string
+		totalMonthsSubscribed: number
+		isRenewal: boolean
+	}
+	// Phase 20: Message position
+	position?: number
 }
 
 /**
@@ -2227,7 +2241,20 @@ export enum ApplicationCommandType {
 	/** User context menu command */
 	User = 2,
 	/** Message context menu command */
-	Message = 3
+	Message = 3,
+	/** Primary entry point for Discord Activities */
+	PrimaryEntryPoint = 4
+}
+
+/**
+ * Entry point command handler type
+ * @see https://discord.com/developers/docs/interactions/application-commands#application-command-object-entry-point-command-handler-types
+ */
+export enum EntryPointCommandHandlerType {
+	/** Launch the Activity in-app */
+	AppHandler = 1,
+	/** Launch Activity via Discord's built-in launcher */
+	DiscordLaunchActivity = 2
 }
 
 /**
@@ -2299,6 +2326,7 @@ export interface MockApplicationCommand {
 	nsfw?: boolean
 	integration_types?: number[] // Installation contexts
 	contexts?: number[] // Interaction contexts
+	handler?: number // EntryPointCommandHandlerType for PrimaryEntryPoint commands (Phase 20)
 	version: Snowflake // Autoincrement snowflake for change tracking
 }
 
@@ -3110,6 +3138,158 @@ export const AuditLogLimits = {
 	MAX_FETCH_LIMIT: 100,
 	DEFAULT_FETCH_LIMIT: 50
 } as const
+
+// ============================================================================
+// Phase 19: Welcome Screen Types
+// ============================================================================
+
+/**
+ * Welcome screen channel data
+ */
+export interface MockWelcomeScreenChannel {
+	channel_id: Snowflake
+	description: string
+	emoji_id?: string | null
+	emoji_name?: string | null
+}
+
+/**
+ * Guild welcome screen data
+ */
+export interface MockWelcomeScreen {
+	description?: string | null
+	welcome_channels: MockWelcomeScreenChannel[]
+	enabled?: boolean
+}
+
+// ============================================================================
+// Phase 19: Guild Onboarding Types
+// ============================================================================
+
+/**
+ * Onboarding prompt option data
+ */
+export interface MockOnboardingPromptOption {
+	id: Snowflake
+	title: string
+	description?: string | null
+	channel_ids: Snowflake[]
+	role_ids: Snowflake[]
+	emoji?: {
+		id?: string | null
+		name?: string | null
+		animated?: boolean
+	} | null
+}
+
+/**
+ * Onboarding prompt data
+ */
+export interface MockOnboardingPrompt {
+	id: Snowflake
+	type: number // GuildOnboardingPromptType
+	title: string
+	single_select: boolean
+	required: boolean
+	in_onboarding: boolean
+	options: MockOnboardingPromptOption[]
+}
+
+/**
+ * Guild onboarding data
+ */
+export interface MockGuildOnboarding {
+	guild_id: Snowflake
+	prompts: MockOnboardingPrompt[]
+	default_channel_ids: Snowflake[]
+	enabled: boolean
+	mode: number // GuildOnboardingMode
+}
+
+// ============================================================================
+// Phase 27: Voice Gateway Types
+// ============================================================================
+
+/**
+ * Voice Gateway Opcodes
+ * @see https://discord.com/developers/docs/topics/opcodes-and-status-codes#voice
+ */
+export enum VoiceOpcode {
+	/** Begin a voice websocket connection */
+	Identify = 0,
+	/** Select the voice protocol */
+	SelectProtocol = 1,
+	/** Complete the websocket handshake */
+	Ready = 2,
+	/** Keep the websocket connection alive */
+	Heartbeat = 3,
+	/** Describe the session */
+	SessionDescription = 4,
+	/** Indicate which users are speaking */
+	Speaking = 5,
+	/** Sent to acknowledge a received client heartbeat */
+	HeartbeatAck = 6,
+	/** Resume a connection */
+	Resume = 7,
+	/** Sent immediately after connecting, contains the heartbeat_interval to use */
+	Hello = 8,
+	/** Sent to acknowledge a successful session resume */
+	Resumed = 9,
+	/** A client has disconnected from the voice channel */
+	ClientDisconnect = 13
+}
+
+/**
+ * Voice server connection state for tracking active voice connections
+ */
+export interface VoiceServerState {
+	/** Voice connection token */
+	token: string
+	/** Voice gateway endpoint (host:port) */
+	endpoint: string
+	/** Voice session ID */
+	sessionId: string
+	/** Guild ID */
+	guildId: string
+	/** Voice channel ID */
+	channelId: string
+	/** User ID (bot user) */
+	userId: string
+	/** When the voice server state was created */
+	createdAt: number
+}
+
+/**
+ * Voice gateway connection state
+ */
+export interface VoiceGatewayConnection {
+	/** Connection ID */
+	id: string
+	/** Associated session ID */
+	sessionId: string
+	/** Guild ID for this voice connection */
+	guildId: string
+	/** Whether the connection has been identified */
+	identified: boolean
+	/** SSRC assigned to this connection */
+	ssrc: number
+	/** Last heartbeat timestamp */
+	lastHeartbeat: number
+	/** Heartbeat interval in ms */
+	heartbeatInterval: number
+}
+
+/**
+ * VOICE_SERVER_UPDATE event payload
+ */
+export interface VoiceServerUpdatePayload {
+	/** Voice connection token */
+	token: string
+	/** Guild ID */
+	guild_id: string
+	/** Voice server host */
+	endpoint: string | null
+}
 
 // ============================================================================
 // Phase 5A: Stage WebSocket Protocol Types

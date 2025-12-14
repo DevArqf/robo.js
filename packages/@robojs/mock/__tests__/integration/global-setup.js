@@ -6,6 +6,10 @@
  */
 const { spawn } = require('node:child_process')
 
+// Allow self-signed certificates for voice gateway testing
+// This must be set before any TLS connections are made
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
+
 const SERVER_PORT = process.env.MOCK_PORT || 3000
 const SERVER_STARTUP_TIMEOUT = 30000
 

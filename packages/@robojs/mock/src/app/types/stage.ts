@@ -6,6 +6,7 @@ export type {
 	StateSyncPayload,
 	StageGuild,
 	StageChannel,
+	StageActivity,
 	StageUser,
 	StageMember,
 	StageRole,

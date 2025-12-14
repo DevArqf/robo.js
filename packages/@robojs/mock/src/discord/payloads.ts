@@ -254,6 +254,10 @@ export function mockCommandToAPICommand(command: MockApplicationCommand, options
 	if (command.contexts !== undefined) {
 		apiCommand.contexts = command.contexts
 	}
+	// Phase 20: Entry point command handler
+	if (command.handler !== undefined) {
+		apiCommand.handler = command.handler
+	}
 
 	return apiCommand
 }
@@ -1332,6 +1336,21 @@ export function mockMessageToAPIMessage(message: MockMessage, author: MockUser):
 		;(apiMessage as unknown as { sticker_items: unknown[] }).sticker_items = message.sticker_items
 	}
 
+	// Phase 20: Role subscription data
+	if (message.roleSubscriptionData) {
+		;(apiMessage as any).role_subscription_data = {
+			role_subscription_listing_id: message.roleSubscriptionData.roleSubscriptionListingId,
+			tier_name: message.roleSubscriptionData.tierName,
+			total_months_subscribed: message.roleSubscriptionData.totalMonthsSubscribed,
+			is_renewal: message.roleSubscriptionData.isRenewal
+		}
+	}
+
+	// Phase 20: Message position
+	if (message.position !== undefined) {
+		apiMessage.position = message.position
+	}
+
 	return apiMessage
 }
 
@@ -1554,6 +1573,20 @@ export function buildMessagePollVoteRemovePayload(options: MessagePollVotePayloa
 // ============================================================================
 
 /**
+ * Entitlement data for interactions
+ */
+export type InteractionEntitlement = {
+	id: Snowflake
+	sku_id: Snowflake
+	application_id?: Snowflake
+	user_id?: Snowflake
+	type: number
+	deleted: boolean
+	starts_at?: string
+	ends_at?: string
+}
+
+/**
  * Options for building an INTERACTION_CREATE payload
  */
 export interface InteractionCreatePayloadOptions {
@@ -1561,6 +1594,7 @@ export interface InteractionCreatePayloadOptions {
 	user: MockUser
 	sessionState: SessionState
 	sequence: number
+	entitlements?: InteractionEntitlement[]
 }
 
 /**
@@ -1596,7 +1630,7 @@ export function buildInteractionCreatePayload(options: InteractionCreatePayloadO
 		channel_id: interaction.channelId,
 		token: interaction.token,
 		version: 1,
-		entitlements: [],
+		entitlements: options.entitlements ?? [],
 		authorizing_integration_owners: {},
 		locale: 'en-US',
 		app_permissions: '562949953421311' // Full permissions
@@ -1639,6 +1673,7 @@ export interface ButtonInteractionPayloadOptions {
 	message: MockMessage // The message containing the button
 	sessionState: SessionState
 	sequence: number
+	entitlements?: InteractionEntitlement[]
 }
 
 /**
@@ -1665,7 +1700,7 @@ export function buildButtonInteractionPayload(options: ButtonInteractionPayloadO
 		channel_id: interaction.channelId,
 		token: interaction.token,
 		version: 1,
-		entitlements: [],
+		entitlements: options.entitlements ?? [],
 		authorizing_integration_owners: {},
 		locale: 'en-US',
 		app_permissions: '562949953421311', // Full permissions
@@ -1716,6 +1751,7 @@ export interface SelectMenuInteractionPayloadOptions {
 	values: string[] // Selected values
 	sessionState: SessionState
 	sequence: number
+	entitlements?: InteractionEntitlement[]
 }
 
 /**
@@ -1849,7 +1885,7 @@ export function buildSelectMenuInteractionPayload(options: SelectMenuInteraction
 		channel_id: interaction.channelId,
 		token: interaction.token,
 		version: 1,
-		entitlements: [],
+		entitlements: options.entitlements ?? [],
 		authorizing_integration_owners: {},
 		locale: 'en-US',
 		app_permissions: '562949953421311', // Full permissions
@@ -1899,6 +1935,7 @@ export interface ModalSubmitInteractionPayloadOptions {
 	sessionState: SessionState
 	sequence: number
 	message?: MockMessage // Optional: source message if modal was triggered from a message component
+	entitlements?: InteractionEntitlement[]
 }
 
 /**
@@ -1939,7 +1976,7 @@ export function buildModalSubmitInteractionPayload(options: ModalSubmitInteracti
 		channel_id: interaction.channelId,
 		token: interaction.token,
 		version: 1,
-		entitlements: [],
+		entitlements: options.entitlements ?? [],
 		authorizing_integration_owners: {},
 		locale: 'en-US',
 		app_permissions: '562949953421311' // Full permissions
@@ -1992,6 +2029,7 @@ export interface AutocompleteInteractionPayloadOptions {
 	user: MockUser
 	sessionState: SessionState
 	sequence: number
+	entitlements?: InteractionEntitlement[]
 }
 
 /**
@@ -2026,7 +2064,7 @@ export function buildAutocompleteInteractionPayload(options: AutocompleteInterac
 		channel_id: interaction.channelId,
 		token: interaction.token,
 		version: 1,
-		entitlements: [],
+		entitlements: options.entitlements ?? [],
 		authorizing_integration_owners: {},
 		locale: 'en-US',
 		app_permissions: '562949953421311' // Full permissions
@@ -2072,6 +2110,7 @@ export interface ContextMenuInteractionPayloadOptions {
 	targetMessage?: MockMessage
 	sessionState: SessionState
 	sequence: number
+	entitlements?: InteractionEntitlement[]
 }
 
 /**
@@ -2133,7 +2172,7 @@ export function buildContextMenuInteractionPayload(options: ContextMenuInteracti
 		channel_id: interaction.channelId,
 		token: interaction.token,
 		version: 1,
-		entitlements: [],
+		entitlements: options.entitlements ?? [],
 		authorizing_integration_owners: {},
 		locale: 'en-US',
 		app_permissions: '562949953421311' // Full permissions

@@ -123,6 +123,7 @@ export class MockServerState implements SessionState {
 	readonly stickers: Map<Snowflake, MockSticker> // Phase 4I: stickerId -> sticker
 	readonly webhooks: Map<Snowflake, MockWebhook> // Phase 4J: webhookId -> webhook
 	readonly emojis: Map<Snowflake, MockEmoji> // Phase 4K: emojiId -> emoji
+	readonly applicationEmojis: Map<Snowflake, MockEmoji> // Phase 20: Application-level emojis
 	readonly roles: Map<Snowflake, MockRole> // Phase 4L: roleId -> role
 	readonly guildMembers: Map<string, MockGuildMember> // Phase 4L: `${guildId}:${userId}` -> member
 	readonly bans: Map<string, MockBan> // Phase 4L-B: `${guildId}:${userId}` -> ban
@@ -171,6 +172,7 @@ export class MockServerState implements SessionState {
 		this.stickers = new Map()
 		this.webhooks = new Map()
 		this.emojis = new Map()
+		this.applicationEmojis = new Map()
 		this.roles = new Map()
 		this.guildMembers = new Map()
 		this.bans = new Map()
@@ -3781,6 +3783,14 @@ export function createMockMessage(config: MockMessageConfig): MockMessage {
 	// Phase 3: Message reference (for replies)
 	if (config.message_reference) {
 		message.message_reference = config.message_reference
+	}
+
+	// Phase 20: Position and roleSubscriptionData
+	if (config.position !== undefined) {
+		message.position = config.position
+	}
+	if (config.roleSubscriptionData) {
+		message.roleSubscriptionData = config.roleSubscriptionData
 	}
 
 	return message

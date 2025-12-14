@@ -1,8 +1,11 @@
 import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../../core/manager.js'
 import { getStageServer } from '../../../../core/stage.js'
+import { VOICE_GATEWAY_PORT } from '../../../../core/voice-gateway.js'
 import { validateMethod, notFound, badRequest } from '../../utils.js'
 import { createMockGuild, createMockChannel } from '../../../../session/state.js'
+import { generateSnowflake } from '../../../../utils/snowflake.js'
+import type { VoiceServerState } from '../../../../types/index.js'
 
 /**
  * POST /api/control/sessions/:id/dispatch - Dispatch an event to session connections
@@ -961,11 +964,13 @@ export default async (request: RoboRequest) => {
 	}
 
 	// Handle VOICE_STATE_UPDATE - update state AND broadcast to Stage clients (Phase 5P)
+	// Also dispatch VOICE_SERVER_UPDATE when bot joins voice (Phase 27)
 	if (body.event === 'VOICE_STATE_UPDATE') {
 		const data = body.data as {
 			guild_id: string
 			channel_id: string | null
 			user_id: string
+			session_id?: string
 			self_mute?: boolean
 			self_deaf?: boolean
 			mute?: boolean
@@ -982,11 +987,21 @@ export default async (request: RoboRequest) => {
 			return badRequest('VOICE_STATE_UPDATE requires "guild_id" and "user_id" in data')
 		}
 
+		// Generate session_id if not provided
+		const voiceSessionId = data.session_id ?? generateSnowflake()
+
 		// Update session state
 		const voiceStateKey = `${data.guild_id}:${data.user_id}`
+		const isBotUser = data.user_id === session.state.botUser.id
+		const isJoiningVoice = data.channel_id !== null
+
 		if (data.channel_id === null) {
-			// User left voice
+			// User left voice - clean up voice server state if bot
 			session.state.voiceStates.delete(voiceStateKey)
+			if (isBotUser) {
+				// Remove voice server state when bot leaves
+				session.voiceServers.delete(data.guild_id)
+			}
 		} else {
 			// User joined or updated voice state
 			const existingState = session.state.voiceStates.get(voiceStateKey)
@@ -994,11 +1009,11 @@ export default async (request: RoboRequest) => {
 				guild_id: data.guild_id,
 				channel_id: data.channel_id,
 				user_id: data.user_id,
+				session_id: voiceSessionId,
 				self_mute: data.self_mute ?? existingState?.self_mute ?? false,
 				self_deaf: data.self_deaf ?? existingState?.self_deaf ?? false,
 				mute: data.mute ?? existingState?.mute ?? false,
-				deaf: data.deaf ?? existingState?.deaf ?? false,
-				speaking: data.speaking
+				deaf: data.deaf ?? existingState?.deaf ?? false
 			})
 
 			// Ensure user exists in state if member data provided
@@ -1014,8 +1029,39 @@ export default async (request: RoboRequest) => {
 			}
 		}
 
-		// Dispatch to gateway
-		await session.dispatch(body.event, body.data)
+		// Dispatch VOICE_STATE_UPDATE to gateway
+		const voiceStatePayload = {
+			...body.data,
+			session_id: voiceSessionId
+		}
+		await session.dispatch(body.event, voiceStatePayload)
+
+		// If bot is joining voice, also dispatch VOICE_SERVER_UPDATE (Phase 27)
+		if (isBotUser && isJoiningVoice) {
+			// Generate voice server token and store state
+			const voiceToken = `mock-voice-${generateSnowflake()}`
+			const voiceServerState: VoiceServerState = {
+				token: voiceToken,
+				endpoint: `localhost:${VOICE_GATEWAY_PORT}`,
+				sessionId: voiceSessionId,
+				guildId: data.guild_id,
+				channelId: data.channel_id!,
+				userId: data.user_id,
+				createdAt: Date.now()
+			}
+
+			// Store voice server state on session
+			session.voiceServers.set(data.guild_id, voiceServerState)
+
+			// Dispatch VOICE_SERVER_UPDATE after a small delay (Discord does this)
+			setTimeout(async () => {
+				await session.dispatch('VOICE_SERVER_UPDATE', {
+					token: voiceToken,
+					guild_id: data.guild_id,
+					endpoint: `localhost:${VOICE_GATEWAY_PORT}`
+				})
+			}, 10)
+		}
 
 		// Broadcast to Stage clients
 		getStageServer().broadcastToSession(id, {
@@ -1036,7 +1082,8 @@ export default async (request: RoboRequest) => {
 			success: true,
 			dispatched: session.connections.size,
 			user_id: data.user_id,
-			channel_id: data.channel_id
+			channel_id: data.channel_id,
+			voice_server_update: isBotUser && isJoiningVoice
 		}
 	}
 
