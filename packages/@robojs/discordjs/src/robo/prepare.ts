@@ -25,6 +25,17 @@ import type { Event, HandlerRecord, PrepareContext } from 'robo.js'
 export default async function prepareHook(context: PrepareContext<DiscordConfig>): Promise<void> {
 	const { pluginConfig, logger, mode } = context
 	const clientOptions = pluginConfig?.clientOptions ?? { intents: [] }
+
+	// Support mock server REST API override via environment variable
+	// This allows @robojs/mock to redirect Discord.js to the mock server
+	if (process.env.DISCORD_REST_API) {
+		clientOptions.rest = {
+			...clientOptions.rest,
+			api: process.env.DISCORD_REST_API
+		}
+		logger.debug('Using custom REST API:', process.env.DISCORD_REST_API)
+	}
+
 	logger.debug('Preparing Discord client with options:', clientOptions)
 
 	// Initialize plugin state

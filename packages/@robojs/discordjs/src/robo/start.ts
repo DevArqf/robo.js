@@ -2,8 +2,9 @@
  * Start Hook - Discord Client Login
  *
  * This hook runs during Robo.start() AFTER the prepare hook to:
- * 1. Validate the Discord token
- * 2. Login to Discord
+ * 1. Wait for @robojs/server if installed (ensures server is listening)
+ * 2. Validate the Discord token
+ * 3. Login to Discord
  *
  * The client instance is created in the prepare hook, allowing other plugins
  * to access it during their start hooks before the bot goes online.
@@ -21,6 +22,11 @@ export default async function startHook(): Promise<void> {
 		throw new Error('Missing DISCORD_TOKEN environment variable. Set it in your .env file.')
 	}
 
+	// If @robojs/server is installed, wait for it to be ready before connecting.
+	// This ensures the server is listening (important for mock mode where
+	// Discord.js needs to connect to the mock server's gateway).
+	await waitForServerIfAvailable()
+
 	// Get the client (created in prepare hook)
 	const client = getClient()
 
@@ -28,4 +34,27 @@ export default async function startHook(): Promise<void> {
 	discordLogger.debug('Logging in to Discord...')
 	await client.login(token)
 	discordLogger.debug('Successfully logged in to Discord')
+}
+
+/**
+ * Wait for @robojs/server to be ready if in mock mode.
+ * Only waits when ROBO_MOCK_MODE is set, since mock mode requires
+ * the server to be listening before Discord.js can connect to the mock gateway.
+ * Returns immediately in normal mode or if server plugin is not available.
+ */
+async function waitForServerIfAvailable(): Promise<void> {
+	// Only wait for server in mock mode - normal Discord connections don't need it
+	if (process.env.ROBO_MOCK_MODE !== 'true') {
+		return
+	}
+
+	try {
+		// Dynamic import to avoid hard dependency on @robojs/server
+		const { ready } = await import('@robojs/server')
+		discordLogger.debug('Waiting for @robojs/server to be ready...')
+		await ready()
+		discordLogger.debug('@robojs/server is ready')
+	} catch {
+		// @robojs/server not installed, continue without waiting
+	}
 }
