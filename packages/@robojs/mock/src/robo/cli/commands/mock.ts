@@ -1,29 +1,50 @@
 /**
- * Mock CLI Command
+ * Mock CLI Command - Standalone Server Mode
  *
- * Starts a Discord bot connected to the mock server for testing.
+ * Starts a standalone mock Discord server for testing bots.
+ * Bots connect via `robo dev --mock-session <id>`.
+ *
  * This command:
- * 1. Auto-builds the project if necessary
- * 2. Creates a mock session with good defaults
- * 3. Starts the bot connected to the mock server
- * 4. Opens Stage UI in browser (unless --no-browser)
- * 5. Prints session summary on shutdown
+ * 1. Starts HTTP server on dedicated port (default: 6625)
+ * 2. Registers Gateway and Stage WebSocket handlers
+ * 3. Loads all Discord API routes from @robojs/mock via Portal API
+ * 4. Opens Stage UI showing waiting for connections
+ * 5. Writes server info for port discovery
+ *
+ * Unlike `robo dev --mock`, this does NOT:
+ * - Build or start a bot
+ * - Create sessions automatically (sessions created when bots connect)
  */
-import path from 'node:path'
 import { execSync } from 'node:child_process'
-import { createCliCommandConfig, color, Env, getPluginOptions, setHookPriority } from 'robo.js'
-import { generateSessionId, createMockToken } from '../../../utils/id.js'
-import { getStageUIUrl, getServerPort, getMockPluginPrefix } from '../../../utils/server.js'
-import { printSessionSummary } from '../../../core/summary.js'
-import { persistSession, cleanupOldSessions } from '../../../core/persistence.js'
-import { getMockModeSession, clearMockModeSession } from '../../start.js'
-import { resetMockModeState } from '../../init.js'
-import { DEFAULT_MOCK_PLUGIN_CONFIG, type MockPluginConfig } from '../../../types/plugin.js'
-import type { CliContext } from 'robo.js'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { createCliCommandConfig, color, Env, Manifest, portal } from 'robo.js'
+import { writeServerInfo, deleteServerInfo, STANDALONE_MOCK_PORT } from '../../../utils/server-info.js'
+import { mockLogger } from '../../../core/logger.js'
+import { getGatewayServer } from '../../../core/gateway.js'
+import { getStageServer } from '../../../core/stage.js'
+import { getStageBridge } from '../../../core/stage-bridge.js'
+import { startVoiceGateway, VOICE_GATEWAY_PORT } from '../../../core/voice-gateway.js'
+import { sessionManager } from '../../../core/manager.js'
+import type { CliContext, HandlerRecord } from 'robo.js'
+import type { CreateSessionOptions, SessionConfig } from '../../../types/index.js'
+
+// Dynamic imports for @robojs/server
+type BaseEngine = import('@robojs/server/engines').BaseEngine
+type RouteHandler = import('@robojs/server').RouteHandler
+
+const PATH_REGEX = /\[(.+?)\]/g
 
 export const config = createCliCommandConfig({
-	description: 'Start bot with mock Discord server for testing',
+	description: 'Start standalone mock Discord server for testing',
 	options: [
+		{
+			alias: '-p',
+			name: '--port',
+			description: 'Port to run the mock server on',
+			type: 'number'
+		},
 		{
 			alias: '-m',
 			name: '--mode',
@@ -45,7 +66,7 @@ export const config = createCliCommandConfig({
 			default: false
 		},
 		{
-			alias: '',
+			alias: '-n',
 			name: '--no-browser',
 			description: 'Skip opening Stage UI in browser',
 			type: 'boolean',
@@ -55,12 +76,19 @@ export const config = createCliCommandConfig({
 } as const)
 
 export default async function mockCommand({ options, logger }: CliContext) {
-	const { mode, silent, verbose } = options as { mode?: string; silent?: boolean; verbose?: boolean; 'no-browser'?: boolean }
+	const { mode, silent, verbose } = options as {
+		port?: number
+		mode?: string
+		silent?: boolean
+		verbose?: boolean
+		'no-browser'?: boolean
+	}
+	const port = (options.port as number | undefined) ?? STANDALONE_MOCK_PORT
 	const noBrowser = options['no-browser'] as boolean | undefined
 
 	// Configure logger
 	if (verbose) {
-		logger.setup({ level: 'debug' })
+		mockLogger.setup({ level: 'debug' })
 	}
 
 	// Set NODE_ENV if not already set
@@ -72,167 +100,315 @@ export default async function mockCommand({ options, logger }: CliContext) {
 	const envMode = mode ?? process.env.NODE_ENV
 	await Env.load({ mode: envMode })
 
-	// Get project name for session naming
-	const projectName = path.basename(process.cwd())
-
 	if (!silent) {
 		logger.log('')
-		logger.log(color.bold(`  Starting ${color.cyan(projectName)} in mock mode`))
+		logger.log(color.bold(`  Starting standalone mock server`))
 		logger.log('')
 	}
 
-	// Set mock mode BEFORE build so @robojs/discordjs can skip real Discord registration
-	process.env.ROBO_MOCK_MODE = 'true'
+	// Initialize mock infrastructure
+	const gatewayServer = getGatewayServer()
+	const stageServer = getStageServer()
+	getStageBridge()
 
-	// Always rebuild to ensure manifest is fresh (like robo dev)
-	// This prevents stale manifest issues where project routes are missing
-	if (!silent) {
-		logger.info('Building project...')
-	}
-
+	// Start Voice Gateway on separate port
 	try {
-		const { Robo } = await import('robo.js')
-		await Robo.build({
-			dev: envMode !== 'production',
-			verbose
-		})
+		await startVoiceGateway(VOICE_GATEWAY_PORT)
+		mockLogger.debug(`Voice Gateway started on port ${VOICE_GATEWAY_PORT}`)
 	} catch (error) {
-		logger.error('Build failed:', error)
+		mockLogger.warn(`Failed to start Voice Gateway: ${(error as Error).message}`)
+	}
+
+	// Create server engine from @robojs/server
+	let engine: BaseEngine
+	try {
+		const { NodeEngine } = await import('@robojs/server/engines')
+		engine = new NodeEngine()
+		await engine.init({})
+		mockLogger.debug('Server engine initialized')
+	} catch (error) {
+		logger.error(`Failed to initialize server engine: ${(error as Error).message}`)
+		logger.error('Make sure @robojs/server is installed')
 		process.exit(1)
 	}
 
-	// Generate session ID and token
-	const sessionId = generateSessionId()
-	const sessionToken = createMockToken(sessionId)
-	const sessionName = `${projectName}-mock`
+	// Register WebSocket handlers with the engine
+	engine.registerWebsocket('/', (req, socket, head) => {
+		gatewayServer.handleUpgrade(req, socket, head)
+	})
+	engine.registerWebsocket('/stage/ws', (req, socket, head) => {
+		stageServer.handleUpgrade(req, socket, head)
+	})
+	engine.registerWebsocket('/mock/stage/ws', (req, socket, head) => {
+		stageServer.handleUpgrade(req, socket, head)
+	})
 
-	// Save real Discord token before overwriting (for bot user lookup)
-	const realDiscordToken = process.env.DISCORD_TOKEN
-	process.env.ROBO_MOCK_SESSION_ID = sessionId
-	process.env.ROBO_MOCK_SESSION_NAME = sessionName
-	process.env.ROBO_MOCK_REAL_TOKEN = realDiscordToken ?? ''
-	process.env.DISCORD_TOKEN = sessionToken
+	// Register control API routes (session management)
+	registerControlRoutes(engine)
 
-	// Set REST API URL to point to mock server (includes plugin prefix if configured)
-	const port = getServerPort()
-	const prefix = getMockPluginPrefix()
-	process.env.DISCORD_REST_API = `http://localhost:${port}${prefix}/api`
+	// Register static Stage UI routes
+	registerStageRoutes(engine)
 
-	if (verbose) {
-		logger.debug('Mock mode environment:')
-		logger.debug(`  ROBO_MOCK_MODE: true`)
-		logger.debug(`  ROBO_MOCK_SESSION_ID: ${sessionId}`)
-		logger.debug(`  ROBO_MOCK_SESSION_NAME: ${sessionName}`)
-		logger.debug(`  ROBO_MOCK_REAL_TOKEN: ${realDiscordToken ? '(saved)' : '(none)'}`)
-		logger.debug(`  DISCORD_TOKEN: ${sessionToken}`)
-		logger.debug(`  DISCORD_REST_API: ${process.env.DISCORD_REST_API}`)
+	// Initialize manifest for portal access (required before ensureRoute)
+	const manifestMode = envMode === 'production' ? 'production' : 'development'
+	await Manifest.initialize(manifestMode)
+
+	// Load and register Discord API routes from portal
+	await loadApiRoutes(engine)
+
+	// Start server
+	await engine.start({ port })
+
+	// Write server info for port discovery
+	await writeServerInfo({
+		port,
+		startedAt: new Date().toISOString(),
+		pid: process.pid,
+		gatewayUrl: `ws://localhost:${port}/?v=10&encoding=json`,
+		restApiUrl: `http://localhost:${port}/api`
+	})
+
+	if (!silent) {
+		logger.info(`Mock server running on port ${color.cyan(String(port))}`)
+		logger.log('')
+		logger.info('To connect a bot:')
+		logger.log(`  ${color.dim('1.')} Create a session: ${color.cyan(`curl -X POST http://localhost:${port}/api/control/sessions`)}`)
+		logger.log(`  ${color.dim('2.')} Start bot with:   ${color.cyan(`robo dev --mock-session <session_id>`)}`)
+		logger.log('')
 	}
 
-	// Get plugin config for auto-open setting
-	const pluginConfig = (getPluginOptions('@robojs/mock') as MockPluginConfig) ?? {}
-	const config = { ...DEFAULT_MOCK_PLUGIN_CONFIG, ...pluginConfig }
-	const shouldOpenBrowser = !noBrowser && config.autoOpenStage
+	// Open Stage UI
+	const shouldOpenBrowser = !noBrowser
+	if (shouldOpenBrowser) {
+		const stageUrl = `http://localhost:${port}/stage/`
+		await new Promise((r) => setTimeout(r, 500))
 
-	// Track if we're shutting down
-	let isShuttingDown = false
-
-	// Setup shutdown handler
-	const shutdown = async (signal: string) => {
-		if (isShuttingDown) {
-			return
+		try {
+			openBrowser(stageUrl)
+			if (!silent) {
+				logger.info(`Stage UI: ${color.cyan(stageUrl)}`)
+			}
+		} catch (error) {
+			if (!silent) {
+				logger.warn(`Could not open browser: ${(error as Error).message}`)
+				logger.info(`Stage UI: ${stageUrl}`)
+			}
 		}
-		isShuttingDown = true
+	}
 
+	// Setup shutdown handlers
+	const shutdown = async (signal: string) => {
 		if (!silent) {
 			logger.log('')
 			logger.info(`Received ${signal}, shutting down...`)
 		}
 
-		// Get the session before stopping
-		const session = getMockModeSession()
-
-		// Stop Robo
-		try {
-			const { Robo } = await import('robo.js')
-			await Robo.stop(0, 'signal')
-		} catch (error) {
-			logger.debug('Error stopping Robo:', error)
-		}
-
-		// Print summary and persist session
-		if (session) {
-			if (!silent) {
-				printSessionSummary(session)
-			}
-
-			// Persist session to .robo/mock folder
-			try {
-				const filePath = await persistSession(session, config.dataDirectory)
-				if (verbose) {
-					logger.debug(`Session persisted to: ${filePath}`)
-				}
-
-				// Cleanup old sessions (keep last 10)
-				await cleanupOldSessions(10, config.dataDirectory)
-			} catch (error) {
-				logger.debug('Error persisting session:', error)
-			}
-		}
-
-		// Cleanup
-		clearMockModeSession()
-		resetMockModeState()
-
+		// Clean up
+		await deleteServerInfo()
+		await engine.stop()
 		process.exit(0)
 	}
 
 	process.on('SIGINT', () => shutdown('SIGINT'))
 	process.on('SIGTERM', () => shutdown('SIGTERM'))
 
-	// Start Robo
-	if (!silent) {
-		logger.info('Starting mock server and bot...')
-	}
+	// Keep process alive
+	await new Promise(() => {})
+}
 
-	// Ensure proper startup order for mock mode:
-	// 1. Server (priority 50) - WebSocket handlers must be ready
-	// 2. Mock (priority 75) - Session must exist before Discord.js connects
-	// 3. Discord.js (priority 100, default) - Connects to mock gateway
-	setHookPriority('start', '@robojs/server', 50)
-	setHookPriority('start', '@robojs/mock', 75)
-
-	try {
-		const { Robo } = await import('robo.js')
-		await Robo.start({
-			logLevel: verbose ? 'debug' : silent ? 'error' : 'info'
-		})
-	} catch (error) {
-		logger.error('Failed to start:', error)
-		process.exit(1)
-	}
-
-	// Open Stage UI in browser
-	if (shouldOpenBrowser) {
-		const stageUrl = getStageUIUrl(sessionToken)
-
-		// Small delay to ensure server is fully ready
-		await new Promise((resolve) => setTimeout(resolve, 500))
-
-		try {
-			openBrowser(stageUrl)
-			if (verbose) {
-				logger.debug(`Opened Stage UI: ${stageUrl}`)
-			}
-		} catch (error) {
-			logger.warn(`Could not open browser: ${(error as Error).message}`)
-			logger.info(`Stage UI: ${stageUrl}`)
+/**
+ * Register control API routes for session management
+ */
+function registerControlRoutes(engine: BaseEngine): void {
+	// Gateway bot endpoint
+	engine.registerRoute('/api/gateway/bot', async (req) => {
+		const host = req.headers.get('host') || `localhost:${STANDALONE_MOCK_PORT}`
+		const protocol = host.includes('localhost') || host.startsWith('127.') ? 'ws' : 'wss'
+		return {
+			url: `${protocol}://${host}`,
+			shards: 1,
+			session_start_limit: { total: 1000, remaining: 1000, reset_after: 0, max_concurrency: 1 }
 		}
+	})
+	engine.registerRoute('/api/v10/gateway/bot', async (req) => {
+		const host = req.headers.get('host') || `localhost:${STANDALONE_MOCK_PORT}`
+		const protocol = host.includes('localhost') || host.startsWith('127.') ? 'ws' : 'wss'
+		return {
+			url: `${protocol}://${host}`,
+			shards: 1,
+			session_start_limit: { total: 1000, remaining: 1000, reset_after: 0, max_concurrency: 1 }
+		}
+	})
+
+	// Session management endpoints
+	engine.registerRoute('/api/control/sessions', async (req) => {
+		if (req.method === 'GET') {
+			const sessions = sessionManager.getAll()
+			return {
+				sessions: sessions.map((s) => ({
+					session_id: s.id,
+					token: s.token,
+					name: s.name,
+					created_at: s.createdAt,
+					expires_at: s.expiresAt,
+					connections: s.connections.size
+				}))
+			}
+		}
+
+		if (req.method === 'POST') {
+			let body: { name?: string; ttl?: number; config?: SessionConfig } = {}
+			try {
+				body = await req.json()
+			} catch {
+				// Empty body is fine
+			}
+
+			const sessionOptions: CreateSessionOptions = {
+				name: body.name,
+				ttl: body.ttl,
+				config: body.config
+			}
+
+			const session = await sessionManager.create(sessionOptions)
+			return {
+				session_id: session.id,
+				token: session.token,
+				expires_at: session.expiresAt
+			}
+		}
+
+		return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+			status: 405,
+			headers: { 'Content-Type': 'application/json' }
+		})
+	})
+
+	engine.registerRoute('/api/control/sessions/:id', async (req) => {
+		const sessionId = req.params.id as string
+		const session = sessionManager.get(sessionId)
+
+		if (!session) {
+			return new Response(JSON.stringify({ error: 'Session not found' }), {
+				status: 404,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		return {
+			session_id: session.id,
+			token: session.token,
+			name: session.name,
+			created_at: session.createdAt,
+			expires_at: session.expiresAt,
+			connections: session.connections.size
+		}
+	})
+}
+
+/**
+ * Register Stage UI static file routes
+ */
+function registerStageRoutes(engine: BaseEngine): void {
+	const stageDir = getStageUIDir()
+	if (!stageDir) {
+		mockLogger.warn('Stage UI directory not found')
+		return
 	}
 
-	if (!silent) {
-		logger.log('')
-		logger.info('Mock server running. Press Ctrl+C to stop.')
-		logger.log('')
+	// Redirect /stage to /stage/
+	engine.registerRoute('/stage', async () => {
+		return new Response(null, {
+			status: 302,
+			headers: { Location: '/stage/' }
+		})
+	})
+
+	// Serve index.html for /stage/
+	engine.registerRoute('/stage/', async () => {
+		const indexPath = path.join(stageDir, 'index.html')
+		if (!fs.existsSync(indexPath)) {
+			return new Response(JSON.stringify({ error: 'Stage UI not found' }), {
+				status: 404,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+		const content = fs.readFileSync(indexPath)
+		return new Response(content, {
+			status: 200,
+			headers: { 'Content-Type': 'text/html' }
+		})
+	})
+
+	// Serve static files from /stage/*
+	engine.registerRoute('/stage/**:path', async (req) => {
+		const reqPath = (req.params.path as string) || 'index.html'
+		const fullPath = path.join(stageDir, reqPath)
+
+		if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isFile()) {
+			return new Response(JSON.stringify({ error: 'Not found' }), {
+				status: 404,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		const ext = path.extname(fullPath)
+		const contentType = getContentType(ext)
+		const content = fs.readFileSync(fullPath)
+
+		return new Response(content, {
+			status: 200,
+			headers: { 'Content-Type': contentType }
+		})
+	})
+}
+
+/**
+ * Load and register Discord API routes from the portal
+ */
+async function loadApiRoutes(engine: BaseEngine): Promise<void> {
+	try {
+		// Load API routes from portal (this also loads the manifest)
+		await portal.ensureRoute('server', 'api')
+		const apiRoutes = portal.getByType('server:api') as Record<string, HandlerRecord>
+
+		const routeCount = Object.keys(apiRoutes).length
+		if (routeCount === 0) {
+			mockLogger.debug('No API routes found in portal')
+			return
+		}
+
+		mockLogger.debug(`Loading ${routeCount} API routes from portal...`)
+
+		// Register each API route with the engine
+		for (const [routeKey, record] of Object.entries(apiRoutes)) {
+			// Only load routes from @robojs/mock plugin
+			if (record.plugin?.name !== '@robojs/mock') {
+				continue
+			}
+
+			// Import the handler
+			await portal.importHandler('server', 'api', routeKey)
+
+			// Convert route key to URL path (e.g., "v10/channels/[id]/messages" -> "/api/v10/channels/:id/messages")
+			const urlPath = '/api/' + routeKey.replace(PATH_REGEX, ':$1')
+
+			// Get the handler function
+			const handler = record.handler as { default?: RouteHandler } | RouteHandler | null
+			if (!handler) continue
+
+			const routeHandler = typeof handler === 'function' ? handler : handler.default
+			if (!routeHandler) continue
+
+			// Register the route
+			engine.registerRoute(urlPath, routeHandler as RouteHandler)
+			mockLogger.debug(`Registered route: ${urlPath}`)
+		}
+
+		mockLogger.debug('API routes loaded successfully')
+	} catch (error) {
+		mockLogger.warn(`Failed to load API routes from portal: ${(error as Error).message}`)
+		mockLogger.debug('Standalone mode may have limited API support')
 	}
 }
 
@@ -253,4 +429,50 @@ function openBrowser(url: string): void {
 	}
 
 	execSync(command, { stdio: 'ignore', windowsHide: true })
+}
+
+/**
+ * Get the Stage UI static files directory.
+ * Looks for the built Stage UI in the plugin's public folder.
+ */
+function getStageUIDir(): string | null {
+	// Get current file's directory (ESM-compatible)
+	const currentDir = path.dirname(fileURLToPath(import.meta.url))
+
+	// Try to find Stage UI in the plugin's package
+	const possiblePaths = [
+		// When running from source (src/robo/cli/commands/mock.ts -> public/stage)
+		path.join(currentDir, '../../../../public/stage'),
+		// When running from built .robo/build/robo/cli/commands -> public/stage (5 levels up)
+		path.join(currentDir, '../../../../../public/stage'),
+		// When installed as package in node_modules
+		path.resolve(process.cwd(), 'node_modules/@robojs/mock/public/stage')
+	]
+
+	mockLogger.debug(`Looking for Stage UI, current dir: ${currentDir}`)
+	for (const p of possiblePaths) {
+		mockLogger.debug(`Trying: ${p} - exists: ${fs.existsSync(p)}`)
+		if (fs.existsSync(p)) {
+			return p
+		}
+	}
+
+	return null
+}
+
+/**
+ * Get content type for file extension.
+ */
+function getContentType(ext: string): string {
+	const types: Record<string, string> = {
+		'.html': 'text/html',
+		'.css': 'text/css',
+		'.js': 'application/javascript',
+		'.json': 'application/json',
+		'.png': 'image/png',
+		'.jpg': 'image/jpeg',
+		'.svg': 'image/svg+xml',
+		'.ico': 'image/x-icon'
+	}
+	return types[ext] ?? 'application/octet-stream'
 }

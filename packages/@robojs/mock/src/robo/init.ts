@@ -22,13 +22,22 @@ export interface MockModeState {
 	sessionId: string | null
 	/** Session name (usually project folder name) */
 	sessionName: string | null
+	/** True if connecting to external mock server (via --mock-session) */
+	connectingToExisting: boolean
+	/** Port of external mock server (if connecting to existing) */
+	externalServerPort: number | null
+	/** Should open browser after start (true for --mock, false for --mock-session) */
+	shouldOpenBrowser: boolean
 }
 
 // Module-level state shared between init and start hooks
 let mockModeState: MockModeState = {
 	enabled: false,
 	sessionId: null,
-	sessionName: null
+	sessionName: null,
+	connectingToExisting: false,
+	externalServerPort: null,
+	shouldOpenBrowser: false
 }
 
 /**
@@ -47,7 +56,10 @@ export function resetMockModeState(): void {
 	mockModeState = {
 		enabled: false,
 		sessionId: null,
-		sessionName: null
+		sessionName: null,
+		connectingToExisting: false,
+		externalServerPort: null,
+		shouldOpenBrowser: false
 	}
 }
 
@@ -73,12 +85,24 @@ export default async function initHook(context: InitContext): Promise<void> {
 		logger.warn('ROBO_MOCK_MODE is set but ROBO_MOCK_SESSION_ID is missing')
 	}
 
+	// Read new flags from environment (set by CLI extension)
+	const connectingToExisting = process.env.__ROBO_MOCK_CONNECT_EXISTING === 'true'
+	const externalServerPort = process.env.__ROBO_MOCK_SERVER_PORT
+		? parseInt(process.env.__ROBO_MOCK_SERVER_PORT, 10)
+		: null
+	const shouldOpenBrowser = process.env.__ROBO_MOCK_OPEN_BROWSER === 'true'
+
 	// Store state for start hook
 	mockModeState = {
 		enabled: true,
 		sessionId,
-		sessionName
+		sessionName,
+		connectingToExisting,
+		externalServerPort,
+		shouldOpenBrowser
 	}
 
-	logger.debug(`Mock mode initialized with session: ${sessionName ?? sessionId}`)
+	logger.debug(
+		`Mock mode initialized: ${connectingToExisting ? 'connecting to existing' : 'new session'} (${sessionName ?? sessionId})`
+	)
 }

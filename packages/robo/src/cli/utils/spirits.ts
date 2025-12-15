@@ -43,7 +43,19 @@ export class Spirits {
 		const index = oldSpirit ? this.activeSpirits.indexOf(oldSpirit) : this.activeSpirits.length
 		const spiritId = `${this.spiritIndex++}-${nameGenerator()}-${['a', 'b', 'c'][index]}`
 		const mode = Mode.get()
-		const env = Env.data()
+
+		// Start with env vars loaded from .env file
+		const envData = Env.data() ?? {}
+		const env = { ...envData }
+
+		// Merge with process.env for ROBO_, DISCORD_, and __ROBO_ prefixed variables
+		// This ensures CLI extension overrides (like mock mode tokens) are passed to workers
+		for (const [key, value] of Object.entries(process.env)) {
+			if (value !== undefined && (key.startsWith('ROBO_') || key.startsWith('DISCORD_') || key.startsWith('__ROBO_'))) {
+				env[key] = value
+			}
+		}
+
 		const worker = new Worker(path.join(__DIRNAME, '..', 'spirit.js'), {
 			workerData: { env, mode, spiritId }
 		})

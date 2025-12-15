@@ -6,7 +6,7 @@
  */
 
 import { Command } from './cli-handler.js'
-import type { CliContext } from '../../types/cli.js'
+import type { CliContext, CliExtensionEntry, CliOptionConfig } from '../../types/cli.js'
 
 export interface CommandOption {
 	alias: string
@@ -166,6 +166,9 @@ export const COMMANDS: CommandMetadata[] = [
  * Creates a Command instance that lazy-loads its handler when executed.
  * The command metadata (name, description, options) is set immediately,
  * but the actual handler code is only imported when the command runs.
+ *
+ * Also integrates with CLI extensions to allow plugins to inject options
+ * and before/after hooks into core commands.
  */
 export function createLazyCommand(meta: CommandMetadata): Command {
 	const cmd = new Command(meta.name).description(meta.description)
@@ -206,11 +209,66 @@ export function createLazyCommand(meta: CommandMetadata): Command {
 			}
 		})
 	} else {
-		// Simple lazy handler - just load and execute
+		// Simple lazy handler - just load and execute with extension support
 		cmd.handler(async (context: CliContext) => {
+			// Load CLI extensions for this command
+			const { loadCliManifest, getExtensions, loadCliExtension } = await import('./cli-loader.js')
+			const manifest = await loadCliManifest()
+
+			let extensions: CliExtensionEntry[] = []
+			if (manifest) {
+				extensions = getExtensions(manifest, meta.name)
+
+				// Re-parse context.options to include extension options
+				// This allows extension-provided options to be parsed correctly
+				if (extensions.length > 0) {
+					const extensionOptions: CliOptionConfig[] = []
+					for (const ext of extensions) {
+						if (ext.options) {
+							extensionOptions.push(...ext.options)
+						}
+					}
+
+					// Re-parse with extension options
+					if (extensionOptions.length > 0) {
+						const { parseCliOptions } = await import('./cli-shared.js')
+						const allOptions = [...meta.options, ...extensionOptions]
+						const { parsedOptions } = parseCliOptions(context.argv, allOptions)
+						context.options = parsedOptions
+					}
+				}
+			}
+
+			// Run before hooks (highest priority first, already sorted)
+			for (const ext of extensions) {
+				if (ext.hasBefore) {
+					const loaded = await loadCliExtension(ext)
+					if (loaded?.before) {
+						const result = await loaded.before(context)
+						if (result === false) {
+							return // Command aborted by before hook
+						}
+					}
+				}
+			}
+
+			// Load and execute the actual command handler
 			const module = await import(meta.modulePath)
 			const loadedCommand = module.default as Command
-			return loadedCommand._handler(context)
+			const handlerResult = await loadedCommand._handler(context)
+			context.result = handlerResult
+
+			// Run after hooks (lowest priority first, reverse order)
+			for (const ext of [...extensions].reverse()) {
+				if (ext.hasAfter) {
+					const loaded = await loadCliExtension(ext)
+					if (loaded?.after) {
+						await loaded.after(context)
+					}
+				}
+			}
+
+			return handlerResult
 		})
 	}
 

@@ -34,6 +34,13 @@ export interface MockPluginConfig {
 	 * @default 'mock'
 	 */
 	dataDirectory?: string
+
+	/**
+	 * Port for standalone mock server mode (`robo mock` command).
+	 * Uses a unique default to avoid clashing with user's server.
+	 * @default 6625
+	 */
+	standalonePort?: number
 }
 
 /**
@@ -52,5 +59,6 @@ export const DEFAULT_MOCK_PLUGIN_CONFIG: Required<MockPluginConfig> = {
 			}
 		]
 	},
-	dataDirectory: 'mock'
+	dataDirectory: 'mock',
+	standalonePort: 6625
 }

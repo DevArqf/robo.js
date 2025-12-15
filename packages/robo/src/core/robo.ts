@@ -204,7 +204,7 @@ async function restart() {
 	}
 }
 
-function loadPluginData() {
+export function loadPluginData() {
 	const config = getConfig()
 	const collection = new Map<string, PluginData>()
 	if (!config.plugins) {

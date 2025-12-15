@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process'
 import { getServerEngine } from '@robojs/server'
 import type { StartContext, HandlerEntry } from 'robo.js'
 import { Manifest, getPluginOptions } from 'robo.js'
@@ -46,6 +47,23 @@ export default async (context: StartContext<MockPluginConfig>) => {
 	const { pluginConfig } = context
 	const config = { ...DEFAULT_MOCK_PLUGIN_CONFIG, ...pluginConfig }
 
+	// Check mock mode state
+	const mockModeState = getMockModeState()
+
+	// If not in mock mode at all, skip everything
+	if (!mockModeState.enabled) {
+		mockLogger.debug('Not in mock mode, skipping start hook')
+		return
+	}
+
+	// If connecting to existing external mock server, skip local server setup.
+	// The bot will connect to the external server via DISCORD_REST_API env var.
+	if (mockModeState.connectingToExisting) {
+		mockLogger.info(`Connecting to external mock server on port ${mockModeState.externalServerPort}`)
+		// Bot connects to external server - no local infrastructure needed
+		return
+	}
+
 	// WebSocket handlers should already be registered in prepare hook.
 	// If not (e.g., server engine wasn't ready), register them now as fallback.
 	if (!areHandlersRegistered()) {
@@ -75,7 +93,6 @@ export default async (context: StartContext<MockPluginConfig>) => {
 	mockLogger.info('Stage WebSocket server ready')
 
 	// Handle mock mode session creation
-	const mockModeState = getMockModeState()
 	if (mockModeState.enabled && mockModeState.sessionId) {
 		mockLogger.debug('Creating mock mode session...')
 
@@ -110,7 +127,39 @@ export default async (context: StartContext<MockPluginConfig>) => {
 		// Log the Stage UI URL for easy access
 		const stageUrl = getStageUIUrl(mockModeSession.token)
 		mockLogger.info(`Stage UI: ${stageUrl}`)
+
+		// Open browser if flagged by CLI extension (--mock flag)
+		if (mockModeState.shouldOpenBrowser) {
+			// Small delay to ensure server is fully ready
+			await new Promise((resolve) => setTimeout(resolve, 500))
+
+			try {
+				openBrowser(stageUrl)
+				mockLogger.debug('Opened Stage UI in browser')
+			} catch (error) {
+				mockLogger.warn(`Could not open browser: ${(error as Error).message}`)
+			}
+		}
 	}
+}
+
+/**
+ * Opens a URL in the default browser.
+ * Cross-platform implementation.
+ */
+function openBrowser(url: string): void {
+	const platform = process.platform
+
+	let command: string
+	if (platform === 'win32') {
+		command = `start "" "${url}"`
+	} else if (platform === 'darwin') {
+		command = `open "${url}"`
+	} else {
+		command = `xdg-open "${url}"`
+	}
+
+	execSync(command, { stdio: 'ignore', windowsHide: true })
 }
 
 /**

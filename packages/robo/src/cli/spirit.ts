@@ -12,9 +12,21 @@ if (isMainThread) {
 	process.exit(1)
 }
 
-// Keep track of which environment variables were loaded to overwrite later
+// Apply environment variables passed from main thread to process.env
+// This ensures CLI extension overrides (like mock tokens) are used
 if (workerData.env) {
-	setGlobalOverwrites(Object.keys(workerData.env))
+	for (const [key, value] of Object.entries(workerData.env)) {
+		if (value !== undefined) {
+			process.env[key] = value as string
+		}
+	}
+	// Keep track of which keys were passed so Env.load() knows to preserve them
+	// Exclude DISCORD_TOKEN and DISCORD_REST_API from overwrite list since they may
+	// be set by CLI extensions (like mock mode) and shouldn't be overwritten by .env
+	const overwriteKeys = Object.keys(workerData.env).filter(
+		(key) => key !== 'DISCORD_TOKEN' && key !== 'DISCORD_REST_API'
+	)
+	setGlobalOverwrites(overwriteKeys)
 }
 
 // Inherit mode for this thread
