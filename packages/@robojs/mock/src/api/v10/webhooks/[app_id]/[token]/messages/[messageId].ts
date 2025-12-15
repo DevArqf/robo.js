@@ -277,7 +277,7 @@ async function handleWebhookMessagePatch(
 			for (let i = 0; i < parsed.files.length; i++) {
 				const file = parsed.files[i]
 				const attachmentId = generateSnowflake()
-				const meta = body.attachments?.find((a) => a.id === i) || {}
+				const meta = body.attachments?.find((a) => a.id === i) as AttachmentPayload | undefined
 
 				let width: number | undefined
 				let height: number | undefined
@@ -293,7 +293,7 @@ async function handleWebhookMessagePatch(
 					id: attachmentId,
 					channelId,
 					messageId,
-					filename: ('filename' in meta && meta.filename) || file.filename,
+					filename: meta?.filename || file.filename,
 					contentType: file.contentType,
 					size: file.size,
 					data: file.data,
@@ -305,8 +305,8 @@ async function handleWebhookMessagePatch(
 				newAttachments.push({
 					id: attachmentId,
 					filename: storedAttachment.filename,
-					title: 'title' in meta ? meta.title : undefined,
-					description: 'description' in meta ? meta.description : undefined,
+					title: meta?.title,
+					description: meta?.description,
 					content_type: file.contentType,
 					size: file.size,
 					url: `${CDN_BASE_URL}/cdn/attachments/${channelId}/${attachmentId}/${encodeURIComponent(storedAttachment.filename)}`,
@@ -470,9 +470,12 @@ function handleWebhookMessageDelete(
 	return new Response(null, { status: 204 })
 }
 
-function handleGet(session: Session, message: MockMessage) {
+function handleGet(session: Session, message: MockMessage): Response {
 	const author = session.state.getUser(message.authorId) || session.state.botUser
-	return mockMessageToAPIMessage(message, author)
+	return new Response(JSON.stringify(mockMessageToAPIMessage(message, author)), {
+		status: 200,
+		headers: { 'Content-Type': 'application/json' }
+	})
 }
 
 async function handlePatch(
@@ -510,7 +513,7 @@ async function handlePatch(
 				const attachmentId = generateSnowflake()
 
 				// Find metadata from payload_json.attachments (if provided)
-				const meta = body.attachments?.find((a) => a.id === i) || {}
+				const meta = body.attachments?.find((a) => a.id === i) as AttachmentPayload | undefined
 
 				// Detect image dimensions if applicable
 				let width: number | undefined
@@ -528,7 +531,7 @@ async function handlePatch(
 					id: attachmentId,
 					channelId,
 					messageId,
-					filename: ('filename' in meta && meta.filename) || file.filename,
+					filename: meta?.filename || file.filename,
 					contentType: file.contentType,
 					size: file.size,
 					data: file.data,
@@ -541,8 +544,8 @@ async function handlePatch(
 				const attachment: MockAttachment = {
 					id: attachmentId,
 					filename: storedAttachment.filename,
-					title: 'title' in meta ? meta.title : undefined,
-					description: 'description' in meta ? meta.description : undefined,
+					title: meta?.title,
+					description: meta?.description,
 					content_type: file.contentType,
 					size: file.size,
 					url: `${CDN_BASE_URL}/cdn/attachments/${channelId}/${attachmentId}/${encodeURIComponent(storedAttachment.filename)}`,

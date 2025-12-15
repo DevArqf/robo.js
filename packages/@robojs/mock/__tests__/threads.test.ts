@@ -2,7 +2,7 @@
  * Phase 4D: Thread Support Tests
  * Tests thread creation, management, membership, and gateway events
  */
-import { ChannelType, GatewayOpcodes } from 'discord-api-types/v10'
+import { APIThreadChannel, ChannelType, GatewayOpcodes } from 'discord-api-types/v10'
 import {
 	MockServerState,
 	createSessionState,
@@ -237,7 +237,7 @@ describe('Phase 4D: Thread Support', () => {
 
 			it('should filter by archived status', () => {
 				const channel = Array.from(state.channels.values())[0]
-				const thread1 = state.createThread({ name: 'Active Thread', type: 11, parentId: channel.id })
+				state.createThread({ name: 'Active Thread', type: 11, parentId: channel.id })
 				const thread2 = state.createThread({ name: 'Archived Thread', type: 11, parentId: channel.id })
 				state.updateThread(thread2.id, { archived: true })
 
@@ -562,7 +562,7 @@ describe('Phase 4D: Thread Support', () => {
 
 		describe('mockThreadToAPIChannel', () => {
 			it('should convert thread to API format', () => {
-				const apiChannel = mockThreadToAPIChannel(thread)
+				const apiChannel = mockThreadToAPIChannel(thread) as APIThreadChannel
 
 				expect(apiChannel.id).toBe(thread.id)
 				expect(apiChannel.type).toBe(ChannelType.PublicThread)

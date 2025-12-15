@@ -116,6 +116,8 @@ export async function createSession(config: CreateSessionConfig = {}): Promise<{
 	botUser: { id: string; username: string }
 	guilds: Array<{ id: string; name: string }>
 	channels: Array<{ id: string; name: string; guildId?: string }>
+	/** Convenience property: first guild's ID (same as guilds[0].id) */
+	guildId: string
 }> {
 	// Create the session
 	const createResponse = await controlAPI<SessionResponse>('/sessions', {
@@ -126,6 +128,8 @@ export async function createSession(config: CreateSessionConfig = {}): Promise<{
 	// Fetch the session state for full details
 	const state = await controlAPI<SessionState>(`/sessions/${createResponse.session_id}/state`)
 
+	const guilds = state.guilds.map((g) => ({ id: g.id, name: g.name }))
+
 	return {
 		id: createResponse.session_id,
 		token: createResponse.token,
@@ -133,8 +137,10 @@ export async function createSession(config: CreateSessionConfig = {}): Promise<{
 			id: state.botUser.id,
 			username: state.botUser.username
 		},
-		guilds: state.guilds.map((g) => ({ id: g.id, name: g.name })),
-		channels: state.channels.map((c) => ({ id: c.id, name: c.name, guildId: c.guildId }))
+		guilds,
+		channels: state.channels.map((c) => ({ id: c.id, name: c.name, guildId: c.guildId })),
+		// Convenience property for easy access to first guild ID
+		guildId: guilds[0]?.id ?? ''
 	}
 }
 

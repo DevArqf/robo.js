@@ -11,6 +11,7 @@ import {
 	Events,
 	GatewayIntentBits,
 	Guild,
+	GuildMember,
 	Interaction,
 	InteractionType,
 	MessageContextMenuCommandInteraction,
@@ -178,7 +179,7 @@ describe('Phase 19: Context Menu Interactions', () => {
 		const interaction = (await eventPromise) as UserContextMenuCommandInteraction
 
 		expect(interaction.isUserContextMenuCommand()).toBe(true)
-		expect(interaction.targetMember?.nickname).toBe('Target Nick')
+		expect((interaction.targetMember as GuildMember | null)?.nickname).toBe('Target Nick')
 	})
 
 	it('should have targetMessage in message context menu', async () => {

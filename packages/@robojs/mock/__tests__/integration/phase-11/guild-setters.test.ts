@@ -11,6 +11,7 @@ import {
 	GuildExplicitContentFilter,
 	GuildSystemChannelFlags,
 	GuildVerificationLevel,
+	Locale,
 	TextChannel,
 	VoiceChannel
 } from 'discord.js'
@@ -144,8 +145,8 @@ describe('Phase 11: Guild Direct Setters', () => {
 		it('should set preferred locale', async () => {
 			const guild = client!.guilds.cache.get(guildId)!
 
-			await guild.setPreferredLocale('en-US')
-			expect(guild.preferredLocale).toBe('en-US')
+			await guild.setPreferredLocale(Locale.EnglishUS)
+			expect(guild.preferredLocale).toBe(Locale.EnglishUS)
 		})
 
 		it('should set premium progress bar enabled via edit()', async () => {

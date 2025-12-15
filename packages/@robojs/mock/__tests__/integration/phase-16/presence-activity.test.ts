@@ -163,7 +163,7 @@ describe('Phase 16: Presence & Activity Details', () => {
 			client!.user!.setActivity('Something')
 			expect(client!.user!.presence.activities.length).toBeGreaterThan(0)
 
-			client!.user!.setActivity(null)
+			client!.user!.setActivity(undefined)
 
 			expect(client!.user!.presence.activities.length).toBe(0)
 		})

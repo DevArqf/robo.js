@@ -87,7 +87,9 @@ describe('Phase 28: Message Snapshot Details', () => {
 			expect(message.messageSnapshots).toBeDefined()
 
 			if (message.messageSnapshots && message.messageSnapshots.size > 0) {
-				const snapshot = message.messageSnapshots.first()
+				const snapshot = message.messageSnapshots.first() as unknown as {
+					message?: { content?: string; embeds?: unknown[]; timestamp?: string }
+				}
 				expect(snapshot?.message?.content).toBe(originalContent)
 			}
 		})
@@ -126,7 +128,9 @@ describe('Phase 28: Message Snapshot Details', () => {
 			const message = (await eventPromise) as Message
 
 			if (message.messageSnapshots && message.messageSnapshots.size > 0) {
-				const snapshot = message.messageSnapshots.first()
+				const snapshot = message.messageSnapshots.first() as unknown as {
+					message?: { content?: string; embeds?: unknown[] }
+				}
 				expect(snapshot?.message?.content).toBe('')
 			}
 		})
@@ -170,7 +174,9 @@ describe('Phase 28: Message Snapshot Details', () => {
 			const message = (await eventPromise) as Message
 
 			if (message.messageSnapshots && message.messageSnapshots.size > 0) {
-				const snapshot = message.messageSnapshots.first()
+				const snapshot = message.messageSnapshots.first() as unknown as {
+					message?: { content?: string; embeds?: Array<{ title?: string; description?: string }> }
+				}
 				expect(snapshot?.message?.embeds?.length).toBe(2)
 				expect(snapshot?.message?.embeds?.[0]?.title).toBe('Embed 1')
 				expect(snapshot?.message?.embeds?.[1]?.title).toBe('Embed 2')
@@ -179,7 +185,6 @@ describe('Phase 28: Message Snapshot Details', () => {
 
 		it('should have rich embed data in snapshot', async () => {
 			const messageId = generateSnowflake()
-			const originalMessageId = generateSnowflake()
 
 			const eventPromise = waitForEvent(client!, Events.MessageCreate, 5000)
 
@@ -221,7 +226,9 @@ describe('Phase 28: Message Snapshot Details', () => {
 			const message = (await eventPromise) as Message
 
 			if (message.messageSnapshots && message.messageSnapshots.size > 0) {
-				const snapshot = message.messageSnapshots.first()
+				const snapshot = message.messageSnapshots.first() as unknown as {
+					message?: { embeds?: Array<{ title?: string; description?: string }> }
+				}
 				const embed = snapshot?.message?.embeds?.[0]
 
 				if (embed) {
@@ -268,7 +275,9 @@ describe('Phase 28: Message Snapshot Details', () => {
 			const message = (await eventPromise) as Message
 
 			if (message.messageSnapshots && message.messageSnapshots.size > 0) {
-				const snapshot = message.messageSnapshots.first()
+				const snapshot = message.messageSnapshots.first() as unknown as {
+					message?: { timestamp?: Date | string }
+				}
 				expect(snapshot?.message?.timestamp).toBeDefined()
 				// The timestamp should be the original message's timestamp
 				if (snapshot?.message?.timestamp) {
@@ -314,7 +323,9 @@ describe('Phase 28: Message Snapshot Details', () => {
 			expect(message.createdTimestamp).toBeDefined()
 
 			if (message.messageSnapshots && message.messageSnapshots.size > 0) {
-				const snapshot = message.messageSnapshots.first()
+				const snapshot = message.messageSnapshots.first() as unknown as {
+					message?: { timestamp?: Date | string }
+				}
 				if (snapshot?.message?.timestamp) {
 					// Snapshot should have the original timestamp
 					expect(snapshot.message.timestamp).toBeDefined()

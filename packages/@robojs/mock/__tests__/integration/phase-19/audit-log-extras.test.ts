@@ -276,7 +276,10 @@ describe('Phase 19: AuditLogEntry Extras', () => {
 
 			expect(entry).toBeDefined()
 			if (entry?.extra) {
-				expect(entry.extra.channel?.id).toBe(stageChannel.id)
+				// The extra can be StageChannel or { id: string }
+				const extraWithId = entry.extra as { id?: string; channel?: { id: string } }
+				const channelId = extraWithId.id ?? extraWithId.channel?.id
+				expect(channelId).toBe(stageChannel.id)
 			}
 		} finally {
 			await stageChannel.delete().catch(() => {})

@@ -15,7 +15,7 @@ import {
 } from 'discord.js'
 import { createSession } from '../setup/control-api.js'
 import { createTestClient, destroyClient } from '../setup/test-client.js'
-import { waitForReady, generateSnowflake, delay } from '../utils/helpers.js'
+import { waitForReady, delay } from '../utils/helpers.js'
 
 describe('Phase 6H: Forum Channels Deep', () => {
 	let client: Client | null = null
@@ -107,9 +107,9 @@ describe('Phase 6H: Forum Channels Deep', () => {
 				name: 'tagged-forum',
 				type: ChannelType.GuildForum,
 				availableTags: [
-					{ name: 'Bug', emoji: { name: '🐛' } },
-					{ name: 'Feature', emoji: { name: '✨' } },
-					{ name: 'Question', emoji: { name: '❓' } }
+					{ name: 'Bug', emoji: { id: null, name: '🐛' } },
+					{ name: 'Feature', emoji: { id: null, name: '✨' } },
+					{ name: 'Question', emoji: { id: null, name: '❓' } }
 				]
 			})) as ForumChannel
 		})
@@ -300,7 +300,7 @@ describe('Phase 6H: Forum Channels Deep', () => {
 		})
 
 		it('should set default reaction emoji (unicode)', async () => {
-			await settingsForum.setDefaultReactionEmoji({ name: '👍' })
+			await settingsForum.setDefaultReactionEmoji({ id: null, name: '👍' })
 
 			expect(settingsForum.defaultReactionEmoji?.name).toBe('👍')
 		})

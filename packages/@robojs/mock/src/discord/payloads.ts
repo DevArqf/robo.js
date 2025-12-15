@@ -662,6 +662,7 @@ export function mockDMChannelToAPIDMChannel(channel: MockChannel, recipient: Moc
 	return {
 		id: channel.id,
 		type: ChannelType.DM,
+		name: null, // DM channels have null name
 		recipients: [mockUserToAPIUser(recipient)],
 		last_message_id: null
 	}
@@ -1257,9 +1258,10 @@ export function mockMessageToAPIMessage(message: MockMessage, author: MockUser):
 
 	// Interaction metadata (new field that replaces deprecated interaction)
 	if (message.interaction_metadata) {
-		const metadata: APIMessageInteractionMetadata = {
+		// Build metadata object with required fields first
+		const metadata: Record<string, unknown> = {
 			id: message.interaction_metadata.id,
-			type: message.interaction_metadata.type as InteractionType,
+			type: message.interaction_metadata.type,
 			user: mockUserToAPIUser(message.interaction_metadata.user),
 			authorizing_integration_owners: message.interaction_metadata.authorizing_integration_owners ?? {}
 		}
@@ -1275,7 +1277,7 @@ export function mockMessageToAPIMessage(message: MockMessage, author: MockUser):
 			metadata.target_message_id = message.interaction_metadata.target_message_id
 		}
 
-		apiMessage.interaction_metadata = metadata
+		apiMessage.interaction_metadata = metadata as unknown as APIMessageInteractionMetadata
 	}
 
 	// Keep deprecated interaction field for backwards compatibility
@@ -2248,7 +2250,7 @@ export function mockThreadToAPIChannel(thread: MockThread, currentUserMember?: M
 		}
 	}
 
-	return result as APIChannel
+	return result as unknown as APIChannel
 }
 
 /**

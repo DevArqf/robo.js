@@ -444,9 +444,6 @@ describe('Phase 2F: Message Edit & Delete', () => {
 		})
 
 		it('getMessagesEdited should filter by action type', () => {
-			const guild = Array.from(session.state.guilds.values())[0]
-			const channelId = guild.channels[0]
-
 			// Record different action types
 			session.recorder.record('message_sent', { content: 'Sent' }, {})
 			session.recorder.record('message_edited', { content: 'Edited' }, {})

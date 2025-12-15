@@ -28,10 +28,10 @@ interface VirtualizedListProps {
 	isPlaybackMode: boolean
 	channelName: string
 	channelTopic?: string
-	onButtonClick: (messageId: string, customId: string) => void
-	onSelectOption: (messageId: string, customId: string, values: string[]) => void
-	onAddReaction: (channelId: string, messageId: string, emoji: string) => void
-	onRemoveReaction: (channelId: string, messageId: string, emoji: string) => void
+	onButtonClick: (messageId: string, customId: string) => Promise<void>
+	onSelectOption: (messageId: string, customId: string, values: string[]) => Promise<void>
+	onAddReaction: (messageId: string, emoji: string) => Promise<void>
+	onRemoveReaction: (messageId: string, emoji: string) => Promise<void>
 	onMessageContextMenu: (e: React.MouseEvent, message: StageMessage) => void
 	onUserContextMenu: (e: React.MouseEvent, user: StageUser) => void
 }
@@ -406,11 +406,11 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 				messages={displayMessages}
 				isPlaybackMode={isPlaybackMode}
 				channelName={selectedChannel.name}
-				channelTopic={selectedChannel.topic}
-				onButtonClick={clickButton}
-				onSelectOption={selectOption}
-				onAddReaction={addReaction}
-				onRemoveReaction={removeReaction}
+				channelTopic={selectedChannel.topic ?? undefined}
+				onButtonClick={async (messageId, customId) => { await clickButton(messageId, customId) }}
+				onSelectOption={async (messageId, customId, values) => { await selectOption(messageId, customId, values) }}
+				onAddReaction={async (messageId, emoji) => { await addReaction(messageId, emoji) }}
+				onRemoveReaction={async (messageId, emoji) => { await removeReaction(messageId, emoji) }}
 				onMessageContextMenu={handleMessageContextMenu}
 				onUserContextMenu={handleUserContextMenu}
 			/>

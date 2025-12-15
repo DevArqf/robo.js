@@ -153,8 +153,8 @@ describe('Phase 14: Scheduled Event Subscribers', () => {
 				guild_id: guild.id
 			})
 
-			// Fetch event with userCount
-			const fetched = await guild.scheduledEvents.fetch(event.id, { withUserCount: true })
+			// Fetch event with userCount - pass options as a single object
+			const fetched = await guild.scheduledEvents.fetch({ guildScheduledEvent: event.id, withUserCount: true })
 
 			expect(fetched.userCount).toBeGreaterThanOrEqual(0)
 		} finally {

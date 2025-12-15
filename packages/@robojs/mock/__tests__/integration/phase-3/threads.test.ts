@@ -101,11 +101,11 @@ describe('Phase 3C-3D: Threads', () => {
 		})
 
 		afterEach(async () => {
-			if (thread && !thread.deleted) {
+			if (thread) {
 				try {
 					await thread.delete()
 				} catch {
-					// ignore cleanup errors
+					// ignore cleanup errors (thread may already be deleted)
 				}
 			}
 		})

@@ -112,7 +112,7 @@ describe('Phase 2C: MESSAGE_CREATE Event', () => {
 				authorId: author.id,
 				content: 'Message with embeds',
 				embeds: [{ title: 'Test Embed' }],
-				attachments: [{ id: '1', filename: 'test.txt' }]
+				attachments: [{ id: '1', filename: 'test.txt', size: 100, url: 'http://example.com/test.txt', proxy_url: 'http://example.com/proxy/test.txt' }]
 			})
 
 			const apiMessage = mockMessageToAPIMessage(mockMessage, author)
@@ -530,7 +530,7 @@ describe('Phase 2C: MESSAGE_CREATE Event', () => {
 				channelId,
 				content: 'Message with extras',
 				embeds: [{ title: 'Test Embed', description: 'Test description' }],
-				attachments: [{ id: '1', filename: 'test.png' }]
+				attachments: [{ id: '1', filename: 'test.png', size: 100, url: 'http://example.com/test.png', proxy_url: 'http://example.com/proxy/test.png' }]
 			})
 
 			expect(message.embeds).toHaveLength(1)

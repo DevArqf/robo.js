@@ -4,7 +4,7 @@
  */
 import { createSessionState, createDefaultGuildWithChannel, MockServerState, createMockRole } from '../src/session/state.js'
 import { mockRoleToAPIRole, buildGuildRoleCreatePayload, buildGuildRoleUpdatePayload, buildGuildRoleDeletePayload } from '../src/discord/payloads.js'
-import type { MockRoleConfig, MockGuildMemberConfig } from '../src/types/index.js'
+import type { MockRoleConfig } from '../src/types/index.js'
 import { RoleLimits } from '../src/types/index.js'
 
 describe('Phase 4L: Roles', () => {
@@ -299,7 +299,6 @@ describe('Phase 4L: Roles', () => {
 
 		it('should not move @everyone role', () => {
 			const guild = createDefaultGuildWithChannel(sessionState)
-			const everyoneRole = sessionState.getGuildRole(guild.id, guild.id)
 
 			sessionState.updateGuildRolePositions(guild.id, [{ id: guild.id, position: 100 }])
 
@@ -567,7 +566,7 @@ describe('Phase 4L: Roles', () => {
 		})
 
 		it('should clear guild members on reset', () => {
-			const guild = createDefaultGuildWithChannel(sessionState)
+			createDefaultGuildWithChannel(sessionState)
 
 			expect(sessionState.guildMembers.size).toBeGreaterThan(0)
 

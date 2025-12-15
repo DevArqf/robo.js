@@ -55,6 +55,11 @@ export default async (request: RoboRequest) => {
 		return notFound('Channel not found')
 	}
 
+	// DM channels don't have guild permissions
+	if (!channel.guildId) {
+		return badRequest('Cannot compute permissions for DM channel')
+	}
+
 	const guild = session.state.guilds.get(channel.guildId)
 	if (!guild) {
 		return notFound('Guild not found')

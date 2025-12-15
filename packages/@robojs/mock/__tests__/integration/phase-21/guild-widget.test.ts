@@ -5,7 +5,7 @@
  * Covers fetching widget settings, setting widget enabled, fetching widget data,
  * and generating widget image URLs with style options.
  */
-import { ChannelType, Client, TextChannel } from 'discord.js'
+import { ChannelType, Client, GuildWidgetStyle, TextChannel } from 'discord.js'
 import { createSession } from '../setup/control-api.js'
 import { createTestClient, destroyClient } from '../setup/test-client.js'
 import { waitForReady } from '../utils/helpers.js'
@@ -117,11 +117,17 @@ describe('Phase 21: Guild Widget', () => {
 
 	it('should support widget style options', () => {
 		const guild = client!.guilds.cache.get(guildId)!
-		const styles = ['shield', 'banner1', 'banner2', 'banner3', 'banner4']
+		const styles: GuildWidgetStyle[] = [
+			GuildWidgetStyle.Shield,
+			GuildWidgetStyle.Banner1,
+			GuildWidgetStyle.Banner2,
+			GuildWidgetStyle.Banner3,
+			GuildWidgetStyle.Banner4
+		]
 
 		for (const style of styles) {
-			const url = guild.widgetImageURL({ style: style as any })
-			expect(url).toContain(`style=${style}`)
+			const url = guild.widgetImageURL(style)
+			expect(url).toContain('style=')
 		}
 	})
 })

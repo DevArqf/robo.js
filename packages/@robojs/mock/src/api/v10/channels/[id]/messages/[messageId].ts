@@ -152,7 +152,7 @@ async function handlePatch(
 
 				// Find metadata from payload_json.attachments (if provided)
 				// New files use numeric IDs, existing attachments use string snowflake IDs
-				const meta = body.attachments?.find((a) => a.id === i) || {}
+				const meta = body.attachments?.find((a) => a.id === i) as AttachmentPayload | undefined
 
 				// Detect image dimensions if applicable
 				let width: number | undefined
@@ -170,7 +170,7 @@ async function handlePatch(
 					id: attachmentId,
 					channelId,
 					messageId,
-					filename: ('filename' in meta && meta.filename) || file.filename,
+					filename: meta?.filename || file.filename,
 					contentType: file.contentType,
 					size: file.size,
 					data: file.data,
@@ -183,8 +183,8 @@ async function handlePatch(
 				const attachment: MockAttachment = {
 					id: attachmentId,
 					filename: storedAttachment.filename,
-					title: 'title' in meta ? meta.title : undefined,
-					description: 'description' in meta ? meta.description : undefined,
+					title: meta?.title,
+					description: meta?.description,
 					content_type: file.contentType,
 					size: file.size,
 					url: `${CDN_BASE_URL}/cdn/attachments/${channelId}/${attachmentId}/${encodeURIComponent(storedAttachment.filename)}`,

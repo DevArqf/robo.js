@@ -5,29 +5,34 @@
  * Used by the voice gateway to support wss:// connections.
  */
 
-// @ts-ignore - selfsigned types are incomplete
-import selfsigned from 'selfsigned'
-
 // Cache generated certificate to avoid regenerating for each voice gateway start
 let cachedCert: { key: string; cert: string } | null = null
+
+// Cache the selfsigned module once loaded
+let selfsignedModule: { generate: (attrs: { name: string; value: string }[], opts: { keySize: number; days: number; algorithm: string }) => Promise<{ private: string; cert: string }> } | null = null
 
 /**
  * Generate a self-signed certificate for testing
  * Returns PEM-encoded key and certificate
  */
-export function generateSelfSignedCert(): { key: string; cert: string } {
+export async function generateSelfSignedCert(): Promise<{ key: string; cert: string }> {
 	// Return cached cert if available
 	if (cachedCert) {
 		return cachedCert
 	}
 
+	// Dynamically import selfsigned to avoid require in ESM
+	if (!selfsignedModule) {
+		selfsignedModule = await import('selfsigned')
+	}
+
 	// Generate new self-signed certificate
 	const attrs = [{ name: 'commonName', value: 'localhost' }]
-	const pems = selfsigned.generate(attrs, {
+	const pems = await selfsignedModule!.generate(attrs, {
 		keySize: 2048,
 		days: 365,
 		algorithm: 'sha256'
-	}) as { private: string; cert: string }
+	})
 
 	cachedCert = {
 		key: pems.private,

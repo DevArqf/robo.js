@@ -409,9 +409,9 @@ describe('Phase 8: Thread Methods', () => {
 	describe('Thread Types', () => {
 		it('should create public thread', async () => {
 			const msg = await channel.send('Public thread parent')
+			// startThread from a message creates a public thread by default
 			const publicThread = await msg.startThread({
-				name: 'Public Thread',
-				type: ChannelType.PublicThread
+				name: 'Public Thread'
 			})
 
 			try {
@@ -422,8 +422,8 @@ describe('Phase 8: Thread Methods', () => {
 		})
 
 		it('should create private thread', async () => {
-			const msg = await channel.send('Private thread parent')
-			const privateThread = await msg.startThread({
+			// Private threads must be created via channel.threads.create, not from a message
+			const privateThread = await channel.threads.create({
 				name: 'Private Thread',
 				type: ChannelType.PrivateThread
 			})

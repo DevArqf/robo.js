@@ -52,7 +52,6 @@ describe('Phase 13: Partial Structures', () => {
 				api: MOCK_CONFIG.REST_URL
 			},
 			ws: {
-				// @ts-expect-error - buildIdentifyThrottler is internal
 				buildIdentifyThrottler: () => ({
 					waitForIdentify: async () => {}
 				})

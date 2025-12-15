@@ -1,5 +1,8 @@
 import type { Snowflake } from 'discord-api-types/v10'
 
+// Re-export Snowflake for use by other modules
+export type { Snowflake }
+
 // ============================================================================
 // Session Types
 // ============================================================================
@@ -345,6 +348,8 @@ export interface CreateSessionOptions {
 	name?: string
 	ttl?: number
 	config?: SessionConfig
+	/** Explicit token (if not provided, one is generated from the session ID) */
+	token?: string
 }
 
 /**
@@ -544,6 +549,7 @@ export interface MockThreadConfig {
 	name: string
 	type: 10 | 11 | 12
 	parentId: Snowflake
+	guildId?: Snowflake // Guild the thread belongs to (inferred from parent if not provided)
 	ownerId?: Snowflake // Defaults to bot user
 	autoArchiveDuration?: 60 | 1440 | 4320 | 10080
 	invitable?: boolean // For private threads

@@ -7,6 +7,7 @@ import {
 	ActionRow,
 	ActionRowBuilder,
 	ButtonBuilder,
+	ButtonComponent,
 	ButtonStyle,
 	ChannelType,
 	Client,
@@ -21,6 +22,11 @@ import { waitForReady } from '../utils/helpers.js'
 /** Helper to safely access action row components */
 function getActionRowComponents(component: unknown): MessageActionRowComponent[] {
 	return (component as ActionRow<MessageActionRowComponent>).components
+}
+
+/** Helper to get first button from action row */
+function getFirstButton(component: unknown): ButtonComponent {
+	return getActionRowComponents(component)[0] as ButtonComponent
 }
 
 describe('Phase 14: Button Variations', () => {
@@ -60,7 +66,7 @@ describe('Phase 14: Button Variations', () => {
 		)
 
 		const message = await channel.send({ content: 'Primary', components: [row] })
-		expect(getActionRowComponents(message.components[0])[0].style).toBe(ButtonStyle.Primary)
+		expect(getFirstButton(message.components[0]).style).toBe(ButtonStyle.Primary)
 	})
 
 	it('should send secondary button', async () => {
@@ -69,7 +75,7 @@ describe('Phase 14: Button Variations', () => {
 		)
 
 		const message = await channel.send({ content: 'Secondary', components: [row] })
-		expect(getActionRowComponents(message.components[0])[0].style).toBe(ButtonStyle.Secondary)
+		expect(getFirstButton(message.components[0]).style).toBe(ButtonStyle.Secondary)
 	})
 
 	it('should send success button', async () => {
@@ -78,7 +84,7 @@ describe('Phase 14: Button Variations', () => {
 		)
 
 		const message = await channel.send({ content: 'Success', components: [row] })
-		expect(getActionRowComponents(message.components[0])[0].style).toBe(ButtonStyle.Success)
+		expect(getFirstButton(message.components[0]).style).toBe(ButtonStyle.Success)
 	})
 
 	it('should send danger button', async () => {
@@ -87,7 +93,7 @@ describe('Phase 14: Button Variations', () => {
 		)
 
 		const message = await channel.send({ content: 'Danger', components: [row] })
-		expect(getActionRowComponents(message.components[0])[0].style).toBe(ButtonStyle.Danger)
+		expect(getFirstButton(message.components[0]).style).toBe(ButtonStyle.Danger)
 	})
 
 	it('should send link button', async () => {
@@ -96,7 +102,7 @@ describe('Phase 14: Button Variations', () => {
 		)
 
 		const message = await channel.send({ content: 'Link', components: [row] })
-		expect(getActionRowComponents(message.components[0])[0].style).toBe(ButtonStyle.Link)
+		expect(getFirstButton(message.components[0]).style).toBe(ButtonStyle.Link)
 	})
 
 	it('should send button with emoji', async () => {
@@ -105,7 +111,7 @@ describe('Phase 14: Button Variations', () => {
 		)
 
 		const message = await channel.send({ content: 'Emoji', components: [row] })
-		expect(getActionRowComponents(message.components[0])[0].emoji?.name).toBe('👍')
+		expect(getFirstButton(message.components[0]).emoji?.name).toBe('👍')
 	})
 
 	it('should send button with custom emoji', async () => {
@@ -124,7 +130,7 @@ describe('Phase 14: Button Variations', () => {
 			)
 
 			const message = await channel.send({ content: 'Custom Emoji', components: [row] })
-			expect(getActionRowComponents(message.components[0])[0].emoji?.id).toBe(emoji.id)
+			expect(getFirstButton(message.components[0]).emoji?.id).toBe(emoji.id)
 		} finally {
 			await emoji.delete()
 		}
@@ -136,7 +142,7 @@ describe('Phase 14: Button Variations', () => {
 		)
 
 		const message = await channel.send({ content: 'Disabled', components: [row] })
-		expect(getActionRowComponents(message.components[0])[0].disabled).toBe(true)
+		expect(getFirstButton(message.components[0]).disabled).toBe(true)
 	})
 
 	it('should send multiple buttons in row', async () => {

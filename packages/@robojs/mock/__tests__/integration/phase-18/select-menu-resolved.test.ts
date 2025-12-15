@@ -12,6 +12,8 @@ import {
 	Events,
 	GatewayIntentBits,
 	Guild,
+	GuildMember,
+	Interaction,
 	InteractionType,
 	MentionableSelectMenuInteraction,
 	RoleSelectMenuInteraction,
@@ -70,7 +72,7 @@ describe('Phase 18: SelectMenu Resolved Values', () => {
 				client!,
 				Events.InteractionCreate,
 				5000,
-				(interaction) => interaction.isUserSelectMenu()
+				(i) => (i as Interaction).isUserSelectMenu()
 			)
 
 			await dispatchEvent(session.id, 'INTERACTION_CREATE', {
@@ -149,7 +151,7 @@ describe('Phase 18: SelectMenu Resolved Values', () => {
 				client!,
 				Events.InteractionCreate,
 				5000,
-				(interaction) => interaction.isUserSelectMenu()
+				(i) => (i as Interaction).isUserSelectMenu()
 			)
 
 			await dispatchEvent(session.id, 'INTERACTION_CREATE', {
@@ -222,7 +224,7 @@ describe('Phase 18: SelectMenu Resolved Values', () => {
 			const interaction = await eventPromise
 
 			expect(interaction.members.size).toBe(1)
-			expect(interaction.members.first()?.nickname).toBe('Nickname')
+			expect((interaction.members.first() as GuildMember)?.nickname).toBe('Nickname')
 		})
 	})
 
@@ -239,7 +241,7 @@ describe('Phase 18: SelectMenu Resolved Values', () => {
 				client!,
 				Events.InteractionCreate,
 				5000,
-				(interaction) => interaction.isRoleSelectMenu()
+				(i) => (i as Interaction).isRoleSelectMenu()
 			)
 
 			await dispatchEvent(session.id, 'INTERACTION_CREATE', {
@@ -325,7 +327,7 @@ describe('Phase 18: SelectMenu Resolved Values', () => {
 				client!,
 				Events.InteractionCreate,
 				5000,
-				(interaction) => interaction.isChannelSelectMenu()
+				(i) => (i as Interaction).isChannelSelectMenu()
 			)
 
 			await dispatchEvent(session.id, 'INTERACTION_CREATE', {
@@ -407,7 +409,7 @@ describe('Phase 18: SelectMenu Resolved Values', () => {
 				client!,
 				Events.InteractionCreate,
 				5000,
-				(interaction) => interaction.isMentionableSelectMenu()
+				(i) => (i as Interaction).isMentionableSelectMenu()
 			)
 
 			await dispatchEvent(session.id, 'INTERACTION_CREATE', {
@@ -503,7 +505,7 @@ describe('Phase 18: SelectMenu Resolved Values', () => {
 				client!,
 				Events.InteractionCreate,
 				5000,
-				(interaction) => interaction.isUserSelectMenu()
+				(i) => (i as Interaction).isUserSelectMenu()
 			)
 
 			await dispatchEvent(session.id, 'INTERACTION_CREATE', {

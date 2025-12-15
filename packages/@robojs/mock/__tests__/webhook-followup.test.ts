@@ -13,8 +13,10 @@ import { sessionManager } from '../src/core/manager.js'
 
 // Import the handlers directly for unit testing
 import followupHandler from '../src/api/v10/webhooks/[app_id]/[token].js'
-import originalHandler from '../src/api/v10/webhooks/[app_id]/[token]/messages/@original.js'
+// The @original endpoint is handled by [messageId].ts with @original as a special case
 import messageHandler from '../src/api/v10/webhooks/[app_id]/[token]/messages/[messageId].js'
+// Use messageHandler for @original by passing messageId='@original'
+const originalHandler = messageHandler
 
 // Helper to create a mock RoboRequest
 function createMockRequest(options: {
@@ -276,7 +278,7 @@ describe('Phase 3H: Webhook Followup & Edit/Delete', () => {
 				params: { app_id: interaction.applicationId, token: interaction.token }
 			})
 
-			const response = await originalHandler(request as never)
+			const response = (await originalHandler(request as never)) as Response
 			expect(response.status).toBe(405)
 		})
 
@@ -287,7 +289,7 @@ describe('Phase 3H: Webhook Followup & Edit/Delete', () => {
 				body: { content: 'Edited' }
 			})
 
-			const response = await originalHandler(request as never)
+			const response = (await originalHandler(request as never)) as Response
 			expect(response.status).toBe(404)
 		})
 
@@ -298,7 +300,7 @@ describe('Phase 3H: Webhook Followup & Edit/Delete', () => {
 				body: { content: 'Edited' }
 			})
 
-			const response = await originalHandler(request as never)
+			const response = (await originalHandler(request as never)) as Response
 			expect(response.status).toBe(404)
 		})
 
@@ -312,10 +314,10 @@ describe('Phase 3H: Webhook Followup & Edit/Delete', () => {
 				body: { content: 'Edited' }
 			})
 
-			const response = await originalHandler(request as never)
+			const response = (await originalHandler(request as never)) as Response
 			expect(response.status).toBe(404)
 
-			const body = await response.json()
+			const body = (await response.json()) as { code: number }
 			expect(body.code).toBe(10008)
 		})
 
@@ -369,7 +371,7 @@ describe('Phase 3H: Webhook Followup & Edit/Delete', () => {
 				params: { app_id: interaction.applicationId, token: interaction.token }
 			})
 
-			const response = await originalHandler(request as never)
+			const response = (await originalHandler(request as never)) as Response
 			expect(response.status).toBe(204)
 
 			// Verify message was deleted from state
@@ -423,7 +425,7 @@ describe('Phase 3H: Webhook Followup & Edit/Delete', () => {
 				params: { app_id: interaction.applicationId, token: interaction.token, messageId: followupMessageId }
 			})
 
-			const response = await messageHandler(request as never)
+			const response = (await messageHandler(request as never)) as Response
 			expect(response.status).toBe(405)
 		})
 
@@ -437,10 +439,10 @@ describe('Phase 3H: Webhook Followup & Edit/Delete', () => {
 				}
 			})
 
-			const response = await messageHandler(request as never)
+			const response = (await messageHandler(request as never)) as Response
 			expect(response.status).toBe(404)
 
-			const body = await response.json()
+			const body = (await response.json()) as { code: number }
 			expect(body.code).toBe(10008)
 		})
 
@@ -485,7 +487,7 @@ describe('Phase 3H: Webhook Followup & Edit/Delete', () => {
 				params: { app_id: interaction.applicationId, token: interaction.token, messageId: followupMessageId }
 			})
 
-			const response = await messageHandler(request as never)
+			const response = (await messageHandler(request as never)) as Response
 			expect(response.status).toBe(204)
 
 			// Verify message was deleted
@@ -542,7 +544,7 @@ describe('Phase 3H: Webhook Followup & Edit/Delete', () => {
 				body: { content: 'Too late' }
 			})
 
-			const response = await originalHandler(request as never)
+			const response = (await originalHandler(request as never)) as Response
 			expect(response.status).toBe(404)
 		})
 	})
@@ -598,7 +600,7 @@ describe('Phase 3H: Webhook Followup & Edit/Delete', () => {
 				params: { app_id: interaction.applicationId, token: interaction.token }
 			})
 
-			const response = await originalHandler(request as never)
+			const response = (await originalHandler(request as never)) as Response
 			expect(response.status).toBe(204)
 		})
 

@@ -277,7 +277,7 @@ export default async (request: RoboRequest) => {
 			}
 		)
 
-		return commands.map(mockCommandToAPICommand)
+		return commands.map((cmd) => mockCommandToAPICommand(cmd))
 	}
 
 	// Method not allowed

@@ -10,13 +10,13 @@ import {
 	ButtonStyle,
 	ChannelType,
 	Client,
-	Collection,
 	ComponentType,
 	GatewayIntentBits,
 	InteractionType,
 	Message,
 	MessageComponentInteraction,
 	MessageReaction,
+	ReadonlyCollection,
 	TextChannel
 } from 'discord.js'
 import { createSession, dispatchEvent } from '../setup/control-api.js'
@@ -232,8 +232,8 @@ describe('Phase 8: Collector Methods', () => {
 				time: 100
 			})
 
-			const endPromise = new Promise<Collection<string, Message>>((resolve) => {
-				collector.on('end', resolve)
+			const endPromise = new Promise<ReadonlyCollection<string, Message>>((resolve) => {
+				collector.on('end', (collected) => resolve(collected))
 			})
 
 			const collection = await endPromise

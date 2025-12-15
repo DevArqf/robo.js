@@ -59,10 +59,11 @@ export class VoiceGatewayServer {
 			return
 		}
 
+		// Generate self-signed certificate for testing (async)
+		const { key, cert } = await generateSelfSignedCert()
+
 		return new Promise((resolve, reject) => {
 			try {
-				// Generate self-signed certificate for testing
-				const { key, cert } = generateSelfSignedCert()
 
 				// Create HTTPS server
 				this.httpsServer = https.createServer({ key, cert })
@@ -387,10 +388,10 @@ export class VoiceGatewayServer {
 	 */
 	private findSessionByVoiceToken(token: string, guildId: string): { id: string } | null {
 		// Look through all sessions to find one with a matching voice server state
-		for (const [sessionId, session] of sessionManager.getAllSessions()) {
+		for (const session of sessionManager.getAll()) {
 			const voiceState = (session as SessionWithVoiceServers).voiceServers?.get(guildId)
 			if (voiceState && voiceState.token === token) {
-				return { id: sessionId }
+				return { id: session.id }
 			}
 		}
 
@@ -501,7 +502,9 @@ export function sendVoiceError(sessionId: string, guildId: string, code: number,
 
 	// Find connections for this guild and send error
 	let found = false
-	for (const [ws, connection] of (server as VoiceGatewayServerWithConnections).connections) {
+	// Access private connections via type assertion (necessary for test/error handling)
+	const connections = (server as unknown as { connections: Map<WebSocket, VoiceGatewayConnection> }).connections
+	for (const [ws, connection] of connections) {
 		if (connection.guildId === guildId) {
 			ws.close(code, message)
 			mockLogger.debug(`Voice Gateway: Sent error to session=${sessionId}, guild=${guildId}: ${message}`)
@@ -510,9 +513,4 @@ export function sendVoiceError(sessionId: string, guildId: string, code: number,
 	}
 
 	return found
-}
-
-// Type for accessing private connections map
-interface VoiceGatewayServerWithConnections extends VoiceGatewayServer {
-	connections: Map<WebSocket, VoiceGatewayConnection>
 }

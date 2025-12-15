@@ -48,12 +48,12 @@ describe('Phase 28: Application Command Permissions V2', () => {
 				const permissions = await guild.commands.permissions.fetch({ command: command.id }).catch(() => null)
 
 				// Result can be undefined, null, array, or have a size property
-				expect(
+				const hasValidType =
 					permissions === undefined ||
-						permissions === null ||
-						Array.isArray(permissions) ||
-						typeof permissions?.size === 'number'
-				).toBe(true)
+					permissions === null ||
+					Array.isArray(permissions) ||
+					(typeof permissions === 'object' && 'size' in permissions && typeof (permissions as { size: number }).size === 'number')
+				expect(hasValidType).toBe(true)
 			} finally {
 				await command.delete().catch(() => {})
 			}

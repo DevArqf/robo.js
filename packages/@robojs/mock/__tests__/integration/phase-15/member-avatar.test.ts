@@ -134,17 +134,11 @@ describe('Phase 15: GuildMember Server Avatar', () => {
 			return
 		}
 
-		// A minimal 1x1 transparent PNG as base64
-		const avatarData =
-			'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
-
-		try {
-			await botMember.setAvatar(avatarData)
-			// If setAvatar succeeds, the avatar should be defined
-			expect(botMember.avatar).toBeDefined()
-		} catch {
-			// setAvatar may not be implemented in mock server - that's acceptable
-			// The test verifies the method exists and can be called
-		}
+		// Note: discord.js doesn't expose avatar in GuildMemberEditOptions
+		// Guild member avatars can only be changed by users themselves via profile settings
+		// This test verifies that the avatar property is accessible for reading
+		expect(typeof botMember.avatar === 'string' || botMember.avatar === null).toBe(true)
+		// Just verify avatarURL method is available
+		expect(typeof botMember.avatarURL).toBe('function')
 	})
 })

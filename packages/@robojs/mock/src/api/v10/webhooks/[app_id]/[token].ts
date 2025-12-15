@@ -782,7 +782,10 @@ async function handleInteractionWebhook(request: RoboRequest, appId: string, tok
 	}
 
 	// 13. Return APIMessage response
-	return mockMessageToAPIMessage(message, session.state.botUser)
+	return new Response(JSON.stringify(mockMessageToAPIMessage(message, session.state.botUser)), {
+		status: 200,
+		headers: { 'Content-Type': 'application/json' }
+	})
 }
 
 /**

@@ -46,8 +46,10 @@ export function AppShell() {
 
 	// Wrap channel selection to close mobile sidebar
 	const handleChannelSelect = useCallback(
-		(channelId: string) => {
-			selectChannel(channelId)
+		(channelId: string | null) => {
+			if (channelId) {
+				selectChannel(channelId)
+			}
 			setMobileSidebarOpen(false)
 		},
 		[selectChannel]
@@ -65,7 +67,7 @@ export function AppShell() {
 			{/* Channel list */}
 			<div className={styles.channelList}>
 				<ChannelList
-					guild={selectedGuild}
+					guild={selectedGuild ?? undefined}
 					channels={displayChannels}
 					selectedId={selectedChannelId}
 					onSelect={handleChannelSelect}
@@ -88,7 +90,7 @@ export function AppShell() {
 				</div>
 				<div className={styles.channelList}>
 					<ChannelList
-						guild={selectedGuild}
+						guild={selectedGuild ?? undefined}
 						channels={displayChannels}
 						selectedId={selectedChannelId}
 						onSelect={handleChannelSelect}

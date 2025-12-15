@@ -3,7 +3,9 @@
  *
  * Tests for the webhooksUpdate event when webhooks are created, modified, or deleted.
  */
-import { ChannelType, Client, Events, GatewayIntentBits, Guild, TextChannel } from 'discord.js'
+import { ChannelType, Client, Events, ForumChannel, GatewayIntentBits, Guild, MediaChannel, NewsChannel, TextChannel, VoiceChannel } from 'discord.js'
+
+type WebhookUpdateChannel = NewsChannel | TextChannel | VoiceChannel | ForumChannel | MediaChannel
 import { createSession, dispatchEvent } from '../setup/control-api.js'
 import { createTestClient, destroyClient } from '../setup/test-client.js'
 import { waitForReady } from '../utils/helpers.js'
@@ -43,13 +45,13 @@ describe('Phase 19: Webhook Update Event', () => {
 	})
 
 	it('should emit webhooksUpdate event', async () => {
-		const webhookUpdatePromise = new Promise<TextChannel>((resolve, reject) => {
+		const webhookUpdatePromise = new Promise<WebhookUpdateChannel>((resolve, reject) => {
 			const timeout = setTimeout(() => {
 				client!.off(Events.WebhooksUpdate, handler)
 				reject(new Error('Timeout waiting for webhooksUpdate event'))
 			}, 5000)
 
-			const handler = (updatedChannel: TextChannel) => {
+			const handler = (updatedChannel: WebhookUpdateChannel) => {
 				if (updatedChannel.id === channel.id) {
 					clearTimeout(timeout)
 					client!.off(Events.WebhooksUpdate, handler)
@@ -71,13 +73,13 @@ describe('Phase 19: Webhook Update Event', () => {
 	})
 
 	it('should emit when webhook created', async () => {
-		const webhookUpdatePromise = new Promise<TextChannel>((resolve, reject) => {
+		const webhookUpdatePromise = new Promise<WebhookUpdateChannel>((resolve, reject) => {
 			const timeout = setTimeout(() => {
 				client!.off(Events.WebhooksUpdate, handler)
 				reject(new Error('Timeout waiting for webhooksUpdate event'))
 			}, 5000)
 
-			const handler = (updatedChannel: TextChannel) => {
+			const handler = (updatedChannel: WebhookUpdateChannel) => {
 				if (updatedChannel.id === channel.id) {
 					clearTimeout(timeout)
 					client!.off(Events.WebhooksUpdate, handler)
@@ -109,13 +111,13 @@ describe('Phase 19: Webhook Update Event', () => {
 		// Create a webhook first
 		const webhook = await channel.createWebhook({ name: 'Delete Update Test' })
 
-		const webhookUpdatePromise = new Promise<TextChannel>((resolve, reject) => {
+		const webhookUpdatePromise = new Promise<WebhookUpdateChannel>((resolve, reject) => {
 			const timeout = setTimeout(() => {
 				client!.off(Events.WebhooksUpdate, handler)
 				reject(new Error('Timeout waiting for webhooksUpdate event'))
 			}, 5000)
 
-			const handler = (updatedChannel: TextChannel) => {
+			const handler = (updatedChannel: WebhookUpdateChannel) => {
 				if (updatedChannel.id === channel.id) {
 					clearTimeout(timeout)
 					client!.off(Events.WebhooksUpdate, handler)

@@ -79,7 +79,12 @@ function serveAttachment(data: Uint8Array, contentType: string, filename: string
 	const encodedFilename = encodeURIComponent(filename).replace(/['()]/g, escape)
 	const contentDisposition = `${disposition}; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`
 
-	return new Response(data, {
+	// Convert Uint8Array to Blob for Response body
+	// Create a new Uint8Array that is guaranteed to be a valid BlobPart
+	const blobData = new Uint8Array(data)
+	const blob = new Blob([blobData], { type: contentType })
+
+	return new Response(blob, {
 		status: 200,
 		headers: {
 			'Content-Type': contentType,

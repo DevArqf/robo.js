@@ -3,7 +3,7 @@
  *
  * Tests for guild.members.fetch() and GUILD_MEMBERS_CHUNK events.
  */
-import { Client, Collection, Events, GatewayIntentBits, type Guild, type GuildMember } from 'discord.js'
+import { Client, Events, GatewayIntentBits, ReadonlyCollection, type Guild, type GuildMember } from 'discord.js'
 import { createSession, dispatchEvent } from '../setup/control-api.js'
 import { createClientWithIntents, destroyClient } from '../setup/test-client.js'
 import { waitForReady, generateSnowflake } from '../utils/helpers.js'
@@ -56,7 +56,7 @@ describe('Phase 24: Gateway Request Guild Members', () => {
 		const userId1 = generateSnowflake()
 		const userId2 = generateSnowflake()
 
-		const chunkPromise = new Promise<{ members: Collection<string, GuildMember>; guild: Guild }>((resolve) => {
+		const chunkPromise = new Promise<{ members: ReadonlyCollection<string, GuildMember>; guild: Guild }>((resolve) => {
 			client!.once(Events.GuildMembersChunk, (members, chunkGuild) => {
 				resolve({ members, guild: chunkGuild })
 			})
@@ -144,7 +144,9 @@ describe('Phase 24: Gateway Request Guild Members', () => {
 			client!.once(Events.GuildMembersChunk, (_members, _guild, chunk) => {
 				// Presences are only included if client has GuildPresences intent
 				// The chunk object should exist and may contain presences
-				resolve({ presences: chunk.presences ?? [], chunkReceived: true })
+				// Access as unknown since presences may not be in the type but is in the raw data
+				const chunkData = chunk as unknown as { presences?: unknown[] }
+				resolve({ presences: chunkData.presences ?? [], chunkReceived: true })
 			})
 		})
 

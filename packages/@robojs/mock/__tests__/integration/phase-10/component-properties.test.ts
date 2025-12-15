@@ -6,6 +6,7 @@
 import {
 	ActionRowBuilder,
 	ButtonBuilder,
+	ButtonComponent,
 	ButtonInteraction,
 	ButtonStyle,
 	ChannelType,
@@ -155,11 +156,12 @@ describe('Phase 10: Button Component Properties', () => {
 		const interaction = await eventPromise
 
 		// Access the component that was clicked
-		expect(interaction.component.type).toBe(ComponentType.Button)
-		expect(interaction.component.customId).toBe('component_btn')
-		expect(interaction.component.label).toBe('Test Button')
-		expect(interaction.component.style).toBe(ButtonStyle.Primary)
-		expect(interaction.component.emoji?.name).toBe('\uD83C\uDFAE')
+		const button = interaction.component as ButtonComponent
+		expect(button.type).toBe(ComponentType.Button)
+		expect(button.customId).toBe('component_btn')
+		expect(button.label).toBe('Test Button')
+		expect(button.style).toBe(ButtonStyle.Primary)
+		expect(button.emoji?.name).toBe('\uD83C\uDFAE')
 	})
 
 	it('should access message from button interaction', async () => {

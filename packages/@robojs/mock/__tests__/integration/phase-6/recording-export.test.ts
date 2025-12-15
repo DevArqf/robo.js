@@ -5,14 +5,13 @@
  * REST calls, and metadata during a test session.
  */
 import { Client, ChannelType, TextChannel } from 'discord.js'
-import { createSession, getSessionRecording, getSessionActions, type SessionRecording } from '../setup/control-api.js'
+import { createSession, getSessionRecording, getSessionActions } from '../setup/control-api.js'
 import { createTestClient, destroyClient } from '../setup/test-client.js'
 import { waitForReady, delay } from '../utils/helpers.js'
 
 describe('Phase 6A: Recording Export', () => {
 	let client: Client | null = null
 	let session: { id: string; token: string }
-	let guildId: string
 	let channelId: string
 
 	beforeAll(async () => {
@@ -32,7 +31,6 @@ describe('Phase 6A: Recording Export', () => {
 		await client.login(session.token)
 		await waitForReady(client)
 
-		guildId = client.guilds.cache.first()!.id
 		channelId = client.guilds.cache.first()!.channels.cache.find((c) => c.type === ChannelType.GuildText)!.id
 	})
 

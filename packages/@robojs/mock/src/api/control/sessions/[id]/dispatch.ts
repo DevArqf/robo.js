@@ -5,7 +5,7 @@ import { VOICE_GATEWAY_PORT } from '../../../../core/voice-gateway.js'
 import { validateMethod, notFound, badRequest } from '../../utils.js'
 import { createMockGuild, createMockChannel } from '../../../../session/state.js'
 import { generateSnowflake } from '../../../../utils/snowflake.js'
-import type { VoiceServerState } from '../../../../types/index.js'
+import type { VoiceServerState, MockAttachment } from '../../../../types/index.js'
 
 /**
  * POST /api/control/sessions/:id/dispatch - Dispatch an event to session connections
@@ -156,7 +156,7 @@ export default async (request: RoboRequest) => {
 				content: data.content,
 				author: data.author,
 				embeds: data.embeds,
-				attachments: data.attachments,
+				attachments: data.attachments as MockAttachment[] | undefined,
 				components: data.components,
 				mentions: mentionIds,
 				reactions: data.reactions,

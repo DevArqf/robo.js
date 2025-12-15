@@ -86,7 +86,7 @@ export default async (request: RoboRequest) => {
 
 	// Create member if they don't exist but user does
 	if (!member && user) {
-		member = session.state.createGuildMember(guildId, userId, { roles: [] })
+		member = session.state.createGuildMember(guildId, userId, { roles: [] }) ?? undefined
 		if (!member) {
 			return new Response(JSON.stringify({ error: 'Failed to create member', code: 50035 }), {
 				status: 400,

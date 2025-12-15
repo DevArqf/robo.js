@@ -3,7 +3,7 @@ import { usePlaybackControls, type RecordedEvent } from '../../stores/playbackSt
 import { useSession } from '../../hooks/useSession'
 import { useSessionDispatch, type PendingInteraction } from '../../stores/sessionStore'
 import { useToaster } from '../common/Toaster'
-import type { StageEventType, StageMessage, StageChannel, StageMember, StageGuild, StateSyncPayload, StageVoiceState } from '../../types/stage'
+import type { StageEventType, StageMessage, StageChannel, StageMember, StageGuild, StateSyncPayload } from '../../types/stage'
 import styles from './ToolsPanel.module.css'
 
 export function ToolsPanel() {

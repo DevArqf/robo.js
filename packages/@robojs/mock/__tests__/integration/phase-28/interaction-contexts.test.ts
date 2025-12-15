@@ -263,8 +263,8 @@ describe('Phase 28: Interaction Context Types', () => {
 			expect(interaction.authorizingIntegrationOwners).toBeDefined()
 			// The map should contain the guild ID for guild install (key "0")
 			if (interaction.authorizingIntegrationOwners) {
-				// Discord.js maps this to ApplicationIntegrationType
-				const guildInstallOwner = interaction.authorizingIntegrationOwners.get(ApplicationIntegrationType.GuildInstall)
+				// authorizingIntegrationOwners is an object, not a Map - use bracket notation
+				const guildInstallOwner = interaction.authorizingIntegrationOwners[ApplicationIntegrationType.GuildInstall]
 				expect(guildInstallOwner).toBe(guildId)
 			}
 		})
@@ -312,7 +312,8 @@ describe('Phase 28: Interaction Context Types', () => {
 
 			expect(interaction.authorizingIntegrationOwners).toBeDefined()
 			if (interaction.authorizingIntegrationOwners) {
-				const userInstallOwner = interaction.authorizingIntegrationOwners.get(ApplicationIntegrationType.UserInstall)
+				// authorizingIntegrationOwners is an object, not a Map - use bracket notation
+				const userInstallOwner = interaction.authorizingIntegrationOwners[ApplicationIntegrationType.UserInstall]
 				expect(userInstallOwner).toBe(userId)
 			}
 		})

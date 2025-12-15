@@ -42,6 +42,7 @@ export type StageEventType =
 	// System
 	| 'heartbeat'              // Keep-alive (every 30s)
 	| 'error'                  // Error occurred
+	| 'session_invalid'        // Session token is stale/expired
 
 	// REST API (Phase 5K)
 	| 'rest_call'              // REST API call made by bot

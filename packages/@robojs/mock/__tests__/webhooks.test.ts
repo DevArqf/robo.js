@@ -17,7 +17,7 @@ import { WebhookLimits, WebhookType } from '../src/types/index.js'
 // Import handlers directly for unit testing
 import channelWebhooksHandler from '../src/api/v10/channels/[id]/webhooks.js'
 import guildWebhooksHandler from '../src/api/v10/guilds/[id]/webhooks.js'
-import webhookByIdHandler from '../src/api/v10/webhooks/[webhookId].js'
+import webhookByIdHandler from '../src/api/v10/webhooks/[id].js'
 import webhookWithTokenHandler from '../src/api/v10/webhooks/[app_id]/[token].js'
 import webhookMessagesHandler from '../src/api/v10/webhooks/[app_id]/[token]/messages/[messageId].js'
 
@@ -528,6 +528,7 @@ describe('Phase 4J: Webhooks', () => {
 				// Create a thread in the channel
 				const thread = session.state.createThread({
 					name: 'Test Thread',
+					type: 11, // PublicThread
 					parentId: channelId,
 					guildId: guildId,
 					ownerId: session.state.botUser.id
@@ -635,7 +636,7 @@ describe('Phase 4J: Webhooks', () => {
 				const forumChannel = session.state.createForumChannel({
 					name: 'test-forum',
 					guildId: guildId,
-					available_tags: [{ id: 'tag1', name: 'Bug' }]
+					available_tags: [{ name: 'Bug', moderated: false, emoji_id: null, emoji_name: null }]
 				})
 
 				// Create webhook for the forum channel
@@ -669,8 +670,8 @@ describe('Phase 4J: Webhooks', () => {
 					name: 'tagged-forum',
 					guildId: guildId,
 					available_tags: [
-						{ name: 'Bug' },
-						{ name: 'Feature' }
+						{ name: 'Bug', moderated: false, emoji_id: null, emoji_name: null },
+						{ name: 'Feature', moderated: false, emoji_id: null, emoji_name: null }
 					]
 				})
 
@@ -724,7 +725,7 @@ describe('Phase 4J: Webhooks', () => {
 				const forumChannel = session.state.createForumChannel({
 					name: 'invalid-tag-forum',
 					guildId: guildId,
-					available_tags: [{ id: 'valid-tag', name: 'Valid' }]
+					available_tags: [{ name: 'Valid', moderated: false, emoji_id: null, emoji_name: null }]
 				})
 
 				const forumWebhook = session.state.createWebhook(

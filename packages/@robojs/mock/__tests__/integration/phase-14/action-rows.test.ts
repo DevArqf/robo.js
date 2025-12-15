@@ -142,7 +142,6 @@ describe('Phase 14: Multiple Action Rows', () => {
 		await expect(
 			channel.send({
 				content: 'Mixed in same row',
-				// @ts-expect-error - intentionally sending invalid component structure
 				components: [mixedRow]
 			})
 		).rejects.toThrow()

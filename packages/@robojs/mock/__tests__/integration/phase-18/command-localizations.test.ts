@@ -13,9 +13,11 @@ import {
 	Client,
 	Events,
 	GatewayIntentBits,
+	Interaction,
 	InteractionType,
 	TextChannel
 } from 'discord.js'
+import type { APIApplicationCommandOptionChoice } from 'discord-api-types/v10'
 import { createSession, dispatchEvent } from '../setup/control-api.js'
 import { createClientWithIntents, destroyClient } from '../setup/test-client.js'
 import { generateSnowflake, waitForEvent, waitForReady } from '../utils/helpers.js'
@@ -153,9 +155,9 @@ describe('Phase 18: Command Localizations', () => {
 				]
 			})
 
-			const choices = command.options[0].choices
-			expect(choices?.[0].nameLocalizations?.de).toBe('Rot')
-			expect(choices?.[1].nameLocalizations?.fr).toBe('Bleu')
+			const choices = (command.options[0] as unknown as { choices?: APIApplicationCommandOptionChoice<string>[] }).choices
+			expect(choices?.[0].name_localizations?.de).toBe('Rot')
+			expect(choices?.[1].name_localizations?.fr).toBe('Bleu')
 
 			// Cleanup
 			await command.delete()
@@ -171,7 +173,7 @@ describe('Phase 18: Command Localizations', () => {
 				client!,
 				Events.InteractionCreate,
 				5000,
-				(interaction) => interaction.isChatInputCommand()
+				(i) => (i as Interaction).isChatInputCommand()
 			)
 
 			await dispatchEvent(session.id, 'INTERACTION_CREATE', {
@@ -219,7 +221,7 @@ describe('Phase 18: Command Localizations', () => {
 				client!,
 				Events.InteractionCreate,
 				5000,
-				(interaction) => interaction.isChatInputCommand()
+				(i) => (i as Interaction).isChatInputCommand()
 			)
 
 			await dispatchEvent(session.id, 'INTERACTION_CREATE', {

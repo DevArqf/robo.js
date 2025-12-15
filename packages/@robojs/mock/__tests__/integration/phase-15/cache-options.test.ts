@@ -26,6 +26,7 @@ describe('Phase 15: Cache Options', () => {
 		const client = new Client({
 			intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
 			rest: { api: MOCK_CONFIG.REST_URL },
+			// @ts-expect-error - Setting internal gateway URL for mock server
 			ws: { gateway: MOCK_CONFIG.WS_URL },
 			makeCache: Options.cacheWithLimits({
 				MessageManager: 10
@@ -68,6 +69,7 @@ describe('Phase 15: Cache Options', () => {
 		const client = new Client({
 			intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
 			rest: { api: MOCK_CONFIG.REST_URL },
+			// @ts-expect-error - Setting internal gateway URL for mock server
 			ws: { gateway: MOCK_CONFIG.WS_URL },
 			sweepers: {
 				messages: {
@@ -105,6 +107,7 @@ describe('Phase 15: Cache Options', () => {
 		const client = new Client({
 			intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
 			rest: { api: MOCK_CONFIG.REST_URL },
+			// @ts-expect-error - Setting internal gateway URL for mock server
 			ws: { gateway: MOCK_CONFIG.WS_URL },
 			makeCache: Options.cacheWithLimits({
 				GuildMemberManager: {
@@ -141,6 +144,7 @@ describe('Phase 15: Cache Options', () => {
 		const client = new Client({
 			intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
 			rest: { api: MOCK_CONFIG.REST_URL },
+			// @ts-expect-error - Setting internal gateway URL for mock server
 			ws: { gateway: MOCK_CONFIG.WS_URL },
 			makeCache: Options.cacheEverything()
 		})

@@ -57,7 +57,7 @@ describe('Phase 13: Channel Comparisons', () => {
 			})
 
 			try {
-				const channel2 = await guild.channels.fetch(channel1.id)
+				const channel2 = (await guild.channels.fetch(channel1.id)) as TextChannel | null
 
 				expect(channel1.equals(channel2!)).toBe(true)
 			} finally {

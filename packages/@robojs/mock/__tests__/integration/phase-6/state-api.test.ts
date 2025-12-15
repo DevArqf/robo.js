@@ -10,7 +10,6 @@ import {
 	getSessionStatus,
 	getFullSessionState,
 	getSessionActions,
-	resetSession,
 	getDetailedSessionStatus,
 	controlAPI
 } from '../setup/control-api.js'
@@ -21,7 +20,6 @@ import { MOCK_CONFIG } from '../setup/constants.js'
 describe('Phase 6C: State Inspection API', () => {
 	let client: Client | null = null
 	let session: { id: string; token: string }
-	let guildId: string
 	let channelId: string
 
 	beforeAll(async () => {
@@ -41,7 +39,6 @@ describe('Phase 6C: State Inspection API', () => {
 		await client.login(session.token)
 		await waitForReady(client)
 
-		guildId = client.guilds.cache.first()!.id
 		channelId = client.guilds.cache.first()!.channels.cache.find((c) => c.type === ChannelType.GuildText)!.id
 	})
 

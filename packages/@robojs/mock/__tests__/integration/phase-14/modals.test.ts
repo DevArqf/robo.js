@@ -16,8 +16,10 @@ import {
 	ModalSubmitInteraction,
 	TextChannel,
 	TextInputBuilder,
+	TextInputModalData,
 	TextInputStyle
 } from 'discord.js'
+import type { APIActionRowComponent, APITextInputComponent } from 'discord-api-types/v10'
 import { createSession, dispatchEvent } from '../setup/control-api.js'
 import { createClientWithIntents, destroyClient } from '../setup/test-client.js'
 import { generateSnowflake, waitForReady } from '../utils/helpers.js'
@@ -92,7 +94,8 @@ describe('Phase 14: Modal & TextInput Variations', () => {
 			)
 
 		const json = modal.toJSON()
-		expect(json.components?.[0]?.components?.[0]?.style).toBe(TextInputStyle.Short)
+		const row = json.components?.[0] as APIActionRowComponent<APITextInputComponent> | undefined
+		expect(row?.components?.[0]?.style).toBe(TextInputStyle.Short)
 	})
 
 	it('should create modal with paragraph text input', () => {
@@ -106,7 +109,8 @@ describe('Phase 14: Modal & TextInput Variations', () => {
 			)
 
 		const json = modal.toJSON()
-		expect(json.components?.[0]?.components?.[0]?.style).toBe(TextInputStyle.Paragraph)
+		const row = json.components?.[0] as APIActionRowComponent<APITextInputComponent> | undefined
+		expect(row?.components?.[0]?.style).toBe(TextInputStyle.Paragraph)
 	})
 
 	it('should create text input with placeholder', () => {
@@ -274,7 +278,7 @@ describe('Phase 14: Modal & TextInput Variations', () => {
 
 		const interaction = await eventPromise
 
-		const field = interaction.fields.getField('test_field')
+		const field = interaction.fields.getField('test_field') as TextInputModalData
 		expect(field.customId).toBe('test_field')
 		expect(field.value).toBe('Test Value')
 		expect(field.type).toBe(ComponentType.TextInput)

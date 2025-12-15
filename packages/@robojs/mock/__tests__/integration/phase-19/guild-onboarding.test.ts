@@ -99,15 +99,15 @@ describe('Phase 19: Guild Onboarding', () => {
 
 		// Ensure the prompt exists and has options
 		expect(prompt).toBeDefined()
-		if (prompt && prompt.options && prompt.options.length > 0) {
-			const option = prompt.options[0]
+		if (prompt && prompt.options && prompt.options.size > 0) {
+			const option = prompt.options.first()!
 			expect(option.id).toBeDefined()
 			expect(option.title).toBeDefined()
-			expect(option.channelIds).toBeDefined()
-			expect(option.roleIds).toBeDefined()
+			expect(option.channels).toBeDefined()
+			expect(option.roles).toBeDefined()
 		} else {
 			// If no options from previous test, this is expected behavior for fresh state
-			expect(prompt?.options?.length ?? 0).toBeGreaterThanOrEqual(0)
+			expect(prompt?.options?.size ?? 0).toBeGreaterThanOrEqual(0)
 		}
 	})
 

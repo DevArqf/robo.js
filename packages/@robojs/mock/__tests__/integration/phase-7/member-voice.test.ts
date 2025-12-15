@@ -7,7 +7,7 @@
  * Note: These tests require control API support for managing voice states.
  */
 import { ChannelType, Client, GatewayIntentBits, GuildMember, VoiceChannel } from 'discord.js'
-import { createSession, dispatchEvent, mockRestAPI } from '../setup/control-api.js'
+import { createSession, dispatchEvent } from '../setup/control-api.js'
 import { createClientWithIntents, destroyClient } from '../setup/test-client.js'
 import { generateSnowflake, waitForReady, delay } from '../utils/helpers.js'
 

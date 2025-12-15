@@ -60,8 +60,8 @@ describe('Phase 13: Fetch Options', () => {
 		})
 
 		it('should fetch with before', async () => {
-			const msg1 = await channel.send('Before First')
-			const msg2 = await channel.send('Before Second')
+			await channel.send('Before First')
+			await channel.send('Before Second')
 			const msg3 = await channel.send('Before Third')
 
 			const messages = await channel.messages.fetch({
@@ -75,8 +75,8 @@ describe('Phase 13: Fetch Options', () => {
 
 		it('should fetch with after', async () => {
 			const msg1 = await channel.send('After First')
-			const msg2 = await channel.send('After Second')
-			const msg3 = await channel.send('After Third')
+			await channel.send('After Second')
+			await channel.send('After Third')
 
 			const messages = await channel.messages.fetch({
 				after: msg1.id,
@@ -87,9 +87,9 @@ describe('Phase 13: Fetch Options', () => {
 		})
 
 		it('should fetch with around', async () => {
-			const msg1 = await channel.send('Around First')
+			await channel.send('Around First')
 			const msg2 = await channel.send('Around Center')
-			const msg3 = await channel.send('Around Third')
+			await channel.send('Around Third')
 
 			const messages = await channel.messages.fetch({
 				around: msg2.id,
@@ -101,7 +101,7 @@ describe('Phase 13: Fetch Options', () => {
 		})
 
 		it('should fetch with cache option false', async () => {
-			const msg = await channel.send('No cache test')
+			await channel.send('No cache test')
 
 			const messages = await channel.messages.fetch({
 				limit: 1,

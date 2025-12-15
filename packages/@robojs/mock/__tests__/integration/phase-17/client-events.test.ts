@@ -60,9 +60,8 @@ describe('Phase 17: Client Debug Events', () => {
 			})
 
 			// Verify client can register warn event listener
-			let warnReceived = false
 			client.on(Events.Warn, () => {
-				warnReceived = true
+				// Event listener is registered
 			})
 
 			await client.login(session.token)

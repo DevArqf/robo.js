@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { CommandOptionInput } from './CommandOptionInput'
 import { useSession } from '../../hooks/useSession'
-import type { StageApplicationCommand, StageApplicationCommandOption } from '../../types/stage'
+import type { StageApplicationCommand } from '../../types/stage'
 import styles from './CommandAutocomplete.module.css'
 
 interface CommandAutocompleteProps {
@@ -11,7 +11,8 @@ interface CommandAutocompleteProps {
 	onClose: () => void
 }
 
-export function CommandAutocomplete({ search, commands, onSelect, onClose }: CommandAutocompleteProps) {
+export function CommandAutocomplete({ search, commands, onSelect, onClose: _onClose }: CommandAutocompleteProps) {
+	void _onClose // Reserved for future use
 	const { guildMembers, guildChannels } = useSession()
 	const [selectedCommand, setSelectedCommand] = useState<StageApplicationCommand | null>(null)
 	const [optionValues, setOptionValues] = useState<Record<string, unknown>>({})

@@ -61,11 +61,11 @@ describe('Phase 9: GuildChannelManager Methods', () => {
 					{ channel: channel2.id, position: 0 }
 				])
 
-				const fetched1 = await guild.channels.fetch(channel1.id)
-				const fetched2 = await guild.channels.fetch(channel2.id)
+				const fetched1 = (await guild.channels.fetch(channel1.id)) as TextChannel
+				const fetched2 = (await guild.channels.fetch(channel2.id)) as TextChannel
 
 				// Channel2 should have a lower position than channel1
-				expect(fetched2!.position).toBeLessThanOrEqual(fetched1!.position)
+				expect(fetched2.position).toBeLessThanOrEqual(fetched1.position)
 			} finally {
 				await channel1.delete().catch(() => {})
 				await channel2.delete().catch(() => {})

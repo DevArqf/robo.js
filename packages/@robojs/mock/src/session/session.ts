@@ -16,6 +16,7 @@ import type {
 	MockAutoModRule,
 	MockAutoModAction,
 	MockInvite,
+	MockAttachment,
 	DispatchSlashCommandOptions,
 	DispatchButtonClickOptions,
 	DispatchSelectMenuOptions,

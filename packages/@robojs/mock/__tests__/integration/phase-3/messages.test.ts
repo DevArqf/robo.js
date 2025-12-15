@@ -241,9 +241,9 @@ describe('Phase 3B: Messages', () => {
 					headers: { Authorization: `Bot ${session.token}` }
 				}
 			)
-			const msgData = (await msgResp.json()) as { reactions?: unknown[] }
+			const msgData = (await msgResp.json()) as { reactions?: Array<{ emoji?: { name?: string } }> }
 			// After removing the only reaction, the reactions should be empty or the specific emoji should be gone
-			const thumbsDownReaction = (msgData.reactions ?? []).find((r: { emoji?: { name?: string } }) => r.emoji?.name === '👎')
+			const thumbsDownReaction = (msgData.reactions ?? []).find((r) => r.emoji?.name === '👎')
 			expect(thumbsDownReaction).toBeUndefined()
 		})
 
@@ -284,7 +284,7 @@ describe('Phase 3B: Messages', () => {
 
 		it('should emit messageUpdate', async () => {
 			const message = await channel.send('Before')
-			const eventPromise = new Promise<{ oldContent: string; newContent: string }>((resolve) => {
+			const eventPromise = new Promise<{ oldContent: string | null; newContent: string | null }>((resolve) => {
 				client!.once(Events.MessageUpdate, (oldMsg, updatedMsg) =>
 					resolve({ oldContent: oldMsg.content, newContent: updatedMsg.content })
 				)

@@ -10,7 +10,6 @@
  * and prepares for session creation in the start hook.
  */
 import type { InitContext } from 'robo.js'
-import type { MockPluginConfig } from '../types/plugin.js'
 
 /**
  * Global state for mock mode.
@@ -55,7 +54,7 @@ export function resetMockModeState(): void {
 /**
  * Init hook - Detects mock mode from environment variables.
  */
-export default async function initHook(context: InitContext<MockPluginConfig>): Promise<void> {
+export default async function initHook(context: InitContext): Promise<void> {
 	const { logger } = context
 
 	// Check if running in mock mode

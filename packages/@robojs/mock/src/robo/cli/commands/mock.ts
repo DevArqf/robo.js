@@ -45,6 +45,7 @@ export const config = createCliCommandConfig({
 			default: false
 		},
 		{
+			alias: '',
 			name: '--no-browser',
 			description: 'Skip opening Stage UI in browser',
 			type: 'boolean',
@@ -53,9 +54,9 @@ export const config = createCliCommandConfig({
 	]
 } as const)
 
-export default async function mockCommand({ options, logger }: CliContext<typeof config>) {
-	const { mode, silent, verbose } = options
-	const noBrowser = options['no-browser']
+export default async function mockCommand({ options, logger }: CliContext) {
+	const { mode, silent, verbose } = options as { mode?: string; silent?: boolean; verbose?: boolean; 'no-browser'?: boolean }
+	const noBrowser = options['no-browser'] as boolean | undefined
 
 	// Configure logger
 	if (verbose) {

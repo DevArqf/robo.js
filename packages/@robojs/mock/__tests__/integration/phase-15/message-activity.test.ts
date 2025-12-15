@@ -96,9 +96,9 @@ describe('Phase 15: Message Activity & Application', () => {
 
 		const message = await messagePromise
 
-		if (message.application) {
-			expect(message.application.id).toBe(appId)
-			expect(message.application.name).toBe('Cool Game')
+		// In discord.js v14+, Message only has applicationId, not full application object
+		if (message.applicationId) {
+			expect(message.applicationId).toBe(appId)
 		}
 	})
 
@@ -108,10 +108,10 @@ describe('Phase 15: Message Activity & Application', () => {
 		expect(message.activity).toBeNull()
 	})
 
-	it('should have no application on regular message', async () => {
+	it('should have no applicationId on regular message', async () => {
 		const message = await channel.send('Regular message')
 
-		// application is undefined or null when not set
-		expect(message.application ?? null).toBeNull()
+		// applicationId is null when not set
+		expect(message.applicationId).toBeNull()
 	})
 })

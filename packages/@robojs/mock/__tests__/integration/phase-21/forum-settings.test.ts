@@ -44,7 +44,7 @@ describe('Phase 21: Forum Channel Settings', () => {
 	})
 
 	it('should have defaultReactionEmoji', async () => {
-		await forum!.setDefaultReactionEmoji({ name: '👍' })
+		await forum!.setDefaultReactionEmoji({ id: null, name: '👍' })
 
 		expect(forum!.defaultReactionEmoji?.name).toBe('👍')
 	})
@@ -59,7 +59,7 @@ describe('Phase 21: Forum Channel Settings', () => {
 		})
 
 		try {
-			await forum!.setDefaultReactionEmoji({ id: emoji.id })
+			await forum!.setDefaultReactionEmoji({ id: emoji.id, name: null })
 
 			expect(forum!.defaultReactionEmoji?.id).toBe(emoji.id)
 		} finally {
@@ -100,7 +100,7 @@ describe('Phase 21: Forum Channel Settings', () => {
 		await forum!.setAvailableTags([
 			{ name: 'Bug', moderated: false },
 			{ name: 'Feature', moderated: true },
-			{ name: 'Question', moderated: false, emoji: { name: '❓' } }
+			{ name: 'Question', moderated: false, emoji: { id: null, name: '❓' } }
 		])
 
 		expect(forum!.availableTags.length).toBe(3)

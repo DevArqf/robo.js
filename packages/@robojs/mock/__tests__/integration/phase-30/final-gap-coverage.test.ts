@@ -21,7 +21,6 @@ import {
 	ButtonStyle,
 	ChannelType,
 	Client,
-	Collection,
 	EmbedBuilder,
 	Events,
 	GatewayIntentBits,
@@ -33,10 +32,11 @@ import {
 	StickerFormatType,
 	StickerType,
 	StringSelectMenuBuilder,
+	TextBasedChannel,
 	TextChannel,
 	ThreadChannel,
-	ThreadMember,
 	User,
+	PartialUser,
 	Webhook
 } from 'discord.js'
 import { addAuditLogEntries, createSession, dispatchEvent } from '../setup/control-api.js'
@@ -728,8 +728,8 @@ describe('Phase 30: Final Gap Coverage', () => {
 
 		it('should emit when user updates their profile', async () => {
 			// userUpdate emits (oldUser, newUser) as separate arguments
-			const eventPromise = new Promise<{ oldUser: User; newUser: User }>((resolve, reject) => {
-				const handler = (oldUser: User, newUser: User) => {
+			const eventPromise = new Promise<{ oldUser: User | PartialUser; newUser: User }>((resolve, reject) => {
+				const handler = (oldUser: User | PartialUser, newUser: User) => {
 					client!.off(Events.UserUpdate, handler)
 					resolve({ oldUser, newUser })
 				}
@@ -756,8 +756,8 @@ describe('Phase 30: Final Gap Coverage', () => {
 
 		it('should track avatar changes', async () => {
 			// userUpdate emits (oldUser, newUser) as separate arguments
-			const eventPromise = new Promise<{ oldUser: User; newUser: User }>((resolve, reject) => {
-				const handler = (oldUser: User, newUser: User) => {
+			const eventPromise = new Promise<{ oldUser: User | PartialUser; newUser: User }>((resolve, reject) => {
+				const handler = (oldUser: User | PartialUser, newUser: User) => {
 					client!.off(Events.UserUpdate, handler)
 					resolve({ oldUser, newUser })
 				}
@@ -819,9 +819,8 @@ describe('Phase 30: Final Gap Coverage', () => {
 
 		it('should emit when message is pinned via dispatch', async () => {
 			// channelPinsUpdate emits (channel, time) as separate arguments
-			// Note: timestamp may be Date or number depending on discord.js version
-			const eventPromise = new Promise<{ channel: TextChannel; timestamp: Date | number | null }>((resolve, reject) => {
-				const handler = (ch: TextChannel, time: Date | number | null) => {
+			const eventPromise = new Promise<{ channel: TextBasedChannel; timestamp: Date }>((resolve, reject) => {
+				const handler = (ch: TextBasedChannel, time: Date) => {
 					client!.off(Events.ChannelPinsUpdate, handler)
 					resolve({ channel: ch, timestamp: time })
 				}
@@ -847,8 +846,8 @@ describe('Phase 30: Final Gap Coverage', () => {
 
 		it('should emit when pins are cleared', async () => {
 			// channelPinsUpdate emits (channel, time) as separate arguments
-			const eventPromise = new Promise<{ channel: TextChannel; timestamp: Date | null }>((resolve, reject) => {
-				const handler = (ch: TextChannel, time: Date | null) => {
+			const eventPromise = new Promise<{ channel: TextBasedChannel; timestamp: Date }>((resolve, reject) => {
+				const handler = (ch: TextBasedChannel, time: Date) => {
 					client!.off(Events.ChannelPinsUpdate, handler)
 					resolve({ channel: ch, timestamp: time })
 				}

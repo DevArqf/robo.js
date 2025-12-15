@@ -56,7 +56,8 @@ describe('Phase 24: Application Install Params', () => {
 		if (app.installParams) {
 			expect(app.installParams.permissions).toBeDefined()
 			// Permissions should be a Permissions object or similar
-			expect(typeof app.installParams.permissions === 'object' || typeof app.installParams.permissions.bitfield === 'bigint').toBe(true)
+			const perms = app.installParams.permissions as unknown as { bitfield?: bigint }
+			expect(typeof app.installParams.permissions === 'object' || typeof perms.bitfield === 'bigint').toBe(true)
 		}
 	})
 

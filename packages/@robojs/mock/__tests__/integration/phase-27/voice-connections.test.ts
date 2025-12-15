@@ -28,7 +28,6 @@ describe.skip('Phase 27: Voice Connection Basics', () => {
 	let client: Client | null = null
 	let guild: Guild
 	let voiceChannel: VoiceChannel
-	let sessionId: string
 
 	beforeAll(async () => {
 		const session = await createSession({
@@ -38,8 +37,6 @@ describe.skip('Phase 27: Voice Connection Basics', () => {
 				guilds: [{ name: 'Voice Test Guild' }]
 			}
 		})
-
-		sessionId = session.id
 
 		client = createTestClient({
 			intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates]

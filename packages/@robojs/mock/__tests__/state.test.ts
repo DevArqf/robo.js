@@ -676,7 +676,7 @@ describe('createMockMessage', () => {
 			authorId: '456',
 			guildId: '789',
 			embeds: [{ title: 'Test' }],
-			attachments: [{ id: 'att1' }],
+			attachments: [{ id: 'att1', filename: 'test.txt', size: 100, url: 'http://example.com/test.txt', proxy_url: 'http://example.com/proxy/test.txt' }],
 			tts: true,
 			type: 1
 		})

@@ -41,9 +41,9 @@ export default async (request: RoboRequest) => {
 		// If still not found, try direct session lookup
 		if (!sessionId) {
 			// For testing purposes, accept any session that matches the app ID
-			for (const [id, session] of sessionManager.entries()) {
+			for (const session of sessionManager.getAll()) {
 				if (session.state.applicationId === appId) {
-					sessionId = id
+					sessionId = session.id
 					break
 				}
 			}

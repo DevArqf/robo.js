@@ -3,7 +3,7 @@
  * Tests the INTERACTION_CREATE payload builder for slash commands (3A), button clicks (3C), select menus (3D), and modals (3E)
  */
 import { GatewayOpcodes, InteractionType, ApplicationCommandType, ComponentType } from 'discord-api-types/v10'
-import { buildInteractionCreatePayload, buildButtonInteractionPayload, buildSelectMenuInteractionPayload, buildModalSubmitInteractionPayload, mockUserToAPIUser } from '../src/discord/payloads.js'
+import { buildInteractionCreatePayload, buildButtonInteractionPayload, buildSelectMenuInteractionPayload, buildModalSubmitInteractionPayload } from '../src/discord/payloads.js'
 import {
 	createSessionState,
 	createMockUser,
@@ -13,7 +13,7 @@ import {
 import { Session } from '../src/session/session.js'
 import { generateSnowflake } from '../src/utils/snowflake.js'
 import { generateInteractionToken } from '../src/utils/id.js'
-import type { MockInteraction, MockUser, SessionState } from '../src/types/index.js'
+import type { MockInteraction, SessionState } from '../src/types/index.js'
 
 describe('Phase 3A: INTERACTION_CREATE Event', () => {
 	describe('buildInteractionCreatePayload', () => {

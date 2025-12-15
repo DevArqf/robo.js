@@ -15,34 +15,30 @@
  * 4. @robojs/mock start hook - starts voice gateway, creates session
  * 5. @robojs/server start hook - starts listening
  */
-import type { NodeEngine } from '@robojs/server/engines.js'
-import type { PrepareContext } from 'robo.js'
 import { getGatewayServer } from '../core/gateway.js'
 import { getStageServer } from '../core/stage.js'
 import { mockLogger } from '../core/logger.js'
 import { getMockPluginPrefix } from '../utils/server.js'
-import type { MockPluginConfig } from '../types/plugin.js'
-import type { BaseEngine } from '@robojs/server/engines.js'
+import type { BaseEngine } from '@robojs/server/engines'
 
-// Extend globalThis to include our callback type
-declare global {
-	// eslint-disable-next-line no-var
-	var __roboServerEngineCallbacks: Array<(engine: BaseEngine) => void> | undefined
-}
+// Type for the global callbacks array used by @robojs/server
+type EngineCallbackArray = Array<(engine: BaseEngine) => void>
 
 /**
  * Prepare hook - Registers a callback for when the server engine is ready
  */
-export default async (_context: PrepareContext<MockPluginConfig>) => {
+export default async () => {
 	// Register a callback that @robojs/server will call after creating the engine
 	// This ensures our WebSocket handlers are registered before start hooks run
-	if (!globalThis.__roboServerEngineCallbacks) {
-		globalThis.__roboServerEngineCallbacks = []
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const globalAny = globalThis as any
+	if (!globalAny.__roboServerEngineCallbacks) {
+		globalAny.__roboServerEngineCallbacks = []
 	}
 
-	globalThis.__roboServerEngineCallbacks.push((engine: BaseEngine) => {
+	;(globalAny.__roboServerEngineCallbacks as EngineCallbackArray).push((engine: BaseEngine) => {
 		mockLogger.debug('Server engine ready - registering WebSocket handlers')
-		registerWebSocketHandlers(engine as NodeEngine)
+		registerWebSocketHandlers(engine)
 		markHandlersRegistered()
 	})
 
@@ -53,7 +49,7 @@ export default async (_context: PrepareContext<MockPluginConfig>) => {
  * Register WebSocket handlers on the server engine
  * Exported so start hook can call this as fallback
  */
-export function registerWebSocketHandlers(engine: NodeEngine): void {
+export function registerWebSocketHandlers(engine: BaseEngine): void {
 	const gatewayServer = getGatewayServer()
 	const stageServer = getStageServer()
 

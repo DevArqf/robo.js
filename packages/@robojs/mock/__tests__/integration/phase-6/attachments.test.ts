@@ -8,7 +8,6 @@ import { Client, ChannelType, TextChannel, AttachmentBuilder, EmbedBuilder } fro
 import { createSession } from '../setup/control-api.js'
 import { createTestClient, destroyClient } from '../setup/test-client.js'
 import { waitForReady } from '../utils/helpers.js'
-import { MOCK_CONFIG } from '../setup/constants.js'
 
 // 1x1 transparent PNG for image tests
 const TEST_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='

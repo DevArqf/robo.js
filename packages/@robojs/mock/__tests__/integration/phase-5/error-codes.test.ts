@@ -162,16 +162,6 @@ describe('Phase 5: Error Codes', () => {
 
 	describe('Channel Errors', () => {
 		it('should fail to send to non-existent channel', async () => {
-			const fakeChannel = {
-				send: async () => {
-					const fakeId = generateSnowflake()
-					const fetched = await client!.channels.fetch(fakeId)
-					if (fetched && 'send' in fetched) {
-						await fetched.send('test')
-					}
-				}
-			}
-
 			await expect(client!.channels.fetch(generateSnowflake())).rejects.toMatchObject({
 				code: 10003
 			})

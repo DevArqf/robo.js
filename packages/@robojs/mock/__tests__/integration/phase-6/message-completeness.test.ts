@@ -9,14 +9,16 @@ import {
 	ChannelType,
 	TextChannel,
 	EmbedBuilder,
+	ActionRow,
 	ActionRowBuilder,
 	ButtonBuilder,
 	ButtonStyle,
+	MessageActionRowComponent,
 	StringSelectMenuBuilder
 } from 'discord.js'
 import { createSession } from '../setup/control-api.js'
 import { createTestClient, destroyClient } from '../setup/test-client.js'
-import { waitForReady, generateSnowflake } from '../utils/helpers.js'
+import { waitForReady } from '../utils/helpers.js'
 
 describe('Phase 6: Message Completeness', () => {
 	let client: Client | null = null
@@ -271,7 +273,7 @@ describe('Phase 6: Message Completeness', () => {
 				components: [row]
 			})
 
-			expect(message.components[0].components.length).toBe(5)
+			expect((message.components[0] as ActionRow<MessageActionRowComponent>).components.length).toBe(5)
 		})
 
 		it('should reject more than 5 buttons per row', async () => {

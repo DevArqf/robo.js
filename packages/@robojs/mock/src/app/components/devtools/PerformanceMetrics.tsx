@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { usePlayback, type RecordedEvent } from '../../stores/playbackStore'
+import { usePlayback } from '../../stores/playbackStore'
 import styles from './PerformanceMetrics.module.css'
 
 export function PerformanceMetrics() {

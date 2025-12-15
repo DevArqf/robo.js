@@ -27,8 +27,8 @@ describe('Phase 2G: DM Channel Creation', () => {
 			expect(apiChannel.id).toBe('987654321')
 			expect(apiChannel.type).toBe(ChannelType.DM)
 			expect(apiChannel.recipients).toHaveLength(1)
-			expect(apiChannel.recipients[0].id).toBe('123456789')
-			expect(apiChannel.recipients[0].username).toBe('TestRecipient')
+			expect(apiChannel.recipients![0].id).toBe('123456789')
+			expect(apiChannel.recipients![0].username).toBe('TestRecipient')
 			expect(apiChannel.last_message_id).toBeNull()
 		})
 
@@ -45,7 +45,7 @@ describe('Phase 2G: DM Channel Creation', () => {
 
 			const apiChannel = mockDMChannelToAPIDMChannel(channel, recipient)
 
-			expect(apiChannel.recipients[0]).toMatchObject({
+			expect(apiChannel.recipients![0]).toMatchObject({
 				id: '111222333',
 				username: 'FullUser',
 				discriminator: '1234',
@@ -53,7 +53,7 @@ describe('Phase 2G: DM Channel Creation', () => {
 				avatar: 'avatar_hash'
 			})
 			// Non-bot users shouldn't have bot field
-			expect(apiChannel.recipients[0].bot).toBeUndefined()
+			expect(apiChannel.recipients![0].bot).toBeUndefined()
 		})
 	})
 

@@ -12,12 +12,11 @@ import {
 	GuildVerificationLevel,
 	GuildDefaultMessageNotifications,
 	GuildExplicitContentFilter,
-	GuildSystemChannelFlags,
-	GuildMFALevel
+	GuildSystemChannelFlags
 } from 'discord.js'
 import { createSession } from '../setup/control-api.js'
 import { createTestClient, destroyClient } from '../setup/test-client.js'
-import { waitForReady, waitForEvent, delay } from '../utils/helpers.js'
+import { waitForReady } from '../utils/helpers.js'
 
 describe('Phase 6: Guild Settings', () => {
 	let client: Client | null = null

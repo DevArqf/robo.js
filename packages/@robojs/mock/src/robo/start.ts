@@ -1,8 +1,8 @@
 import { getServerEngine } from '@robojs/server'
-import type { NodeEngine } from '@robojs/server/engines.js'
 import type { StartContext, HandlerEntry } from 'robo.js'
 import { Manifest, getPluginOptions } from 'robo.js'
 import { getStageBridge } from '../core/stage-bridge.js'
+import { getStageServer } from '../core/stage.js'
 import { startVoiceGateway, VOICE_GATEWAY_PORT } from '../core/voice-gateway.js'
 import { mockLogger } from '../core/logger.js'
 import { getMockModeState } from './init.js'
@@ -49,7 +49,7 @@ export default async (context: StartContext<MockPluginConfig>) => {
 	// WebSocket handlers should already be registered in prepare hook.
 	// If not (e.g., server engine wasn't ready), register them now as fallback.
 	if (!areHandlersRegistered()) {
-		const engine = getServerEngine<NodeEngine>()
+		const engine = getServerEngine()
 		if (!engine) {
 			mockLogger.error('Server engine not available - @robojs/server may not be installed')
 			return
@@ -101,6 +101,11 @@ export default async (context: StartContext<MockPluginConfig>) => {
 
 		// Register commands to mock server via HTTP
 		await registerCommandsToMockServer(mockModeSession)
+
+		// Refresh Stage UI state after commands are registered
+		// This ensures connected clients see the real commands, not stale seed data
+		const stageServer = getStageServer()
+		stageServer.refreshSessionState(mockModeSession.id)
 
 		// Log the Stage UI URL for easy access
 		const stageUrl = getStageUIUrl(mockModeSession.token)

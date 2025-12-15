@@ -191,7 +191,7 @@ describe('Phase 8: GuildMember Shortcut Methods', () => {
 
 			const member = await guild.members.fetch(memberId)
 
-			const edited = await member.edit({ nick: 'New Nick' }, 'Updated via audit')
+			const edited = await member.edit({ nick: 'New Nick', reason: 'Updated via audit' })
 
 			expect(edited.nickname).toBe('New Nick')
 		})
@@ -349,7 +349,7 @@ describe('Phase 8: GuildMember Shortcut Methods', () => {
 				mute: false
 			})
 
-			const member = await guild.members.fetch(memberId)
+			await guild.members.fetch(memberId)
 
 			// Note: displayColor depends on role color objects which may not be fully
 			// supported by the mock server. Just verify the role has the correct color.
@@ -380,7 +380,7 @@ describe('Phase 8: GuildMember Shortcut Methods', () => {
 				mute: false
 			})
 
-			const member = await guild.members.fetch(memberId)
+			await guild.members.fetch(memberId)
 
 			// Note: displayHexColor depends on role color objects which may not be fully
 			// supported by the mock server. Just verify the role has the correct color.

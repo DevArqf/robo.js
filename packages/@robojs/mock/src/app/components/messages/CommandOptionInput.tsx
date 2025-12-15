@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { StageApplicationCommandOption, StageMember, StageChannel } from '../../types/stage'
 import styles from './CommandOptionInput.module.css'
 
@@ -28,7 +28,9 @@ interface CommandOptionInputProps {
 
 export function CommandOptionInput({ option, value, onChange, isFocused, members = [], channels = [] }: CommandOptionInputProps) {
 	const inputRef = useRef<HTMLInputElement | HTMLSelectElement>(null)
-	const [showDropdown, setShowDropdown] = useState(false)
+	const [_showDropdown, _setShowDropdown] = useState(false)
+	void _showDropdown // Reserved for dropdown UI
+	void _setShowDropdown // Reserved for dropdown UI
 
 	// Auto-focus when isFocused changes
 	useEffect(() => {

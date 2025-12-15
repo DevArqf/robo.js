@@ -161,7 +161,8 @@ describe('Phase 26: ShardingManager', () => {
 				respawn: false
 			})
 
-			expect(manager.mode).toBe('process')
+			// mode property is stored but not exposed in TypeScript types
+			expect((manager as unknown as { mode: string }).mode).toBe('process')
 		})
 	})
 
@@ -318,9 +319,10 @@ describe('Phase 26: ShardingManager', () => {
 					respawn: false
 				})
 
-				await manager.spawn({ timeout: 60000, delay: 2000 })
+				await manager.spawn({ timeout: 60000 })
 
-				await manager.respawnAll({ timeout: 60000, delay: 2000 })
+				// respawnAll no longer takes delay option in newer discord.js versions
+				await manager.respawnAll({ shardDelay: 2000, timeout: 60000 })
 
 				expect(manager.shards.every((s) => s.ready)).toBe(true)
 			},
@@ -593,7 +595,7 @@ describe('Phase 26: ShardingManager', () => {
 
 		it('should pass context to broadcastEval', async () => {
 			const testValue = 'test-context-value'
-			const results = await manager!.broadcastEval((c, { value }) => value, {
+			const results = await manager!.broadcastEval((_c, { value }) => value, {
 				context: { value: testValue }
 			})
 

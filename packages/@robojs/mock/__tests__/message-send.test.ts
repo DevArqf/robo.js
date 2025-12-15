@@ -263,7 +263,7 @@ describe('Phase 2D: Bot Message Capture', () => {
 			const guild = Array.from(session.state.guilds.values())[0]
 			const channelId = guild.channels[0]
 
-			const messages = ['First', 'Second', 'Third'].map((content) => {
+			;['First', 'Second', 'Third'].forEach((content) => {
 				const message = session.state.createMessage({
 					channelId,
 					guildId: guild.id,

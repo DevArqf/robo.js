@@ -190,12 +190,12 @@ describe('Phase 18: Poll Messages', () => {
 			})
 
 			// Per spec: use message.poll?.end() method
-			const ended = await message.poll?.end()
+			const endedMessage = await message.poll?.end()
 
-			// The end() method may return the updated message or undefined depending on implementation
-			// Verify by fetching the message to confirm poll was ended
-			if (ended?.resultsFinalized !== undefined) {
-				expect(ended.resultsFinalized).toBe(true)
+			// The end() method returns the updated Message
+			// Verify by checking the poll on the returned message or fetching
+			if (endedMessage?.poll?.resultsFinalized !== undefined) {
+				expect(endedMessage.poll.resultsFinalized).toBe(true)
 			} else {
 				// Fallback: fetch the message to verify poll is finalized
 				const fetched = await channel.messages.fetch(message.id)

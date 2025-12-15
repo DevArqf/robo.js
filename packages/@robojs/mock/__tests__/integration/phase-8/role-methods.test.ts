@@ -332,7 +332,7 @@ describe('Phase 8: Role Methods', () => {
 
 	describe('RoleManager.fetch()', () => {
 		it('should fetch all roles', async () => {
-			const roles = await guild.roles.fetch()
+			await guild.roles.fetch()
 
 			// Note: RoleManager.fetch() may return cached roles or an empty collection
 			// depending on mock server implementation. The cache should have the @everyone role at minimum.
@@ -352,7 +352,7 @@ describe('Phase 8: Role Methods', () => {
 		})
 
 		it('should fetch with force', async () => {
-			const roles = await guild.roles.fetch(undefined, { force: true })
+			await guild.roles.fetch(undefined, { force: true })
 
 			// Note: Similar to above, check cache instead of returned collection
 			expect(guild.roles.cache.size).toBeGreaterThan(0)
@@ -441,12 +441,10 @@ describe('Phase 8: Role Methods', () => {
 		})
 
 		it('should edit with reason', async () => {
-			const edited = await editRole.edit(
-				{
-					name: 'Re-edited Role'
-				},
-				'Audit reason'
-			)
+			const edited = await editRole.edit({
+				name: 'Re-edited Role',
+				reason: 'Audit reason'
+			})
 
 			expect(edited.name).toBe('Re-edited Role')
 		})

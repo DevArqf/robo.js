@@ -2,7 +2,7 @@
  * Phase 4L: Permission Calculation Tests
  * Tests for Discord permission calculation and enforcement
  */
-import { createSessionState, createDefaultGuildWithChannel, MockServerState, createMockRole, createMockGuildMember } from '../src/session/state.js'
+import { createSessionState, createDefaultGuildWithChannel, MockServerState, createMockGuildMember } from '../src/session/state.js'
 import {
 	computePermissions,
 	computeBasePermissions,
@@ -353,7 +353,7 @@ describe('Phase 4L: Permissions', () => {
 		})
 
 		it('should return false when deleting nonexistent overwrite', () => {
-			const guild = createDefaultGuildWithChannel(sessionState)
+			createDefaultGuildWithChannel(sessionState)
 			const channel = Array.from(sessionState.channels.values())[0]
 
 			const deleted = sessionState.deleteChannelOverwrite(channel.id, 'nonexistent')
@@ -362,7 +362,7 @@ describe('Phase 4L: Permissions', () => {
 		})
 
 		it('should return empty array for channel without overwrites', () => {
-			const guild = createDefaultGuildWithChannel(sessionState)
+			createDefaultGuildWithChannel(sessionState)
 			const channel = Array.from(sessionState.channels.values())[0]
 
 			const overwrites = sessionState.getChannelOverwrites(channel.id)

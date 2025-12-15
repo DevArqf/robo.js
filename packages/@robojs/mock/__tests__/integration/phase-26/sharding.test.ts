@@ -803,7 +803,7 @@ describe('Phase 26: Sharding', () => {
 		})
 
 		it('should support non-contiguous shard IDs', async () => {
-			const session = await createSession({
+			await createSession({
 				name: 'non-contiguous-shards',
 				config: {
 					guilds: [{ name: 'Non-Contiguous Guild' }]

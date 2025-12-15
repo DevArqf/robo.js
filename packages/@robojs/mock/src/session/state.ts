@@ -270,32 +270,9 @@ export class MockServerState implements SessionState {
 						required: false
 					}
 				]
-			},
-			// Context menu commands for testing right-click functionality (Phase 5N)
-			{
-				name: 'Get User Info',
-				type: 2 // USER context menu
-			},
-			{
-				name: 'Report User',
-				type: 2 // USER context menu
-			},
-			{
-				name: 'Warn User',
-				type: 2 // USER context menu
-			},
-			{
-				name: 'Bookmark Message',
-				type: 3 // MESSAGE context menu
-			},
-			{
-				name: 'Report Message',
-				type: 3 // MESSAGE context menu
-			},
-			{
-				name: 'Translate Message',
-				type: 3 // MESSAGE context menu
 			}
+			// Note: Context menu commands are NOT seeded - they come from real bot registrations
+			// This ensures the Stage UI shows actual registered context commands, not fake test data
 		]
 
 		for (const cmd of defaultCommands) {

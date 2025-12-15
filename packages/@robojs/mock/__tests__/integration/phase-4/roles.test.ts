@@ -195,7 +195,6 @@ describe('Phase 4A-4C: Roles', () => {
 			await role2.setPosition(2)
 
 			// Re-fetch to get updated positions from cache
-			const updatedRole1 = guild.roles.cache.get(role1.id)!
 			const updatedRole2 = guild.roles.cache.get(role2.id)!
 
 			// Role2 should now be at position 2, role1 should be at position 1

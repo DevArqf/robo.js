@@ -3,7 +3,7 @@
  *
  * Covers creation, updates, deletion, permission overwrites, and channel events.
  */
-import { ChannelType, Client, DiscordAPIError, Events, PermissionFlagsBits, TextChannel } from 'discord.js'
+import { ChannelType, Client, DiscordAPIError, Events, NonThreadGuildBasedChannel, PermissionFlagsBits, TextChannel } from 'discord.js'
 import { createSession } from '../setup/control-api.js'
 import { createTestClient, destroyClient } from '../setup/test-client.js'
 import { waitForEvent, waitForReady } from '../utils/helpers.js'
@@ -241,7 +241,10 @@ describe('Phase 3A: Channel CRUD', () => {
 
 			const eventPromise = new Promise<{ oldName: string; newName: string }>((resolve) => {
 				client!.once(Events.ChannelUpdate, (oldChannel, updatedChannel) => {
-					resolve({ oldName: oldChannel.name, newName: updatedChannel.name })
+					// Cast to NonThreadGuildBasedChannel since we know this is a guild channel
+					const oldCh = oldChannel as NonThreadGuildBasedChannel
+					const newCh = updatedChannel as NonThreadGuildBasedChannel
+					resolve({ oldName: oldCh.name, newName: newCh.name })
 				})
 			})
 

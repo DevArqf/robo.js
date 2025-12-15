@@ -13,6 +13,7 @@ import {
 	Client,
 	Events,
 	GatewayIntentBits,
+	GuildMember,
 	Interaction,
 	InteractionType,
 	TextChannel
@@ -352,7 +353,7 @@ describe('Phase 10: Slash Command Options Access', () => {
 
 			const interaction = await eventPromise
 
-			const member = interaction.options.getMember('member')
+			const member = interaction.options.getMember('member') as GuildMember | null
 			expect(member).toBeDefined()
 			expect(member?.nickname).toBe('Member Nick')
 		})

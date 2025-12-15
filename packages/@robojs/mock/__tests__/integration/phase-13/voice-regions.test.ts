@@ -3,7 +3,7 @@
  *
  * Tests for fetching voice regions at both client and guild level.
  */
-import { ChannelType, Client, GatewayIntentBits, Guild } from 'discord.js'
+import { ChannelType, Client, GatewayIntentBits } from 'discord.js'
 import { createSession } from '../setup/control-api.js'
 import { createClientWithIntents, destroyClient } from '../setup/test-client.js'
 import { waitForReady } from '../utils/helpers.js'
@@ -11,7 +11,6 @@ import { waitForReady } from '../utils/helpers.js'
 describe('Phase 13: Voice Region Fetching', () => {
 	let client: Client | null = null
 	let session: { id: string; token: string }
-	let guild: Guild
 
 	beforeAll(async () => {
 		session = await createSession({
@@ -29,8 +28,6 @@ describe('Phase 13: Voice Region Fetching', () => {
 		client = createClientWithIntents([GatewayIntentBits.Guilds])
 		await client.login(session.token)
 		await waitForReady(client)
-
-		guild = client.guilds.cache.first()!
 	})
 
 	afterAll(async () => {

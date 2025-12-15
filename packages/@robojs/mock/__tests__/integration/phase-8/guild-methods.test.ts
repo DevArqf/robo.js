@@ -4,8 +4,8 @@
  * Tests for Guild methods including fetch, fetchOwner, leave,
  * and various guild properties.
  */
-import { ChannelType, Client, GatewayIntentBits, Guild, GuildFeature, TextChannel } from 'discord.js'
-import { createSession, mockRestAPI } from '../setup/control-api.js'
+import { ChannelType, Client, GatewayIntentBits, Guild, GuildFeature } from 'discord.js'
+import { createSession } from '../setup/control-api.js'
 import { createClientWithIntents, destroyClient } from '../setup/test-client.js'
 import { waitForReady } from '../utils/helpers.js'
 
@@ -308,7 +308,7 @@ describe('Phase 8: Guild Methods', () => {
 		})
 
 		it('should fetch roles', async () => {
-			const roles = await guild.roles.fetch()
+			await guild.roles.fetch()
 
 			// Note: RoleManager.fetch() may return empty collection, check cache instead
 			expect(guild.roles.cache.size).toBeGreaterThan(0)

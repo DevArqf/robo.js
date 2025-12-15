@@ -88,9 +88,8 @@ describe('Phase 2C: Reconnection', () => {
 			await waitForReady(client)
 
 			// Set up listener for reconnection
-			let reconnected = false
 			client?.once('shardReady', () => {
-				reconnected = true
+				// Shard reconnected
 			})
 
 			// Force disconnect with code that allows reconnection

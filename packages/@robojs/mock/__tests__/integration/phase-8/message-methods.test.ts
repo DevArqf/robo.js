@@ -10,7 +10,6 @@ import {
 	Client,
 	EmbedBuilder,
 	GatewayIntentBits,
-	MessageType,
 	TextChannel,
 	ThreadChannel
 } from 'discord.js'

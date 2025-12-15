@@ -80,8 +80,10 @@ describe('Phase 17: Webhook Types & Properties', () => {
 
 				// Channel follower webhooks have additional properties when true
 				if (webhook.isChannelFollower()) {
-					expect(webhook.sourceGuild).toBeDefined()
-					expect(webhook.sourceChannel).toBeDefined()
+					// Cast to access channel follower specific properties
+					const cfWebhook = webhook as unknown as { sourceGuild?: unknown; sourceChannel?: unknown }
+					expect(cfWebhook.sourceGuild).toBeDefined()
+					expect(cfWebhook.sourceChannel).toBeDefined()
 				}
 			} finally {
 				await webhook.delete()

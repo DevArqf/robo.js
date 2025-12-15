@@ -11,10 +11,9 @@ import {
 	ChannelType,
 	Client,
 	EmbedBuilder,
-	GatewayIntentBits,
-	UserFlags
+	GatewayIntentBits
 } from 'discord.js'
-import { createSession, dispatchEvent, mockRestAPI } from '../setup/control-api.js'
+import { createSession, dispatchEvent } from '../setup/control-api.js'
 import { createClientWithIntents, destroyClient } from '../setup/test-client.js'
 import { generateSnowflake, waitForReady } from '../utils/helpers.js'
 

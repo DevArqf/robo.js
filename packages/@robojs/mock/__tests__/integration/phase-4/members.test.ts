@@ -3,7 +3,7 @@
  *
  * Tests for member fetching, role operations, nicknames, timeouts, kicking, and events.
  */
-import { Client, Events, GuildMember, Role } from 'discord.js'
+import { Client, Events, GuildMember, PartialGuildMember, Role } from 'discord.js'
 import { createSession, dispatchEvent } from '../setup/control-api.js'
 import { createTestClient, destroyClient } from '../setup/test-client.js'
 import { generateSnowflake, waitForEvent, waitForReady } from '../utils/helpers.js'
@@ -265,7 +265,7 @@ describe('Phase 4D-4F: Members', () => {
 				await botMember.setNickname(null)
 			}
 
-			const eventPromise = new Promise<{ old: GuildMember; updated: GuildMember }>((resolve) => {
+			const eventPromise = new Promise<{ old: GuildMember | PartialGuildMember; updated: GuildMember }>((resolve) => {
 				client!.once(Events.GuildMemberUpdate, (old, updated) => resolve({ old, updated }))
 			})
 
