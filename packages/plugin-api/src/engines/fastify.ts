@@ -23,7 +23,7 @@ export class FastifyEngine extends BaseEngine {
 
 		this._server.removeAllContentTypeParsers()
 		this._server.addContentTypeParser('*', (_req, payload, done) => {
-			const chunks: Buffer[] = []
+			const chunks: Uint8Array[] = []
 			payload.on('data', (chunk) => {
 				chunks.push(chunk)
 			})

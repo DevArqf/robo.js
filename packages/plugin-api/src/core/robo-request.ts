@@ -81,7 +81,7 @@ export class RoboRequest extends Request {
 		let body: BodyInit | null = options?.body ?? null
 		if (!options?.skipBody && !options?.body && !['GET', 'HEAD'].includes(method)) {
 			body = await new Promise<Buffer>((resolve, reject) => {
-				const chunks: Buffer[] = []
+				const chunks: Uint8Array[] = []
 				req.on('data', (chunk) => chunks.push(chunk))
 				req.on('end', () => resolve(Buffer.concat(chunks)))
 				req.on('error', reject)
