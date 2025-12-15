@@ -1,15 +1,16 @@
 /* Discord Dark Theme CSS Variables */
 :root {
-	/* Background colors */
-	--background-primary: #313338;
+	/* Background colors - Discord's current dark theme (darker variant) */
+	--background-primary: #1e1f22;
 	--background-secondary: #2b2d31;
 	--background-secondary-alt: #232428;
-	--background-tertiary: #1e1f22;
+	--background-tertiary: #111214;
 	--background-accent: #4e5058;
 	--background-floating: #111214;
 	--background-modifier-hover: rgba(79, 84, 92, 0.16);
 	--background-modifier-active: rgba(79, 84, 92, 0.24);
 	--background-modifier-selected: rgba(79, 84, 92, 0.32);
+	--background-modifier-accent: rgba(79, 84, 92, 0.48);
 
 	/* Text colors */
 	--text-normal: #dbdee1;
@@ -45,6 +46,10 @@
 	--interactive-hover: #dbdee1;
 	--interactive-active: #fff;
 	--interactive-muted: #4e5058;
+
+	/* Embed colors */
+	--embed-background: #2b2d31;
+	--embed-border: #1e1f22;
 
 	/* Spacing */
 	--server-list-width: 72px;

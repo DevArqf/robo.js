@@ -74,6 +74,10 @@ export class StageServer {
 	 * Supports two authentication methods:
 	 * - `?token=mock:session_xxx` - Full session token
 	 * - `?session=sess_xxx` - Just session ID (for convenience)
+	 *
+	 * Note: We accept connections even for invalid tokens, then send a session_invalid
+	 * event before closing. This allows clients to receive a proper message instead of
+	 * just seeing a connection failure.
 	 */
 	handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
 		const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
@@ -82,14 +86,7 @@ export class StageServer {
 		const token = url.searchParams.get('token')
 		const sessionId = url.searchParams.get('session')
 
-		let session: Session | undefined
-
-		if (token) {
-			session = sessionManager.getByToken(token)
-		} else if (sessionId) {
-			session = sessionManager.get(sessionId)
-		}
-
+		// Reject if no token/session provided at all (this is a client bug)
 		if (!token && !sessionId) {
 			mockLogger.warn('Stage connection rejected: missing token or session parameter')
 			socket.write('HTTP/1.1 401 Unauthorized\r\nContent-Type: text/plain\r\n\r\nMissing token or session parameter\r\n')
@@ -97,23 +94,31 @@ export class StageServer {
 			return
 		}
 
-		// Validate session exists
-		if (!session) {
-			mockLogger.warn(`Stage connection rejected: invalid token/session "${token || sessionId}"`)
-			socket.write('HTTP/1.1 401 Unauthorized\r\nContent-Type: text/plain\r\n\r\nInvalid session token or ID\r\n')
-			socket.destroy()
-			return
+		// Try to resolve session (may be undefined for invalid tokens)
+		let session: Session | undefined
+		let resolvedSessionId: string | null = null
+
+		if (token) {
+			session = sessionManager.getByToken(token)
+			// Extract session ID from token for logging even if session doesn't exist
+			// Token format: "mock:sess_xxx" or just "sess_xxx"
+			resolvedSessionId = token.startsWith('mock:') ? token.slice(5) : token
+		} else if (sessionId) {
+			session = sessionManager.get(sessionId)
+			resolvedSessionId = sessionId
 		}
 
 		// Extract last_seq for reconnection replay
 		const lastSeqParam = url.searchParams.get('last_seq')
 		const lastSeq = lastSeqParam ? parseInt(lastSeqParam, 10) : 0
 
-		// Complete the WebSocket upgrade
+		// Complete the WebSocket upgrade - we'll validate session in handleConnection
+		// This allows us to send a proper session_invalid event to the client
 		this.wss.handleUpgrade(req, socket, head, (ws) => {
-			// Store session ID and lastSeq in socket for later use
-			;(ws as WebSocket & { _stageSessionId: string; _lastSeq: number })._stageSessionId = session.id
-			;(ws as WebSocket & { _stageSessionId: string; _lastSeq: number })._lastSeq = lastSeq
+			// Store session ID (or attempted ID) and lastSeq in socket for later use
+			;(ws as WebSocket & { _stageSessionId: string; _lastSeq: number; _sessionValid: boolean })._stageSessionId = session?.id ?? resolvedSessionId ?? ''
+			;(ws as WebSocket & { _stageSessionId: string; _lastSeq: number; _sessionValid: boolean })._lastSeq = lastSeq
+			;(ws as WebSocket & { _stageSessionId: string; _lastSeq: number; _sessionValid: boolean })._sessionValid = !!session
 			this.wss.emit('connection', ws, req)
 		})
 	}
@@ -124,6 +129,24 @@ export class StageServer {
 	private handleConnection(ws: WebSocket, _req: IncomingMessage): void {
 		const sessionId = (ws as WebSocket & { _stageSessionId: string })._stageSessionId
 		const lastSeq = (ws as WebSocket & { _lastSeq: number })._lastSeq || 0
+		const sessionValid = (ws as WebSocket & { _sessionValid: boolean })._sessionValid
+
+		// If session is invalid, send session_invalid event and close
+		// This allows the client to receive a proper message instead of just seeing connection failure
+		if (!sessionValid) {
+			mockLogger.debug(`Stage connection rejected: invalid session "${sessionId}"`)
+			ws.send(JSON.stringify({
+				seq: 0,
+				timestamp: Date.now(),
+				type: 'session_invalid',
+				data: {
+					reason: 'Session not found or expired',
+					code: 4001
+				}
+			}))
+			ws.close(4001, 'Invalid session')
+			return
+		}
 
 		mockLogger.debug(`Stage connection established for session ${sessionId}`)
 

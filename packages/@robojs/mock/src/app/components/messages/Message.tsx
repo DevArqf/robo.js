@@ -15,6 +15,44 @@ const MESSAGE_FLAGS = {
 	IS_COMPONENTS_V2: 32768  // 1 << 15
 }
 
+// Discord message types (system messages)
+const MESSAGE_TYPES = {
+	DEFAULT: 0,
+	GUILD_MEMBER_JOIN: 7,
+	USER_PREMIUM_GUILD_SUBSCRIPTION: 8,
+	USER_PREMIUM_GUILD_SUBSCRIPTION_TIER_1: 9,
+	USER_PREMIUM_GUILD_SUBSCRIPTION_TIER_2: 10,
+	USER_PREMIUM_GUILD_SUBSCRIPTION_TIER_3: 11,
+	CHANNEL_FOLLOW_ADD: 12,
+	GUILD_DISCOVERY_DISQUALIFIED: 14,
+	GUILD_DISCOVERY_REQUALIFIED: 15,
+	THREAD_CREATED: 18,
+	AUTO_MODERATION_ACTION: 24
+}
+
+// System message join variations for visual variety
+const JOIN_MESSAGES = [
+	(name: string) => `${name} joined the party.`,
+	(name: string) => `${name} is here.`,
+	(name: string) => `A wild ${name} appeared.`,
+	(name: string) => `${name} just landed.`,
+	(name: string) => `${name} just slid into the server.`,
+	(name: string) => `${name} just showed up!`,
+	(name: string) => `Welcome, ${name}. We hope you brought pizza.`,
+	(name: string) => `${name} hopped into the server.`,
+	(name: string) => `Everyone welcome ${name}!`,
+	(name: string) => `Glad you're here, ${name}.`,
+	(name: string) => `Good to see you, ${name}.`,
+	(name: string) => `Yay you made it, ${name}!`
+]
+
+function getJoinMessage(userId: string, username: string): string {
+	// Use user ID to deterministically pick a message
+	const hash = userId.split('').reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0)
+	const index = Math.abs(hash) % JOIN_MESSAGES.length
+	return JOIN_MESSAGES[index](username)
+}
+
 interface MessageProps {
 	message: StageMessage
 	isFirstInGroup: boolean
@@ -38,9 +76,41 @@ export function Message({
 	onContextMenu,
 	onUserContextMenu
 }: MessageProps) {
-	const { author, content, timestamp, edited_timestamp, embeds, attachments, components, reactions, flags, pinned, message_reference } = message
+	const { author, content, timestamp, edited_timestamp, embeds, attachments, components, reactions, flags, pinned, message_reference, type } = message
 	const isEphemeral = ((flags ?? 0) & MESSAGE_FLAGS.EPHEMERAL) !== 0
 	const isV2 = ((flags ?? 0) & MESSAGE_FLAGS.IS_COMPONENTS_V2) !== 0
+	const isSystemMessage = type === MESSAGE_TYPES.GUILD_MEMBER_JOIN
+
+	// Render system message (member join)
+	if (isSystemMessage) {
+		const joinText = getJoinMessage(author.id, author.username)
+		return (
+			<div
+				className={styles.systemMessage}
+				onContextMenu={onContextMenu ? (e) => onContextMenu(e, message) : undefined}
+			>
+				<div className={styles.systemIcon}>
+					<JoinArrowIcon />
+				</div>
+				<div className={styles.systemContent}>
+					<span className={styles.systemText}>{joinText}</span>
+					<span className={styles.systemTimestamp}>{formatTimestamp(timestamp)}</span>
+				</div>
+				{components && components.length > 0 && onButtonClick && onSelectOption && (
+					<div className={styles.systemActions}>
+						<ComponentsContainer
+							components={components}
+							messageId={message.id}
+							channelId={message.channel_id}
+							onButtonClick={(customId) => onButtonClick(message.id, customId)}
+							onSelectOption={(customId, values) => onSelectOption(message.id, customId, values)}
+							isV2={isV2}
+						/>
+					</div>
+				)}
+			</div>
+		)
+	}
 
 	return (
 		<div
@@ -91,7 +161,12 @@ export function Message({
 							>
 								{author.username}
 							</span>
-							{author.bot && <span className={styles.botBadge}>BOT</span>}
+							{author.bot && (
+								<span className={styles.botBadge}>
+									<VerifiedCheckIcon />
+									<span>APP</span>
+								</span>
+							)}
 							{pinned && <span className={styles.pinnedBadge} title="Pinned"><PinIcon /></span>}
 							<span className={styles.timestamp}>{formatTimestamp(timestamp)}</span>
 						</div>
@@ -277,6 +352,22 @@ function ReplyIcon() {
 	return (
 		<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
 			<path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z" />
+		</svg>
+	)
+}
+
+function JoinArrowIcon() {
+	return (
+		<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M5 12h14M14 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+		</svg>
+	)
+}
+
+function VerifiedCheckIcon() {
+	return (
+		<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+			<path d="M7.4,11.17,4,8.62,5,7.26l2,1.53L10.64,4l1.36,1Z" />
 		</svg>
 	)
 }

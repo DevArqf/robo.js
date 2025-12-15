@@ -107,7 +107,7 @@ export class Session implements ISession {
 	private _rateLimitRetryAfter = 1 // seconds
 
 	constructor(options?: CreateSessionOptions) {
-		this.id = generateSessionId()
+		this.id = options?.id ?? generateSessionId()
 		this.token = createMockToken(this.id)
 		this.name = options?.name
 		this.createdAt = Date.now()

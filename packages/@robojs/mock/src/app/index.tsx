@@ -14,7 +14,9 @@ function getInitialSessionId(): string | null {
 
 	if (sessionParam) {
 		// Remove 'mock:' prefix if present for cleaner storage
-		const cleanId = sessionParam.startsWith('mock:') ? sessionParam.slice(5) : sessionParam
+		// Also strip trailing slashes that may come from server redirects
+		let cleanId = sessionParam.startsWith('mock:') ? sessionParam.slice(5) : sessionParam
+		cleanId = cleanId.replace(/\/+$/, '')
 		localStorage.setItem('stage_session_id', cleanId)
 		return cleanId
 	}
@@ -24,6 +26,7 @@ function getInitialSessionId(): string | null {
 }
 
 const initialSessionId = getInitialSessionId()
+console.log('[Stage] Initial session ID from URL/localStorage:', initialSessionId)
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
 	<React.StrictMode>

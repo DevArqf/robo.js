@@ -68,36 +68,42 @@ export function createMockToken(sessionId: string): string {
  * Parse a mock token to extract the session ID
  * Returns null if the token doesn't match the expected format
  *
- * Supports both:
- * - Legacy format: mock:<session_id>
+ * Supports:
  * - Discord-like format: <24 chars>.<6 chars MOCK marker>.<27+ chars session>
+ * - With optional "mock:" prefix: mock:<discord-like-token>
+ * - Plain session ID format: mock:<session_id> (for simple session IDs without dots)
  */
 export function parseMockToken(token: string): string | null {
 	// Handle "Bot <token>" prefix (Discord.js adds this to Authorization header)
-	const normalized = token.replace(/^Bot\s+/i, '')
+	let normalized = token.replace(/^Bot\s+/i, '').trim()
 
-	// Check for legacy format: mock:<session_id>
+	// Strip trailing slashes that might come from URL parsing
+	normalized = normalized.replace(/\/+$/, '')
+
+	// Strip "mock:" prefix if present, then continue parsing
 	if (normalized.startsWith(TOKEN_PREFIX)) {
-		return normalized.slice(TOKEN_PREFIX.length)
+		normalized = normalized.slice(TOKEN_PREFIX.length)
 	}
 
 	// Check for Discord-like format: <part1>.<part2>.<part3>
 	const parts = normalized.split('.')
-	if (parts.length !== 3) {
-		return null
+	if (parts.length === 3 && parts[1] === MOCK_TOKEN_MARKER_B64) {
+		// Decode session ID from part 3 (base64url with '_' padding)
+		try {
+			// Strip trailing underscores (padding) and any trailing slashes (from URL issues)
+			const sessionPart = parts[2].replace(/[_/]+$/, '')
+			return Buffer.from(sessionPart, 'base64url').toString('utf-8')
+		} catch {
+			// Invalid base64
+			return null
+		}
 	}
 
-	// Verify part 2 is the MOCK marker
-	if (parts[1] !== MOCK_TOKEN_MARKER_B64) {
-		return null
+	// If not Discord-like format, treat the normalized string as a plain session ID
+	// This handles cases like "mock:sess_xxx" → "sess_xxx"
+	if (normalized.startsWith('sess_')) {
+		return normalized
 	}
 
-	// Decode session ID from part 3 (base64url with '_' padding)
-	try {
-		const sessionPart = parts[2].replace(/_+$/, '')
-		return Buffer.from(sessionPart, 'base64url').toString('utf-8')
-	} catch {
-		// Invalid base64
-		return null
-	}
+	return null
 }

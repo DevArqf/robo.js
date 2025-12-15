@@ -1,35 +1,61 @@
-import { ready, getServerEngine } from '@robojs/server'
+import { getServerEngine } from '@robojs/server'
 import type { NodeEngine } from '@robojs/server/engines.js'
-import { getGatewayServer } from '../core/gateway.js'
-import { getStageServer } from '../core/stage.js'
+import type { StartContext } from 'robo.js'
 import { getStageBridge } from '../core/stage-bridge.js'
 import { startVoiceGateway, VOICE_GATEWAY_PORT } from '../core/voice-gateway.js'
 import { mockLogger } from '../core/logger.js'
+import { getMockModeState } from './init.js'
+import { sessionManager } from '../core/manager.js'
+import { getStageUIUrl } from '../utils/server.js'
+import { DEFAULT_MOCK_PLUGIN_CONFIG, type MockPluginConfig } from '../types/plugin.js'
+import { registerWebSocketHandlers, areHandlersRegistered, markHandlersRegistered } from './prepare.js'
+import type { Session } from '../session/session.js'
+
+/**
+ * Global reference to the mock mode session.
+ * Used for shutdown cleanup and summary.
+ */
+let mockModeSession: Session | null = null
+
+/**
+ * Gets the current mock mode session (if any).
+ * Used by the CLI command for shutdown handling.
+ */
+export function getMockModeSession(): Session | null {
+	return mockModeSession
+}
+
+/**
+ * Clears the mock mode session reference.
+ * Called during cleanup.
+ */
+export function clearMockModeSession(): void {
+	mockModeSession = null
+}
 
 /**
  * Lifecycle hook: Called when the Robo starts
- * Initializes the Gateway WebSocket server, Voice Gateway server, and Stage WebSocket server
+ * Starts Voice Gateway server and creates mock mode session.
+ *
+ * Note: WebSocket handlers are registered in the prepare hook (prepare.ts)
+ * to ensure they're ready before @robojs/discordjs tries to connect.
  */
-export default async () => {
-	// Wait for @robojs/server to be ready
-	await ready()
+export default async (context: StartContext<MockPluginConfig>) => {
+	const { pluginConfig } = context
+	const config = { ...DEFAULT_MOCK_PLUGIN_CONFIG, ...pluginConfig }
 
-	// Get the server engine and register WebSocket handlers
-	const engine = getServerEngine<NodeEngine>()
-	const gatewayServer = getGatewayServer()
-	const stageServer = getStageServer()
-
-	// Register Discord Gateway WebSocket upgrade handler at root path
-	// Discord clients connect to: ws://host/?v=10&encoding=json
-	engine.registerWebsocket('/', (req, socket, head) => {
-		gatewayServer.handleUpgrade(req, socket, head)
-	})
-
-	// Register Stage WebSocket upgrade handler
-	// Stage clients connect to: ws://host/stage/ws?token=mock:session_xxx
-	engine.registerWebsocket('/stage/ws', (req, socket, head) => {
-		stageServer.handleUpgrade(req, socket, head)
-	})
+	// WebSocket handlers should already be registered in prepare hook.
+	// If not (e.g., server engine wasn't ready), register them now as fallback.
+	if (!areHandlersRegistered()) {
+		const engine = getServerEngine<NodeEngine>()
+		if (!engine) {
+			mockLogger.error('Server engine not available - @robojs/server may not be installed')
+			return
+		}
+		mockLogger.debug('Registering WebSocket handlers in start hook (fallback)')
+		registerWebSocketHandlers(engine)
+		markHandlersRegistered()
+	}
 
 	// Initialize the stage bridge (connects session events to stage server)
 	getStageBridge()
@@ -45,4 +71,24 @@ export default async () => {
 
 	mockLogger.info('Gateway WebSocket server ready')
 	mockLogger.info('Stage WebSocket server ready')
+
+	// Handle mock mode session creation
+	const mockModeState = getMockModeState()
+	if (mockModeState.enabled && mockModeState.sessionId) {
+		mockLogger.debug('Creating mock mode session...')
+
+		// Merge default session config with any user-provided config
+		const sessionConfig = config.defaultSessionConfig
+
+		// Create the session with the pre-generated ID
+		mockModeSession = await sessionManager.create({
+			id: mockModeState.sessionId,
+			name: mockModeState.sessionName ?? undefined,
+			config: sessionConfig
+		})
+
+		// Log the Stage UI URL for easy access
+		const stageUrl = getStageUIUrl(mockModeSession.token)
+		mockLogger.info(`Stage UI: ${stageUrl}`)
+	}
 }

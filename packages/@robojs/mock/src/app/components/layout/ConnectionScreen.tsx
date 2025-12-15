@@ -3,10 +3,24 @@ import { useSession } from '../../hooks/useSession'
 import styles from './ConnectionScreen.module.css'
 
 export function ConnectionScreen() {
-	const { sessionId, isConnecting, error, setSessionId, connect } = useSession()
+	const { sessionId, isConnecting, error, setSessionId, connect, hasGivenUp, isSessionInvalid, retryCount, retry } = useSession()
 	const [inputValue, setInputValue] = useState(sessionId || '')
 	const [isCreating, setIsCreating] = useState(false)
 	const [createError, setCreateError] = useState<string | null>(null)
+
+	// Extract token from URL on mount and auto-connect
+	useEffect(() => {
+		const params = new URLSearchParams(window.location.search)
+		const token = params.get('token')
+		if (token && !sessionId) {
+			// Clean up token (remove trailing slashes that might come from redirects)
+			const cleanToken = token.replace(/\/+$/, '')
+			setInputValue(cleanToken)
+			setSessionId(cleanToken)
+			// Small delay to ensure state is updated before connecting
+			setTimeout(() => connect(), 50)
+		}
+	}, []) // Run only on mount
 
 	// Detect API prefix from current URL
 	const getApiPrefix = useCallback(() => {
@@ -124,7 +138,30 @@ export function ConnectionScreen() {
 						)}
 					</button>
 
-					{(error || createError) && <div className={styles.error}>{error || createError}</div>}
+					{/* Session invalid state - stale token */}
+					{isSessionInvalid && (
+						<div className={styles.sessionInvalid}>
+							<div className={styles.warningIcon}>⚠️</div>
+							<p className={styles.invalidTitle}>Session no longer exists</p>
+							<p className={styles.invalidHint}>The server may have restarted. Check your terminal for the new Stage URL.</p>
+						</div>
+					)}
+
+					{/* Given up state - connection issues after max retries */}
+					{hasGivenUp && !isSessionInvalid && (
+						<div className={styles.givenUp}>
+							<p className={styles.givenUpTitle}>Connection lost</p>
+							<p className={styles.givenUpHint}>Failed after {retryCount} attempts</p>
+							<button className={styles.retryButton} onClick={retry}>
+								Retry Connection
+							</button>
+						</div>
+					)}
+
+					{/* Regular error (not session invalid or given up) */}
+					{(error || createError) && !isSessionInvalid && !hasGivenUp && (
+						<div className={styles.error}>{error || createError}</div>
+					)}
 				</div>
 
 				<div className={styles.help}>

@@ -154,6 +154,7 @@ Tests are organized into phases matching the mock server implementation:
 | Phase 25 | Message Mentions | `phase-25/message-mentions.test.ts` |
 | Phase 25 | Final Client Properties | `phase-25/client-properties.test.ts` |
 | Phase 26 | Sharding (Shard Calc, Config, Events, Multi-Client) | `phase-26/sharding.test.ts` |
+| Phase 26 | ShardingManager (Creation, Properties, Spawn*) | `phase-26/sharding-manager.test.ts` |
 | Phase 27 | Voice Connection Basics | `phase-27/voice-connections.test.ts` |
 | Phase 27 | Audio Player | `phase-27/audio-player.test.ts` |
 | Phase 27 | Audio Resource | `phase-27/audio-resource.test.ts` |
@@ -330,6 +331,7 @@ __tests__/integration/
 │   └── client-properties.test.ts     # Final client properties
 ├── phase-26/
 │   ├── sharding.test.ts              # Sharding configuration & multi-client tests
+│   ├── sharding-manager.test.ts      # ShardingManager creation & properties
 │   └── fixtures/
 │       └── shard-bot.js              # Bot script for ShardingManager tests
 ├── phase-27/

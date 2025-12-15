@@ -532,6 +532,9 @@ export function useSessionDispatch() {
 // WebSocket Context - Shared WebSocket connection
 // ============================================================================
 
+// Maximum number of reconnection attempts before giving up
+const MAX_RECONNECT_ATTEMPTS = 5
+
 interface WebSocketContextValue {
 	connect: () => void
 	disconnect: () => void
@@ -539,6 +542,11 @@ interface WebSocketContextValue {
 	isConnected: boolean
 	isConnecting: boolean
 	error: string | null
+	// Stale token handling
+	hasGivenUp: boolean
+	isSessionInvalid: boolean
+	retryCount: number
+	retry: () => void
 }
 
 const WebSocketContext = createContext<WebSocketContextValue | null>(null)
@@ -561,6 +569,9 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 	const [isConnected, setIsConnected] = useState(false)
 	const [isConnecting, setIsConnecting] = useState(false)
 	const [error, setError] = useState<string | null>(null)
+	const [hasGivenUp, setHasGivenUp] = useState(false)
+	const [isSessionInvalid, setIsSessionInvalid] = useState(false)
+	const isReconnectingRef = useRef(false) // Track if we're waiting for a reconnect timeout
 
 	// Handle incoming events
 	const handleEvent = useCallback(
@@ -760,6 +771,15 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 					break
 				}
 
+				case 'session_invalid': {
+					// Server sent session_invalid - token is stale/expired
+					const invalidData = event.data as { reason: string; code: number }
+					setIsSessionInvalid(true)
+					setError(invalidData.reason || 'Session no longer exists')
+					// Don't dispatch anything else - connection will be closed by server
+					break
+				}
+
 				default:
 					dispatch({ type: 'INCREMENT_EVENT_COUNT' })
 			}
@@ -769,14 +789,25 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 
 	// Connect to WebSocket
 	const connect = useCallback(() => {
+		console.log('[Stage] connect() called, sessionId:', state.sessionId)
+
 		if (!state.sessionId) {
+			console.log('[Stage] No session ID, aborting connect')
 			setError('No session ID provided')
 			return
 		}
 
 		if (wsRef.current?.readyState === WebSocket.OPEN) {
+			console.log('[Stage] Already connected, skipping')
 			return // Already connected
 		}
+
+		// Clear any pending reconnect timeout (user may be connecting with a new session ID)
+		if (reconnectTimeoutRef.current) {
+			clearTimeout(reconnectTimeoutRef.current)
+			reconnectTimeoutRef.current = null
+		}
+		isReconnectingRef.current = false
 
 		setIsConnecting(true)
 		setError(null)
@@ -784,7 +815,13 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 
 		const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
 		const host = window.location.host
-		const token = state.sessionId.startsWith('mock:') ? state.sessionId : `mock:${state.sessionId}`
+
+		// Token handling:
+		// - If already has 'mock:' prefix, use as-is
+		// - If looks like Discord-like format (3 dot-separated parts), use as-is
+		// - Otherwise, prepend 'mock:' for plain session IDs
+		const isDiscordLikeToken = state.sessionId.includes('.') && state.sessionId.split('.').length === 3
+		const token = state.sessionId.startsWith('mock:') || isDiscordLikeToken ? state.sessionId : `mock:${state.sessionId}`
 
 		// Detect prefix from current page URL (e.g., /mock/stage -> /mock/stage/ws)
 		const pathname = window.location.pathname
@@ -792,13 +829,17 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 		const basePath = stageIndex !== -1 ? pathname.slice(0, stageIndex + '/stage'.length) : '/stage'
 		const url = `${protocol}//${host}${basePath}/ws?token=${encodeURIComponent(token)}`
 
+		console.log('[Stage] Connecting to WebSocket:', url)
 		const ws = new WebSocket(url)
 		wsRef.current = ws
 
 		ws.onopen = () => {
+			console.log('[Stage] WebSocket connected!')
 			setIsConnected(true)
 			setIsConnecting(false)
 			setError(null)
+			setHasGivenUp(false)
+			setIsSessionInvalid(false)
 			reconnectAttempts.current = 0
 			dispatch({ type: 'SET_CONNECTED', payload: true })
 		}
@@ -813,22 +854,55 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 		}
 
 		ws.onclose = (event) => {
+			console.log('[Stage] WebSocket closed:', { code: event.code, reason: event.reason, sessionId: state.sessionId })
 			setIsConnected(false)
 			wsRef.current = null
 			dispatch({ type: 'SET_CONNECTED', payload: false })
 
-			// Reconnect with exponential backoff unless intentionally closed
-			if (event.code !== 1000 && state.sessionId) {
-				const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000)
-				reconnectAttempts.current++
-
-				reconnectTimeoutRef.current = window.setTimeout(() => {
-					connect()
-				}, delay)
+			// Don't reconnect if session is invalid (code 4001)
+			if (event.code === 4001) {
+				console.log('[Stage] Session invalid, not reconnecting')
+				setIsSessionInvalid(true)
+				return
 			}
+
+			// Don't reconnect if intentionally closed
+			if (event.code === 1000) {
+				console.log('[Stage] Intentionally closed, not reconnecting')
+				return
+			}
+
+			// Don't reconnect if no session ID
+			if (!state.sessionId) {
+				console.log('[Stage] No session ID, not reconnecting')
+				return
+			}
+
+			// Check if we've exceeded max retry attempts
+			if (reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS) {
+				console.log('[Stage] Max reconnect attempts reached, giving up')
+				setHasGivenUp(true)
+				setError('Connection lost after multiple attempts')
+				return
+			}
+
+			// Reconnect with exponential backoff
+			const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000)
+			reconnectAttempts.current++
+			console.log('[Stage] Scheduling reconnect in', delay, 'ms (attempt', reconnectAttempts.current, '/', MAX_RECONNECT_ATTEMPTS, ')')
+
+			// Mark that we're waiting for a scheduled reconnect (prevents auto-connect effect from bypassing backoff)
+			isReconnectingRef.current = true
+
+			reconnectTimeoutRef.current = window.setTimeout(() => {
+				console.log('[Stage] Reconnect timeout fired, calling connect()')
+				isReconnectingRef.current = false
+				connect()
+			}, delay)
 		}
 
-		ws.onerror = () => {
+		ws.onerror = (err) => {
+			console.log('[Stage] WebSocket error:', err)
 			setError('Connection failed')
 			setIsConnecting(false)
 			dispatch({ type: 'SET_ERROR', payload: 'Connection failed' })
@@ -841,6 +915,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 			clearTimeout(reconnectTimeoutRef.current)
 			reconnectTimeoutRef.current = null
 		}
+		isReconnectingRef.current = false
 
 		if (wsRef.current) {
 			wsRef.current.close(1000, 'Client disconnected')
@@ -881,6 +956,17 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 		})
 	}, [])
 
+	// Retry connection after giving up or session invalid
+	const retry = useCallback(() => {
+		console.log('[Stage] Manual retry requested')
+		reconnectAttempts.current = 0
+		isReconnectingRef.current = false
+		setHasGivenUp(false)
+		setIsSessionInvalid(false)
+		setError(null)
+		connect()
+	}, [connect])
+
 	// Cleanup on unmount
 	useEffect(() => {
 		return () => {
@@ -889,11 +975,17 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 	}, [disconnect])
 
 	// Auto-connect when session ID is available (e.g., from URL params)
+	// But don't auto-connect if:
+	// - Already waiting for a scheduled reconnect (exponential backoff)
+	// - Session is invalid (stale token)
+	// - We've given up after max retries
 	useEffect(() => {
-		if (state.sessionId && !isConnected && !isConnecting) {
+		console.log('[Stage] Auto-connect check:', { sessionId: state.sessionId, isConnected, isConnecting, isReconnecting: isReconnectingRef.current, isSessionInvalid, hasGivenUp })
+		if (state.sessionId && !isConnected && !isConnecting && !isReconnectingRef.current && !isSessionInvalid && !hasGivenUp) {
+			console.log('[Stage] Auto-connecting with session:', state.sessionId)
 			connect()
 		}
-	}, [state.sessionId, isConnected, isConnecting, connect])
+	}, [state.sessionId, isConnected, isConnecting, connect, isSessionInvalid, hasGivenUp])
 
 	const value: WebSocketContextValue = {
 		connect,
@@ -901,7 +993,11 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 		sendCommand,
 		isConnected,
 		isConnecting,
-		error
+		error,
+		hasGivenUp,
+		isSessionInvalid,
+		retryCount: reconnectAttempts.current,
+		retry
 	}
 
 	return <WebSocketContext.Provider value={value}>{children}</WebSocketContext.Provider>

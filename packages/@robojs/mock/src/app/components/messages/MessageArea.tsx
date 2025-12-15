@@ -20,6 +20,7 @@ interface MessageGroup {
 	message: StageMessage
 	isFirstInGroup: boolean
 	isHighlighted: boolean
+	showDateDivider?: string // Date string to show divider, undefined if no divider
 }
 
 interface VirtualizedListProps {
@@ -153,7 +154,10 @@ function VirtualizedMessageList({
 				v1ComponentHeight = message.components.length * 44
 			}
 
-			return (hasHeader ? 44 : 0) + contentHeight + embedHeight + attachmentHeight + v1ComponentHeight + 16
+			// Date divider adds ~40px (16px margin + 24px content)
+			const dateDividerHeight = group.showDateDivider ? 40 : 0
+
+			return dateDividerHeight + (hasHeader ? 44 : 0) + contentHeight + embedHeight + attachmentHeight + v1ComponentHeight + 16
 		},
 		overscan: 10
 	})
@@ -207,6 +211,29 @@ function VirtualizedMessageList({
 						<p className={styles.welcomeDescription}>
 							{channelTopic || `This is the start of the #${channelName} channel.`}
 						</p>
+						<div className={styles.welcomeCards}>
+							<div className={styles.welcomeCard}>
+								<div className={styles.welcomeCardIcon}>
+									<InviteIcon />
+								</div>
+								<span className={styles.welcomeCardText}>Invite your friends</span>
+								<CheckIcon className={styles.welcomeCardCheck} />
+							</div>
+							<div className={styles.welcomeCard}>
+								<div className={styles.welcomeCardIcon}>
+									<MessageIcon />
+								</div>
+								<span className={styles.welcomeCardText}>Send your first message</span>
+								<CheckIcon className={styles.welcomeCardCheck} />
+							</div>
+							<div className={styles.welcomeCard}>
+								<div className={styles.welcomeCardIcon}>
+									<AppIcon />
+								</div>
+								<span className={styles.welcomeCardText}>Add your first app</span>
+								<ChevronIcon className={styles.welcomeCardChevron} />
+							</div>
+						</div>
 					</div>
 				)
 			) : (
@@ -229,6 +256,11 @@ function VirtualizedMessageList({
 									right: 0
 								}}
 							>
+								{group.showDateDivider && (
+									<div className={styles.dateDivider}>
+										<span className={styles.dateDividerText}>{group.showDateDivider}</span>
+									</div>
+								)}
 								<Message
 									message={group.message}
 									isFirstInGroup={group.isFirstInGroup}
@@ -425,20 +457,46 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 
 /**
  * Group consecutive messages from the same author within 5 minutes
+ * Also detects date changes and marks where date dividers should appear
  */
 function groupMessages(messages: StageMessage[]): MessageGroup[] {
+	let lastDateStr: string | null = null
+
 	return messages.map((message, index) => {
 		const prevMessage = messages[index - 1]
+		const messageDate = new Date(message.timestamp)
+		const currentDateStr = messageDate.toDateString()
+
+		// Check if we need a date divider
+		let showDateDivider: string | undefined
+		if (lastDateStr !== currentDateStr) {
+			showDateDivider = formatDateDivider(messageDate)
+			lastDateStr = currentDateStr
+		}
+
 		const isFirstInGroup =
 			!prevMessage ||
 			prevMessage.author.id !== message.author.id ||
-			new Date(message.timestamp).getTime() - new Date(prevMessage.timestamp).getTime() > 5 * 60 * 1000
+			messageDate.getTime() - new Date(prevMessage.timestamp).getTime() > 5 * 60 * 1000 ||
+			showDateDivider !== undefined // New date always starts a new group
 
 		return {
 			message,
 			isFirstInGroup,
-			isHighlighted: false // Set when interaction response (can be extended later)
+			isHighlighted: false, // Set when interaction response (can be extended later)
+			showDateDivider
 		}
+	})
+}
+
+/**
+ * Format date for the divider (e.g., "December 9, 2025")
+ */
+function formatDateDivider(date: Date): string {
+	return date.toLocaleDateString('en-US', {
+		month: 'long',
+		day: 'numeric',
+		year: 'numeric'
 	})
 }
 
@@ -578,4 +636,46 @@ function estimateTextHeight(content: string): number {
 
 	// 19px per line (14px * 1.375 line-height)
 	return Math.ceil(totalLines * 19)
+}
+
+// Welcome card icon components
+function InviteIcon() {
+	return (
+		<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M21 3a1 1 0 0 1 1 1v5.5a2.5 2.5 0 0 1-5 0V8h-3a4 4 0 0 0-4 4v3h1.5a2.5 2.5 0 0 1 0 5H6a4 4 0 0 1-4-4v-5a1 1 0 0 1 1-1h3V5a2 2 0 0 1 2-2h13z" />
+		</svg>
+	)
+}
+
+function MessageIcon() {
+	return (
+		<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M12 2C6.486 2 2 6.262 2 11.5c0 2.545 1.088 4.988 3.039 6.822.146.138.35.383.242.84-.107.455-.491 1.822-.783 2.662-.123.355.208.65.538.47 1.538-.841 2.49-1.352 2.913-1.521.423-.169.828-.169 1.089-.169h2.962c5.514 0 10-4.262 10-9.5S17.514 2 12 2z" />
+		</svg>
+	)
+}
+
+function AppIcon() {
+	return (
+		<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M6 7a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1H6zM4 8a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V8z" />
+			<path d="M9 10a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm4 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm4 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z" />
+		</svg>
+	)
+}
+
+function CheckIcon({ className }: { className?: string }) {
+	return (
+		<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" className={className}>
+			<path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm3.707-9.293a1 1 0 0 0-1.414-1.414L9 10.586 7.707 9.293a1 1 0 0 0-1.414 1.414l2 2a1 1 0 0 0 1.414 0l4-4z" clipRule="evenodd" />
+		</svg>
+	)
+}
+
+function ChevronIcon({ className }: { className?: string }) {
+	return (
+		<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" className={className}>
+			<path fillRule="evenodd" d="M7.293 14.707a1 1 0 0 1 0-1.414L10.586 10 7.293 6.707a1 1 0 0 1 1.414-1.414l4 4a1 1 0 0 1 0 1.414l-4 4a1 1 0 0 1-1.414 0z" clipRule="evenodd" />
+		</svg>
+	)
 }

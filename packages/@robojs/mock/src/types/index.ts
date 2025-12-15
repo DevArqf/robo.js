@@ -74,6 +74,8 @@ export interface ConnectionState {
  * Options for creating a new session
  */
 export interface CreateSessionOptions {
+	/** Explicit session ID (if not provided, one is generated) */
+	id?: string
 	name?: string
 	ttl?: number
 	config?: SessionConfig

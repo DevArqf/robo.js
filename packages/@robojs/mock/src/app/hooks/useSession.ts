@@ -9,7 +9,7 @@ import type { StageMessage, StageUser } from '../types/stage'
 export function useSession() {
 	const state = useSessionState()
 	const dispatch = useSessionDispatch()
-	const { connect, disconnect, sendCommand, isConnected, isConnecting, error } = useWebSocket()
+	const { connect, disconnect, sendCommand, isConnected, isConnecting, error, hasGivenUp, isSessionInvalid, retryCount, retry } = useWebSocket()
 
 	// Derived state
 	const selectedGuild = state.guilds.find((g) => g.id === state.selectedGuildId) || null
@@ -316,6 +316,12 @@ export function useSession() {
 		isConnected: isConnected || state.isConnected,
 		isConnecting: isConnecting || state.isConnecting,
 		error: error || state.error,
+
+		// Stale token handling
+		hasGivenUp,
+		isSessionInvalid,
+		retryCount,
+		retry,
 
 		// Derived state
 		selectedGuild,

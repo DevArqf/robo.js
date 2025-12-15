@@ -211,6 +211,9 @@ function MemberItem({ member, color, onClick, onContextMenu }: MemberItemProps) 
 	// Convert color int to CSS hex
 	const colorStyle = color !== 0 ? { color: `#${color.toString(16).padStart(6, '0')}` } : undefined
 
+	// Get activity text to display
+	const activityText = getActivityText(user.activities)
+
 	return (
 		<div className={styles.member} onClick={onClick} onContextMenu={(e) => onContextMenu(e, user)}>
 			<div className={styles.avatar}>
@@ -224,11 +227,37 @@ function MemberItem({ member, color, onClick, onContextMenu }: MemberItemProps) 
 			<div className={styles.info}>
 				<span className={`${styles.name} ${user.bot ? styles.bot : ''}`} style={colorStyle}>
 					{displayName}
-					{user.bot && <span className={styles.botTag}>BOT</span>}
+					{user.bot && (
+						<span className={styles.botTag}>
+							<VerifiedCheckIcon />
+							<span>APP</span>
+						</span>
+					)}
 				</span>
+				{activityText && <span className={styles.activity}>{activityText}</span>}
 			</div>
 		</div>
 	)
+}
+
+function getActivityText(activities?: { name: string; type: number; state?: string }[]): string | null {
+	if (!activities || activities.length === 0) return null
+
+	const activity = activities[0]
+	// Type 4 is Custom Status
+	if (activity.type === 4) {
+		return activity.state || activity.name
+	}
+	// Other activity types
+	const prefixes: Record<number, string> = {
+		0: 'Playing ',
+		1: 'Streaming ',
+		2: 'Listening to ',
+		3: 'Watching ',
+		5: 'Competing in '
+	}
+	const prefix = prefixes[activity.type] ?? ''
+	return prefix + activity.name
 }
 
 function getAvatarUrl(userId: string, avatar: string): string {
@@ -236,4 +265,12 @@ function getAvatarUrl(userId: string, avatar: string): string {
 		return avatar
 	}
 	return `https://cdn.discordapp.com/avatars/${userId}/${avatar}.png?size=32`
+}
+
+function VerifiedCheckIcon() {
+	return (
+		<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+			<path d="M7.4,11.17,4,8.62,5,7.26l2,1.53L10.64,4l1.36,1Z" />
+		</svg>
+	)
 }

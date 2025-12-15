@@ -3,62 +3,129 @@
 	position: relative;
 }
 
+.form {
+	width: 100%;
+}
+
+.channelTextArea {
+	width: 100%;
+}
+
 .inputWrapper {
 	display: flex;
-	align-items: flex-end;
+	align-items: center;
 	background: var(--channel-text-area);
-	border-radius: var(--radius-md);
-	padding: 0 16px;
+	border-radius: 8px;
+	min-height: 44px;
+	/* Removed padding-left: 16px as inner does logic or attach button padding */
+}
+
+.inner {
+	display: flex;
+	align-items: center;
+	width: 100%;
+	padding-left: 16px;
+}
+
+.attachWrapper {
+	display: flex;
+	align-items: center;
+	height: 100%;
+	margin-right: 16px;
+	position: relative;
+	/* for file input absolute positioning */
+}
+
+.uploadInput {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+}
+
+.uploadInput input {
+	height: 100%;
+	width: 100%;
+	opacity: 0;
+	cursor: pointer;
+	font-size: 0;
 }
 
 .attachButton {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 32px;
-	height: 44px;
+	width: 24px;
+	height: 24px;
 	flex-shrink: 0;
 	background: none;
 	border: none;
 	color: var(--interactive-normal);
 	cursor: pointer;
 	padding: 0;
-	margin-left: -10px;
+	transition: color 0.15s ease;
 }
 
 .attachButton:hover {
 	color: var(--interactive-hover);
 }
 
-.input {
+.attachButton svg {
+	width: 24px;
+	height: 24px;
+}
+
+.textAreaContainer {
 	flex: 1;
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	min-height: 44px;
+	margin-right: 16px;
+}
+
+.input {
 	background: transparent;
 	border: none;
 	outline: none;
 	color: var(--text-normal);
-	font-size: 16px;
-	font-family: inherit;
+	font-size: 1rem;
+	font-family: var(--font-primary);
 	line-height: 1.375rem;
 	padding: 11px 0;
 	resize: none;
 	max-height: 50vh;
 	overflow-y: auto;
+	width: 100%;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
 }
 
-.input::placeholder {
+.placeholder {
+	position: absolute;
+	top: 50%;
+	transform: translateY(-50%);
+	left: 0;
 	color: var(--text-muted);
-}
-
-.input:disabled {
-	opacity: 0.5;
-	cursor: not-allowed;
+	pointer-events: none;
+	user-select: none;
+	font-size: 1rem;
+	font-family: var(--font-primary);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	right: 0;
 }
 
 .buttons {
 	display: flex;
 	align-items: center;
 	gap: 4px;
-	padding: 6px 0;
+	padding-right: 16px;
+	height: 44px;
 }
 
 .iconButton {
@@ -73,10 +140,12 @@
 	color: var(--interactive-normal);
 	cursor: pointer;
 	padding: 0;
+	transition: color 0.15s ease;
 }
 
 .iconButton:hover {
 	color: var(--interactive-hover);
+	background-color: var(--background-modifier-hover);
 }
 
 .iconButton svg {
@@ -86,6 +155,18 @@
 
 .iconButton.active {
 	color: var(--brand-500);
+}
+
+.hiddenVisually {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
 }
 
 .emojiButtonWrapper {
@@ -100,56 +181,11 @@
 	margin-bottom: 8px;
 }
 
-/* Reply bar */
-.replyBar {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 8px 16px;
-	background: var(--background-secondary);
-	border-radius: var(--radius-md) var(--radius-md) 0 0;
-	margin-bottom: -8px;
-	border-bottom: 1px solid var(--background-modifier-accent);
-}
-
-.replyInfo {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	color: var(--text-muted);
-	font-size: 14px;
-}
-
-.replyInfo svg {
-	transform: scaleX(-1);
-	color: var(--brand-500);
-}
-
-.replyLabel {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.replyLabel strong {
-	color: var(--text-normal);
-}
-
-.replyCancelButton {
+.attachButtonInner,
+.iconButtonInner {
+	width: 100%;
+	height: 100%;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 24px;
-	height: 24px;
-	background: none;
-	border: none;
-	border-radius: 4px;
-	color: var(--interactive-normal);
-	cursor: pointer;
-	padding: 0;
-}
-
-.replyCancelButton:hover {
-	color: var(--interactive-hover);
-	background: var(--background-modifier-hover);
 }

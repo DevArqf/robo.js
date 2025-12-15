@@ -75,7 +75,83 @@
 .welcomeDescription {
 	font-size: 14px;
 	color: var(--header-secondary);
-	margin: 0;
+	margin: 0 0 16px;
+}
+
+.welcomeCards {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-width: 400px;
+}
+
+.welcomeCard {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 12px 16px;
+	background: var(--background-secondary);
+	border-radius: var(--radius-md);
+	cursor: pointer;
+	transition: background 0.15s ease;
+}
+
+.welcomeCard:hover {
+	background: var(--background-modifier-hover);
+}
+
+.welcomeCardIcon {
+	width: 40px;
+	height: 40px;
+	border-radius: var(--radius-md);
+	background: var(--background-tertiary);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--interactive-normal);
+	flex-shrink: 0;
+}
+
+.welcomeCardText {
+	flex: 1;
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--text-normal);
+}
+
+.welcomeCardCheck {
+	color: var(--status-online);
+	flex-shrink: 0;
+}
+
+.welcomeCardChevron {
+	color: var(--interactive-normal);
+	flex-shrink: 0;
+}
+
+/* Date divider between message groups */
+.dateDivider {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin: 16px 16px 8px;
+	position: relative;
+}
+
+.dateDivider::before,
+.dateDivider::after {
+	content: '';
+	flex: 1;
+	height: 1px;
+	background: var(--background-modifier-accent);
+}
+
+.dateDividerText {
+	padding: 0 8px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
 }
 
 .virtualContainer {

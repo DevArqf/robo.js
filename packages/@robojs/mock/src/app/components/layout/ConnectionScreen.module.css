@@ -181,3 +181,90 @@
 	color: var(--text-normal);
 	border: 1px solid var(--background-modifier-accent);
 }
+
+/* Session invalid state - stale token */
+.sessionInvalid {
+	margin-top: 16px;
+	padding: 20px;
+	background: rgba(250, 166, 26, 0.1);
+	border-radius: var(--radius-sm);
+	border: 1px solid rgba(250, 166, 26, 0.3);
+	text-align: center;
+}
+
+.warningIcon {
+	font-size: 32px;
+	margin-bottom: 8px;
+}
+
+.invalidTitle {
+	color: var(--yellow-400, #faa61a);
+	font-size: 16px;
+	font-weight: 600;
+	margin: 0 0 4px;
+}
+
+.invalidHint {
+	color: var(--text-muted);
+	font-size: 13px;
+	margin: 0 0 16px;
+}
+
+.createNewButton {
+	padding: 10px 20px;
+	background: var(--yellow-400, #faa61a);
+	color: #000;
+	font-size: 14px;
+	font-weight: 500;
+	border-radius: var(--radius-sm);
+	transition: background 0.15s ease;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.createNewButton:hover:not(:disabled) {
+	background: var(--yellow-500, #f0a000);
+}
+
+.createNewButton:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+/* Given up state - connection failed after max retries */
+.givenUp {
+	margin-top: 16px;
+	padding: 20px;
+	background: rgba(242, 63, 67, 0.1);
+	border-radius: var(--radius-sm);
+	border: 1px solid rgba(242, 63, 67, 0.3);
+	text-align: center;
+}
+
+.givenUpTitle {
+	color: var(--red-400);
+	font-size: 16px;
+	font-weight: 600;
+	margin: 0 0 4px;
+}
+
+.givenUpHint {
+	color: var(--text-muted);
+	font-size: 13px;
+	margin: 0 0 16px;
+}
+
+.retryButton {
+	padding: 10px 20px;
+	background: var(--red-400);
+	color: white;
+	font-size: 14px;
+	font-weight: 500;
+	border-radius: var(--radius-sm);
+	transition: background 0.15s ease;
+}
+
+.retryButton:hover {
+	background: var(--red-500);
+}

@@ -107,7 +107,15 @@ export {
 	generateGatewaySessionId,
 	createMockToken,
 	parseMockToken,
-	TOKEN_PREFIX
+	TOKEN_PREFIX,
+	// Server utilities
+	getServerConfig,
+	getServerPort,
+	getServerHostname,
+	getMockServerUrl,
+	getMockRestApiUrl,
+	getMockPluginPrefix,
+	getStageUIUrl
 } from './utils/index.js'
 
 // State helpers
@@ -321,3 +329,30 @@ export type {
 	BufferedStageEvent,
 	StageServerConfig
 } from './types/stage.js'
+
+// Plugin config exports (CLI Command)
+export { DEFAULT_MOCK_PLUGIN_CONFIG } from './types/plugin.js'
+export type { MockPluginConfig } from './types/plugin.js'
+
+// Session summary exports (CLI Command)
+export { generateSessionSummary, printSessionSummary, getCompactSummary } from './core/summary.js'
+export type { SessionSummary } from './core/summary.js'
+
+// Session persistence exports (CLI Command)
+export {
+	persistSession,
+	loadPersistedSession,
+	listPersistedSessions,
+	deletePersistedSession,
+	cleanupOldSessions,
+	getPersistedSessionsSize,
+	getMockDataDir,
+	getSessionFilePath,
+	ensureMockDataDir
+} from './core/persistence.js'
+export type { PersistedSession } from './core/persistence.js'
+
+// Mock mode helpers (CLI Command)
+export { getMockModeState, resetMockModeState } from './robo/init.js'
+export type { MockModeState } from './robo/init.js'
+export { getMockModeSession, clearMockModeSession } from './robo/start.js'
