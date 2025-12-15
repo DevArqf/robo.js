@@ -1,8 +1,9 @@
 .container {
 	width: var(--member-list-width);
-	background: var(--background-secondary);
+	background: '#1a1a1e';
 	overflow-y: auto;
 	padding: 24px 8px;
+	border: 1px solid #29292e;
 }
 
 .group {

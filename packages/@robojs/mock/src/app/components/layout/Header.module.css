@@ -9,6 +9,28 @@
 	background: var(--background-primary);
 }
 
+.inputContainer {
+	display: flex;
+	flex-direction: row;
+}
+
+.headerInput {
+	border: 1px solid #454548;
+	padding: 5px;
+	border-radius: 5px;
+	background: #17171a;
+	position: relative;
+}
+
+.headerInputIcon {
+	position: absolute;
+	display: flex;
+	align-items: flex-end;
+	justify-content: end;
+	right: 25px;
+	align-self: center;
+}
+
 .channelInfo {
 	display: flex;
 	align-items: center;
@@ -79,6 +101,10 @@
 	color: var(--interactive-active);
 }
 
+.dropdownWrapper {
+	position: relative;
+}
+
 /* Mobile menu button - hidden by default */
 .mobileMenuButton {
 	display: none;
@@ -88,7 +114,9 @@
 	justify-content: center;
 	color: var(--interactive-normal);
 	border-radius: var(--radius-sm);
-	transition: color 0.15s ease, background 0.15s ease;
+	transition:
+		color 0.15s ease,
+		background 0.15s ease;
 	margin-right: 8px;
 	flex-shrink: 0;
 }

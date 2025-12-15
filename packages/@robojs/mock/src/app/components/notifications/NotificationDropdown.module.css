@@ -1,0 +1,121 @@
+.container {
+	position: absolute;
+	top: 100%;
+	right: 0;
+	margin-top: 8px;
+	display: flex;
+	background: #1a1a1e;
+	border-radius: 8px;
+	box-shadow: 0 8px 16px rgba(0, 0, 0, 0.24);
+	z-index: 1000;
+	overflow: visible;
+}
+
+.mainPanel {
+	min-width: 240px;
+	padding: 8px 0;
+}
+
+.muteRow {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 12px;
+	cursor: pointer;
+	transition: background 0.15s ease;
+}
+
+.muteRow:hover {
+	background: var(--background-modifier-hover);
+}
+
+.muteLabel {
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--text-normal);
+}
+
+.chevron {
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+}
+
+.divider {
+	height: 1px;
+	margin: 8px 12px;
+	background: var(--background-modifier-accent);
+}
+
+.optionRow {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 12px;
+	cursor: pointer;
+	transition: background 0.15s ease;
+}
+
+.optionRow:hover {
+	background: var(--background-modifier-hover);
+}
+
+.optionContent {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.optionLabel {
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--text-normal);
+}
+
+.optionSublabel {
+	font-size: 12px;
+	color: var(--brand-500);
+}
+
+.radio {
+	width: 20px;
+	height: 20px;
+	border-radius: 50%;
+	border: 2px solid var(--interactive-normal);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.radio.selected {
+	border-color: var(--brand-500);
+	background: var(--brand-500);
+}
+
+.radioInner {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: white;
+}
+
+.submenuPanel {
+	min-width: 200px;
+	padding: 8px 0;
+	background: #1a1a1e;
+	border-left: 1px solid var(--background-modifier-accent);
+	border-radius: 0 8px 8px 0;
+}
+
+.submenuItem {
+	padding: 8px 12px;
+	font-size: 14px;
+	color: var(--text-normal);
+	cursor: pointer;
+	transition: background 0.15s ease;
+}
+
+.submenuItem:hover {
+	background: var(--background-modifier-hover);
+}

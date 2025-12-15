@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import type { StageGuild } from '../../types/stage'
 import { useSession } from '../../hooks/useSession'
+import CreateIcon from '../icons/create'
 import styles from './ServerList.module.css'
 
 interface ServerListProps {
@@ -479,7 +480,9 @@ export function ServerList({ guilds, selectedId, onSelect, unreadGuildIds, sessi
 								{guild.icon ? (
 									<img src={getGuildIconUrl(guild)} alt="" className={styles.iconImage} />
 								) : (
-									<span className={styles.serverAcronym} aria-hidden="true">{getGuildAcronym(guild.name)}</span>
+									<span className={styles.serverAcronym} aria-hidden="true">
+										{getGuildAcronym(guild.name)}
+									</span>
 								)}
 							</button>
 						</div>
@@ -489,7 +492,6 @@ export function ServerList({ guilds, selectedId, onSelect, unreadGuildIds, sessi
 
 			{/* Add server / Seed data button */}
 			<div className={styles.serverWrapper}>
-				<div className={styles.pill} />
 				<button
 					className={`${styles.serverIcon} ${styles.addButton} ${isSeeding ? styles.seeding : ''}`}
 					onClick={hasNoGuilds ? handleSeedData : undefined}
@@ -497,11 +499,21 @@ export function ServerList({ guilds, selectedId, onSelect, unreadGuildIds, sessi
 					title={hasNoGuilds ? 'Seed Test Data' : 'Add a Server'}
 					aria-label={hasNoGuilds ? 'Seed Test Data' : 'Add a Server'}
 				>
-					{isSeeding ? <span className={styles.spinner} aria-label="Loading" /> : <span className={styles.plus} aria-hidden="true">+</span>}
+					{isSeeding ? (
+						<span className={styles.spinner} aria-label="Loading" />
+					) : (
+						<div style={{ position: 'absolute', display: 'flex' }}>
+							<CreateIcon />
+						</div>
+					)}
 				</button>
 			</div>
 
-			{seedError && <div className={styles.seedError} role="alert">{seedError}</div>}
+			{seedError && (
+				<div className={styles.seedError} role="alert">
+					{seedError}
+				</div>
+			)}
 		</nav>
 	)
 }

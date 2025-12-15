@@ -1,6 +1,6 @@
 .container {
 	max-width: 520px;
-	background: var(--background-secondary);
+	background: '#1a1a1e';
 	border-radius: 4px;
 	border-left: 4px solid var(--background-tertiary);
 	padding: 12px 16px;
