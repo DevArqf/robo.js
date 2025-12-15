@@ -4,7 +4,7 @@ import { parseMockToken } from '../../../../../utils/id.js'
 import { generateSnowflake } from '../../../../../utils/snowflake.js'
 import { getGatewayServer } from '../../../../../core/gateway.js'
 import { enforcePermissions } from '../../../../../utils/permission-check.js'
-import type { MockVoiceState } from '../../../../../types/index.js'
+import type { MockVoiceState as _MockVoiceState } from '../../../../../types/index.js'
 
 /**
  * PATCH /api/v10/guilds/:id/voice-states/:userId - Modify voice state
@@ -79,11 +79,6 @@ export default async (request: RoboRequest) => {
 	let voiceState = session.state.voiceStates?.get(voiceStateKey)
 
 	if (!voiceState) {
-		// Initialize voice states map if needed
-		if (!session.state.voiceStates) {
-			session.state.voiceStates = new Map()
-		}
-
 		// Create new voice state
 		voiceState = {
 			guild_id: guildId,
@@ -125,18 +120,18 @@ export default async (request: RoboRequest) => {
 	const member = session.state.guildMembers.get(`${guildId}:${userId}`)
 	const voiceStatePayload: Record<string, unknown> = {
 		...voiceState,
-		member: member
+		member: member?.user
 			? {
 					user: {
 						id: member.user.id,
 						username: member.user.username,
 						discriminator: member.user.discriminator ?? '0',
 						avatar: member.user.avatar ?? null,
-						global_name: member.user.global_name ?? null
+						global_name: member.user.globalName ?? null
 					},
 					nick: member.nick ?? null,
 					roles: member.roles ?? [],
-					joined_at: member.joined_at ?? new Date().toISOString(),
+					joined_at: member.joinedAt ?? new Date().toISOString(),
 					deaf: voiceState.deaf,
 					mute: voiceState.mute
 				}

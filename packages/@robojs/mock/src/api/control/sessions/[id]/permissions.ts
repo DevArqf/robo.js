@@ -1,7 +1,7 @@
 import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../../core/manager.js'
 import { notFound, badRequest } from '../../utils.js'
-import { computePermissions, getPermissionNames } from '../../../../core/permissions.js'
+import { getPermissionNames } from '../../../../core/permissions.js'
 
 /**
  * Control API for managing bot permissions in test scenarios

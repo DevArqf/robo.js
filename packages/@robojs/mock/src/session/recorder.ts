@@ -1,4 +1,4 @@
-import type { ActionType, RecordedAction, RecordActionOptions } from '../types/index.js'
+import type { ActionType, IActionRecorder, RecordedAction, RecordActionOptions } from '../types/index.js'
 
 // Default maximum number of recorded actions before LRU eviction
 const DEFAULT_MAX_ACTIONS = 10000
@@ -7,7 +7,7 @@ const DEFAULT_MAX_ACTIONS = 10000
  * ActionRecorder manages recorded actions for a session with memory management.
  * Uses LRU-style eviction to prevent unbounded memory growth.
  */
-export class ActionRecorder {
+export class ActionRecorder implements IActionRecorder {
 	private actions: RecordedAction[] = []
 	private maxActions: number
 	private idCounter = 0

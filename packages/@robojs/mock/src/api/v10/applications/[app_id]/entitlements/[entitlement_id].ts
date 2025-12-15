@@ -31,7 +31,7 @@ export default async (request: RoboRequest) => {
 	}
 
 	// 2. Extract params
-	const { app_id: appId, entitlement_id: entitlementId } = request.params as {
+	const { app_id: appId, entitlement_id: _entitlementId } = request.params as {
 		app_id: string
 		entitlement_id: string
 	}

@@ -1,5 +1,7 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useSession } from '../../hooks/useSession'
+import { CommandAutocomplete } from './CommandAutocomplete'
+import type { StageApplicationCommand } from '../../types/stage'
 import styles from './MessageInput.module.css'
 
 interface MessageInputProps {
@@ -8,15 +10,59 @@ interface MessageInputProps {
 }
 
 export function MessageInput({ channelId, channelName }: MessageInputProps) {
-	const { sendMessage, replyingTo, clearReplyingTo } = useSession()
+	const { sendMessage, replyingTo, clearReplyingTo, slashCommands, invokeCommand } = useSession()
 	const [inputValue, setInputValue] = useState('')
 	const [isSending, setIsSending] = useState(false)
+	const [showCommandAutocomplete, setShowCommandAutocomplete] = useState(false)
+	const [commandSearch, setCommandSearch] = useState('')
 	const inputRef = useRef<HTMLDivElement>(null)
+
+	// Check if input starts with "/" and update autocomplete state
+	// Note: We always read from slashCommands directly (no caching) to avoid stale data
+	useEffect(() => {
+		if (inputValue.startsWith('/')) {
+			setShowCommandAutocomplete(true)
+			setCommandSearch(inputValue.slice(1)) // Text after "/"
+		} else {
+			setShowCommandAutocomplete(false)
+			setCommandSearch('')
+		}
+	}, [inputValue])
 
 	// Handle input changes from contentEditable
 	const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
 		setInputValue(e.currentTarget.textContent || '')
 	}
+
+	// Handle command selection from autocomplete
+	const handleCommandSelect = useCallback(
+		async (command: StageApplicationCommand, options: Record<string, unknown>) => {
+			setIsSending(true)
+			try {
+				await invokeCommand(command.name, options, channelId)
+
+				// Clear input after successful command
+				setInputValue('')
+				if (inputRef.current) inputRef.current.textContent = ''
+				setShowCommandAutocomplete(false)
+			} catch (err) {
+				console.error('Failed to invoke command:', err)
+			} finally {
+				setIsSending(false)
+			}
+		},
+		[invokeCommand, channelId]
+	)
+
+	// Close autocomplete
+	const handleCloseAutocomplete = useCallback(() => {
+		setShowCommandAutocomplete(false)
+		// Clear the slash from input when closing via escape
+		if (inputValue.startsWith('/')) {
+			setInputValue('')
+			if (inputRef.current) inputRef.current.textContent = ''
+		}
+	}, [inputValue])
 
 	// Handle message submission
 	const handleSubmit = async () => {
@@ -43,7 +89,21 @@ export function MessageInput({ channelId, channelName }: MessageInputProps) {
 	}
 
 	// Handle keyboard events - Enter to send, Shift+Enter for newline
+	// Note: Arrow keys, Tab, Enter for autocomplete are handled by CommandAutocomplete via document listener
 	const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+		// When autocomplete is showing, let it handle these keys
+		if (showCommandAutocomplete) {
+			if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Tab' || e.key === 'Enter') {
+				// Don't prevent default here - CommandAutocomplete handles it via document listener
+				return
+			}
+			if (e.key === 'Escape') {
+				e.preventDefault()
+				handleCloseAutocomplete()
+				return
+			}
+		}
+
 		if (e.key === 'Enter' && !e.shiftKey) {
 			e.preventDefault()
 			handleSubmit()
@@ -74,6 +134,15 @@ export function MessageInput({ channelId, channelName }: MessageInputProps) {
 			)}
 			<div>
 				<div className={styles.container}>
+					{/* Slash command autocomplete popover */}
+					{showCommandAutocomplete && slashCommands.length > 0 && (
+						<CommandAutocomplete
+							search={commandSearch}
+							commands={slashCommands}
+							onSelect={handleCommandSelect}
+							onClose={handleCloseAutocomplete}
+						/>
+					)}
 					<div className={styles.channelTextArea}>
 						<div className={styles.inputWrapper}>
 							<div className={styles.inner}>

@@ -31,7 +31,7 @@ import type {
 import { AutoModerationTriggerType } from '../types/index.js'
 import { generateSessionId, createMockToken, generateInteractionToken } from '../utils/id.js'
 import { generateSnowflake } from '../utils/snowflake.js'
-import { MockServerState, createDefaultGuildWithChannel, createMockUser, createMockMessage, createMockGuild, createMockChannel } from './state.js'
+import { MockServerState, createMockUser, createMockGuild, createMockChannel } from './state.js'
 import { ActionRecorder } from './recorder.js'
 import { mockLogger } from '../core/logger.js'
 import { getGatewayServer } from '../core/gateway.js'
@@ -98,7 +98,7 @@ export class Session implements ISession {
 	 */
 	readonly voiceServers: Map<string, VoiceServerState>
 
-	private readonly recorder: ActionRecorder
+	readonly recorder: ActionRecorder
 	private ending = false
 	private autoArchiveInterval: ReturnType<typeof setInterval> | null = null
 

@@ -256,7 +256,7 @@ async function executeWebhook(request: RoboRequest, session: Session, webhook: M
 			for (let i = 0; i < parsed.files.length; i++) {
 				const file = parsed.files[i]
 				const attachmentId = generateSnowflake()
-				const meta = body.attachments?.find((a) => a.id === i) || {}
+				const meta: Partial<AttachmentPayload> = body.attachments?.find((a) => a.id === i) || {}
 
 				let width: number | undefined
 				let height: number | undefined
@@ -642,7 +642,7 @@ async function handleInteractionWebhook(request: RoboRequest, appId: string, tok
 				const attachmentId = generateSnowflake()
 
 				// Find metadata from payload_json.attachments (if provided)
-				const meta = body.attachments?.find((a) => a.id === i) || {}
+				const meta: Partial<AttachmentPayload> = body.attachments?.find((a) => a.id === i) || {}
 
 				// Detect image dimensions if applicable
 				let width: number | undefined

@@ -13,7 +13,7 @@ import path from 'node:path'
 import { execSync } from 'node:child_process'
 import { createCliCommandConfig, color, Env, getPluginOptions, setHookPriority } from 'robo.js'
 import { generateSessionId, createMockToken } from '../../../utils/id.js'
-import { getMockRestApiUrl, getStageUIUrl, getServerPort, getMockPluginPrefix } from '../../../utils/server.js'
+import { getStageUIUrl, getServerPort, getMockPluginPrefix } from '../../../utils/server.js'
 import { printSessionSummary } from '../../../core/summary.js'
 import { persistSession, cleanupOldSessions } from '../../../core/persistence.js'
 import { getMockModeSession, clearMockModeSession } from '../../start.js'
@@ -80,6 +80,9 @@ export default async function mockCommand({ options, logger }: CliContext<typeof
 		logger.log('')
 	}
 
+	// Set mock mode BEFORE build so @robojs/discordjs can skip real Discord registration
+	process.env.ROBO_MOCK_MODE = 'true'
+
 	// Always rebuild to ensure manifest is fresh (like robo dev)
 	// This prevents stale manifest issues where project routes are missing
 	if (!silent) {
@@ -104,9 +107,6 @@ export default async function mockCommand({ options, logger }: CliContext<typeof
 
 	// Save real Discord token before overwriting (for bot user lookup)
 	const realDiscordToken = process.env.DISCORD_TOKEN
-
-	// Set environment variables for mock mode
-	process.env.ROBO_MOCK_MODE = 'true'
 	process.env.ROBO_MOCK_SESSION_ID = sessionId
 	process.env.ROBO_MOCK_SESSION_NAME = sessionName
 	process.env.ROBO_MOCK_REAL_TOKEN = realDiscordToken ?? ''

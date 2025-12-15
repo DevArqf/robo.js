@@ -65,7 +65,8 @@ describe('Phase 18: Poll Messages', () => {
 				poll: {
 					question: { text: 'Pick a number' },
 					answers: [{ text: '1' }, { text: '2' }],
-					duration: 1
+					duration: 1,
+					allowMultiselect: false
 				}
 			})
 
@@ -88,7 +89,8 @@ describe('Phase 18: Poll Messages', () => {
 				poll: {
 					question: { text: 'Text test' },
 					answers: [{ text: 'Answer One' }, { text: 'Answer Two' }],
-					duration: 1
+					duration: 1,
+					allowMultiselect: false
 				}
 			})
 
@@ -112,7 +114,8 @@ describe('Phase 18: Poll Messages', () => {
 						{ text: 'D' },
 						{ text: 'E' }
 					],
-					duration: 24
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 
@@ -126,7 +129,8 @@ describe('Phase 18: Poll Messages', () => {
 				poll: {
 					question: { text: 'Time test' },
 					answers: [{ text: 'Yes' }],
-					duration: 24
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 
@@ -138,7 +142,8 @@ describe('Phase 18: Poll Messages', () => {
 				poll: {
 					question: { text: 'Timestamp test' },
 					answers: [{ text: 'Yes' }],
-					duration: 24
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 
@@ -153,7 +158,8 @@ describe('Phase 18: Poll Messages', () => {
 				poll: {
 					question: { text: 'End test' },
 					answers: [{ text: 'Option' }],
-					duration: 24
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 
@@ -178,7 +184,8 @@ describe('Phase 18: Poll Messages', () => {
 				poll: {
 					question: { text: 'Method end test' },
 					answers: [{ text: 'Option' }],
-					duration: 24
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 
@@ -201,7 +208,8 @@ describe('Phase 18: Poll Messages', () => {
 				poll: {
 					question: { text: 'Results test' },
 					answers: [{ text: 'A' }],
-					duration: 24
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 
@@ -225,7 +233,8 @@ describe('Phase 18: Poll Messages', () => {
 				poll: {
 					question: { text: 'Voter test' },
 					answers: [{ text: 'Vote here' }],
-					duration: 24
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 
@@ -252,7 +261,8 @@ describe('Phase 18: Poll Messages', () => {
 				poll: {
 					question: { text: 'Voter method test' },
 					answers: [{ text: 'Vote here' }],
-					duration: 24
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 
@@ -271,7 +281,8 @@ describe('Phase 18: Poll Messages', () => {
 				poll: {
 					question: { text: 'Voter control API test' },
 					answers: [{ text: 'Vote here' }],
-					duration: 24
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 
@@ -309,7 +320,8 @@ describe('Phase 18: Poll Messages', () => {
 				poll: {
 					question: { text: 'Layout test' },
 					answers: [{ text: 'A' }],
-					duration: 1
+					duration: 1,
+					allowMultiselect: false
 				}
 			})
 
@@ -323,7 +335,8 @@ describe('Phase 18: Poll Messages', () => {
 					question: { text: 'Layout type explicit' },
 					answers: [{ text: 'A' }],
 					duration: 1,
-					layoutType: PollLayoutType.Default
+					layoutType: PollLayoutType.Default,
+					allowMultiselect: false
 				}
 			})
 
@@ -350,7 +363,8 @@ describe('Phase 18: Poll Messages', () => {
 				poll: {
 					question: { text: 'Single test' },
 					answers: [{ text: 'A' }],
-					duration: 24
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 

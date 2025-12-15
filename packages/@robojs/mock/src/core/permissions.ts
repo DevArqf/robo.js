@@ -10,7 +10,7 @@
 
 import { PermissionFlagsBits } from 'discord-api-types/v10'
 import type { Snowflake } from 'discord-api-types/v10'
-import type { MockGuild, MockChannel, MockGuildMember, MockRole, MockChannelOverwrite } from '../types/index.js'
+import type { MockGuild, MockChannel, MockGuildMember, MockRole } from '../types/index.js'
 import { OverwriteType } from '../types/index.js'
 
 // Re-export for convenience
@@ -563,30 +563,6 @@ function patternToRegex(pattern: string): RegExp {
 }
 
 /**
- * Extract IDs from a path based on a pattern
- */
-function extractPathParams(path: string, pattern: string): Record<string, string> {
-	// Normalize path
-	let normalizedPath = path
-	if (normalizedPath.startsWith('/api/v10')) {
-		normalizedPath = normalizedPath.replace('/api/v10', '')
-	}
-
-	const params: Record<string, string> = {}
-	const pathParts = normalizedPath.split('/')
-	const patternParts = pattern.split('/')
-
-	for (let i = 0; i < patternParts.length; i++) {
-		if (patternParts[i].startsWith(':')) {
-			const paramName = patternParts[i].slice(1)
-			params[paramName] = pathParts[i]
-		}
-	}
-
-	return params
-}
-
-/**
  * Check if a request has permission to access an endpoint
  *
  * @param context - Permission context with member, guild, channel info
@@ -599,7 +575,7 @@ export function checkEndpointPermission(
 	context: PermissionContext,
 	method: string,
 	path: string,
-	body?: unknown
+	_body?: unknown
 ): PermissionCheckResult {
 	const pattern = matchEndpointPattern(path)
 

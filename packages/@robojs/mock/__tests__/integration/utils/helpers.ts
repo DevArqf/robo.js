@@ -29,35 +29,48 @@ export function resetSnowflakeCounter(): void {
 /**
  * Wait for a specific event on a discord.js client
  *
+ * Supports two calling patterns:
+ * 1. Type-safe: `waitForEvent(client, 'messageCreate')` - infers Message from ClientEvents
+ * 2. Explicit type: `waitForEvent<GuildMember>(client, 'guildMemberAdd')` - uses explicit type
+ *
  * @param client - The discord.js client
  * @param event - Event name to wait for
  * @param timeout - Maximum time to wait (ms)
  * @param predicate - Optional filter function
- * @returns The event arguments
- *
- * @example
- * ```typescript
- * const message = await waitForEvent(client, 'messageCreate', 5000)
- * expect(message.content).toBe('Hello!')
- * ```
+ * @returns The first event argument
  */
+// Overload 1: Type-safe inference from event name (for unparameterized calls)
 export function waitForEvent<K extends keyof ClientEvents>(
 	client: Client,
 	event: K,
-	timeout = 10000,
+	timeout?: number,
 	predicate?: (...args: ClientEvents[K]) => boolean
-): Promise<ClientEvents[K][0]> {
+): Promise<ClientEvents[K][0]>
+// Overload 2: Explicit return type (for parameterized calls like waitForEvent<Message>(...))
+export function waitForEvent<T>(
+	client: Client,
+	event: string,
+	timeout?: number,
+	predicate?: (...args: unknown[]) => boolean
+): Promise<T>
+// Implementation
+export function waitForEvent<T>(
+	client: Client,
+	event: string,
+	timeout = 10000,
+	predicate?: (...args: unknown[]) => boolean
+): Promise<T> {
 	return new Promise((resolve, reject) => {
 		const timeoutId = setTimeout(() => {
 			client.off(event, handler)
 			reject(new Error(`Timeout waiting for event "${event}" after ${timeout}ms`))
 		}, timeout)
 
-		const handler = (...args: ClientEvents[K]) => {
+		const handler = (...args: unknown[]) => {
 			if (!predicate || predicate(...args)) {
 				clearTimeout(timeoutId)
 				client.off(event, handler)
-				resolve(args[0])
+				resolve(args[0] as T)
 			}
 		}
 

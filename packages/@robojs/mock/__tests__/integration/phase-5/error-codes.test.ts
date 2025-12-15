@@ -109,9 +109,10 @@ describe('Phase 5: Error Codes', () => {
 					poll: {
 						question: { text: 'Too many answers' },
 						answers: Array.from({ length: 11 }, (_, i) => ({
-							poll_media: { text: `Answer ${i + 1}` }
+							text: `Answer ${i + 1}`
 						})),
-						duration: 24
+						duration: 24,
+						allowMultiselect: false
 					}
 				})
 			).rejects.toMatchObject({
@@ -124,8 +125,9 @@ describe('Phase 5: Error Codes', () => {
 				channel.send({
 					poll: {
 						question: { text: 'q'.repeat(301) }, // 301 chars exceeds 300 limit
-						answers: [{ poll_media: { text: 'A' } }],
-						duration: 24
+						answers: [{ text: 'A' }],
+						duration: 24,
+						allowMultiselect: false
 					}
 				})
 			).rejects.toMatchObject({
@@ -139,8 +141,9 @@ describe('Phase 5: Error Codes', () => {
 			const message = await channel.send({
 				poll: {
 					question: { text: 'Question' },
-					answers: [{ poll_media: { text: 'Short answer' } }],
-					duration: 24
+					answers: [{ text: 'Short answer' }],
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 			expect(message).toBeDefined()

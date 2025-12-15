@@ -1,8 +1,8 @@
 import { GatewayOpcodes, ChannelType, GuildDefaultMessageNotifications, GuildExplicitContentFilter, GuildMFALevel, GuildNSFWLevel, GuildPremiumTier, GuildVerificationLevel, MessageType, InteractionType, ApplicationCommandType, ComponentType } from 'discord-api-types/v10'
 import type { APIUser, APIUnavailableGuild, APIChannel, APIDMChannel, APIRole, APIGuildMember, Snowflake, APIMessage, APIEmbed, APIAttachment, APIMessageInteractionMetadata, APIMessageSnapshot, APIOverwrite, APIRoleTags } from 'discord-api-types/v10'
 import { DEFAULT_HEARTBEAT_INTERVAL, GATEWAY_VERSION } from './opcodes.js'
-import type { MockUser, MockGuild, MockChannel, MockMessage, MockInteraction, SessionState, MockMessageSnapshot, MockThread, MockThreadMember, MockForumChannel, MockForumThread, MockForumTag, MockSticker, MockWebhook, MockEmoji, MockRole, MockGuildMember, MockChannelOverwrite, MockApplicationCommand, MockInvite, MockScheduledEvent, MockAutoModRule, MockAutoModAction, MockAutoModActionMetadata } from '../types/index.js'
-import { OverwriteType, GuildScheduledEventPrivacyLevel, GuildScheduledEventStatus, GuildScheduledEventEntityType, AutoModerationEventType, AutoModerationTriggerType, AutoModerationActionType, AutoModerationKeywordPresetType } from '../types/index.js'
+import type { MockUser, MockGuild, MockChannel, MockMessage, MockInteraction, SessionState, MockMessageSnapshot, MockThread, MockThreadMember, MockForumChannel, MockForumThread, MockForumTag, MockSticker, MockWebhook, MockEmoji, MockRole, MockGuildMember, MockChannelOverwrite, MockApplicationCommand, MockInvite, MockScheduledEvent, MockAutoModRule, MockAutoModAction } from '../types/index.js'
+import { AutoModerationTriggerType } from '../types/index.js'
 import { generateSnowflake } from '../utils/snowflake.js'
 
 /**
@@ -1200,7 +1200,7 @@ export interface MessageCreatePayloadOptions {
  * Build a partial guild member object (without user field) for MESSAGE_CREATE
  * Discord sends partial member data with messages in guilds
  */
-export function buildPartialGuildMember(user: MockUser, joinedAt?: string): Omit<APIGuildMember, 'user'> {
+export function buildPartialGuildMember(_user: MockUser, joinedAt?: string): Omit<APIGuildMember, 'user'> {
 	return {
 		roles: [],
 		joined_at: joinedAt ?? new Date().toISOString(),
@@ -1602,7 +1602,7 @@ export interface InteractionCreatePayloadOptions {
  * For slash commands (type 2 APPLICATION_COMMAND)
  */
 export function buildInteractionCreatePayload(options: InteractionCreatePayloadOptions): GatewayPayload {
-	const { interaction, user, sessionState, sequence } = options
+	const { interaction, user, sessionState: _sessionState, sequence } = options
 
 	// Build command data
 	const commandData: Record<string, unknown> = {
@@ -1762,7 +1762,7 @@ function buildResolvedData(
 	componentType: ComponentType,
 	values: string[],
 	sessionState: SessionState,
-	guildId?: string
+	_guildId?: string
 ): Record<string, Record<string, unknown>> | null {
 	// StringSelect (3) doesn't have resolved data
 	if (componentType === ComponentType.StringSelect) {

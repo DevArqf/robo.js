@@ -1,6 +1,7 @@
 import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../../core/manager.js'
 import { notFound, badRequest } from '../../utils.js'
+import { createMockUser } from '../../../../session/state.js'
 
 /**
  * Control API for managing poll votes in test scenarios
@@ -79,11 +80,12 @@ export default async (request: RoboRequest) => {
 		// Ensure user exists in state (create if not)
 		let user = session.state.users.get(body.user_id)
 		if (!user) {
-			user = session.state.createUser({
+			user = createMockUser({
 				id: body.user_id,
 				username: `User_${body.user_id.slice(-4)}`,
 				discriminator: '0'
 			})
+			session.state.users.set(body.user_id, user)
 		}
 
 		// Add the vote

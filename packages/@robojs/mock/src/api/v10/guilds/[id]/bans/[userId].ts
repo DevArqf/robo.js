@@ -4,7 +4,6 @@ import { parseMockToken } from '../../../../../utils/id.js'
 import { mockUserToAPIUser } from '../../../../../discord/payloads.js'
 import { enforcePermissions } from '../../../../../utils/permission-check.js'
 import { BanLimits } from '../../../../../types/index.js'
-import { generateSnowflake } from '../../../../../utils/snowflake.js'
 import { createMockUser } from '../../../../../session/state.js'
 
 /**

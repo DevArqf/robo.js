@@ -79,9 +79,6 @@ export default async (request: RoboRequest) => {
 			})
 		}
 
-		// Store old guild state for GUILD_UPDATE event
-		const oldGuild = { ...guild }
-
 		// Update guild fields
 		if (body.name !== undefined) {
 			guild.name = String(body.name)

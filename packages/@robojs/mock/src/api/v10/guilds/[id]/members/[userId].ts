@@ -182,22 +182,22 @@ export default async (request: RoboRequest) => {
 				// Update existing voice state
 				if (body.mute !== undefined) existingVoiceState.mute = body.mute
 				if (body.deaf !== undefined) existingVoiceState.deaf = body.deaf
-				if (body.channel_id !== undefined) existingVoiceState.channelId = body.channel_id
+				if (body.channel_id !== undefined) existingVoiceState.channel_id = body.channel_id
 			} else if (body.channel_id !== null) {
 				// Create new voice state if connecting to a channel
 				session.state.voiceStates.set(voiceStateKey, {
-					guildId,
-					channelId: body.channel_id || null,
-					userId: targetUserId,
-					sessionId: `voice_${targetUserId}_${Date.now()}`,
+					guild_id: guildId,
+					channel_id: body.channel_id || null,
+					user_id: targetUserId,
+					session_id: `voice_${targetUserId}_${Date.now()}`,
 					deaf: body.deaf ?? false,
 					mute: body.mute ?? false,
-					selfDeaf: false,
-					selfMute: false,
-					selfStream: false,
-					selfVideo: false,
+					self_deaf: false,
+					self_mute: false,
+					self_stream: false,
+					self_video: false,
 					suppress: false,
-					requestToSpeakTimestamp: null
+					request_to_speak_timestamp: null
 				})
 			}
 
@@ -210,17 +210,17 @@ export default async (request: RoboRequest) => {
 			const voiceState = session.state.voiceStates.get(voiceStateKey)
 			getGatewayServer().dispatchToSession(session.id, 'VOICE_STATE_UPDATE', {
 				guild_id: guildId,
-				channel_id: voiceState?.channelId || null,
+				channel_id: voiceState?.channel_id || null,
 				user_id: targetUserId,
-				session_id: voiceState?.sessionId || `voice_${targetUserId}_${Date.now()}`,
+				session_id: voiceState?.session_id || `voice_${targetUserId}_${Date.now()}`,
 				deaf: voiceState?.deaf ?? body.deaf ?? false,
 				mute: voiceState?.mute ?? body.mute ?? false,
-				self_deaf: voiceState?.selfDeaf ?? false,
-				self_mute: voiceState?.selfMute ?? false,
-				self_stream: voiceState?.selfStream ?? false,
-				self_video: voiceState?.selfVideo ?? false,
+				self_deaf: voiceState?.self_deaf ?? false,
+				self_mute: voiceState?.self_mute ?? false,
+				self_stream: voiceState?.self_stream ?? false,
+				self_video: voiceState?.self_video ?? false,
 				suppress: voiceState?.suppress ?? false,
-				request_to_speak_timestamp: voiceState?.requestToSpeakTimestamp || null
+				request_to_speak_timestamp: voiceState?.request_to_speak_timestamp || null
 			}, guildId)
 		}
 

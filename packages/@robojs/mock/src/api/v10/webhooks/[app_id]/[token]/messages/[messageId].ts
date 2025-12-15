@@ -483,7 +483,7 @@ async function handlePatch(
 	appId: string,
 	token: string,
 	messageId: string,
-	isOriginal = false
+	_isOriginal = false
 ) {
 	const channelId = message.channelId
 
@@ -694,7 +694,7 @@ function handleDelete(
 	appId: string,
 	token: string,
 	messageId: string,
-	isOriginal = false
+	_isOriginal = false
 ) {
 	// Get channel before deleting for dispatch
 	const channel = session.state.getChannel(message.channelId)

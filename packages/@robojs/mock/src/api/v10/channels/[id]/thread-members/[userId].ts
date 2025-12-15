@@ -100,7 +100,7 @@ export default async (request: RoboRequest) => {
 		return result
 	} else if (request.method === 'PUT') {
 		// 5b. Add member
-		const member = session.state.addThreadMember(threadId, userId)
+		session.state.addThreadMember(threadId, userId)
 
 		// Record action
 		session.recordAction(

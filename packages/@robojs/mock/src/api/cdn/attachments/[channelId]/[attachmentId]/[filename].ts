@@ -19,7 +19,7 @@ export default async (request: RoboRequest) => {
 		})
 	}
 
-	const { channelId, attachmentId, filename } = request.params as {
+	const { channelId, attachmentId, filename: _filename } = request.params as {
 		channelId: string
 		attachmentId: string
 		filename: string

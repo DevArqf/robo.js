@@ -68,6 +68,12 @@ export default async function (context: BuildCompleteContext) {
 		store.set('discord:inferredIntents', Array.from(inferredIntents))
 	}
 
+	// Skip registration in mock mode - commands will be registered to mock server at runtime
+	if (process.env.ROBO_MOCK_MODE === 'true') {
+		discordLogger.debug('Mock mode detected - skipping real Discord API registration')
+		return
+	}
+
 	// Determine if we should register commands based on autoRegisterCommands config
 	const autoRegister = discordConfig?.autoRegisterCommands
 	let shouldRegister: boolean

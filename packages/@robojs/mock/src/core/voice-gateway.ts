@@ -165,7 +165,7 @@ export class VoiceGatewayServer {
 	/**
 	 * Handle new WebSocket connection
 	 */
-	private handleConnection(ws: WebSocket, req: IncomingMessage): void {
+	private handleConnection(ws: WebSocket, _req: IncomingMessage): void {
 		const connectionId = generateSnowflake()
 
 		// Create connection state
@@ -360,7 +360,7 @@ export class VoiceGatewayServer {
 	/**
 	 * Handle Resume opcode (op 7)
 	 */
-	private handleResume(ws: WebSocket, connection: VoiceGatewayConnection, data: ResumePayload): void {
+	private handleResume(ws: WebSocket, connection: VoiceGatewayConnection, _data: ResumePayload): void {
 		mockLogger.debug(`Voice Gateway: Resume attempt from ${connection.id}`)
 
 		// For mock purposes, just send Resumed

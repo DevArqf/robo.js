@@ -48,7 +48,7 @@ describe('Phase 5: Polls', () => {
 			const message = await channel.send({
 				poll: {
 					question: { text: 'What is your favorite color?' },
-					answers: [{ poll_media: { text: 'Red' } }, { poll_media: { text: 'Blue' } }, { poll_media: { text: 'Green' } }],
+					answers: [{ text: 'Red' }, { text: 'Blue' }, { text: 'Green' }],
 					duration: 24,
 					allowMultiselect: false
 				}
@@ -63,7 +63,7 @@ describe('Phase 5: Polls', () => {
 			const message = await channel.send({
 				poll: {
 					question: { text: 'Select all that apply:' },
-					answers: [{ poll_media: { text: 'Option A' } }, { poll_media: { text: 'Option B' } }],
+					answers: [{ text: 'Option A' }, { text: 'Option B' }],
 					duration: 24,
 					allowMultiselect: true
 				}
@@ -77,10 +77,11 @@ describe('Phase 5: Polls', () => {
 				poll: {
 					question: { text: 'Rate this:' },
 					answers: [
-						{ poll_media: { text: 'Great', emoji: { name: '\ud83d\udc4d' } } },
-						{ poll_media: { text: 'Bad', emoji: { name: '\ud83d\udc4e' } } }
+						{ text: 'Great', emoji: '\ud83d\udc4d' },
+						{ text: 'Bad', emoji: '\ud83d\udc4e' }
 					],
-					duration: 24
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 
@@ -91,8 +92,9 @@ describe('Phase 5: Polls', () => {
 			const message = await channel.send({
 				poll: {
 					question: { text: 'Week-long poll' },
-					answers: [{ poll_media: { text: 'Yes' } }, { poll_media: { text: 'No' } }],
-					duration: 168 // 7 days
+					answers: [{ text: 'Yes' }, { text: 'No' }],
+					duration: 168, // 7 days
+					allowMultiselect: false
 				}
 			})
 
@@ -105,8 +107,9 @@ describe('Phase 5: Polls', () => {
 			const message = await channel.send({
 				poll: {
 					question: { text: 'End early test' },
-					answers: [{ poll_media: { text: 'A' } }, { poll_media: { text: 'B' } }],
-					duration: 24
+					answers: [{ text: 'A' }, { text: 'B' }],
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 
@@ -130,8 +133,9 @@ describe('Phase 5: Polls', () => {
 			const message = await channel.send({
 				poll: {
 					question: { text: 'Already ended test' },
-					answers: [{ poll_media: { text: 'A' } }, { poll_media: { text: 'B' } }],
-					duration: 24
+					answers: [{ text: 'A' }, { text: 'B' }],
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 
@@ -163,8 +167,9 @@ describe('Phase 5: Polls', () => {
 			const message = await channel.send({
 				poll: {
 					question: { text: 'Question text test' },
-					answers: [{ poll_media: { text: 'Answer' } }],
-					duration: 24
+					answers: [{ text: 'Answer' }],
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 
@@ -176,12 +181,13 @@ describe('Phase 5: Polls', () => {
 				poll: {
 					question: { text: 'Answer count test' },
 					answers: [
-						{ poll_media: { text: 'One' } },
-						{ poll_media: { text: 'Two' } },
-						{ poll_media: { text: 'Three' } },
-						{ poll_media: { text: 'Four' } }
+						{ text: 'One' },
+						{ text: 'Two' },
+						{ text: 'Three' },
+						{ text: 'Four' }
 					],
-					duration: 24
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 
@@ -192,8 +198,9 @@ describe('Phase 5: Polls', () => {
 			const message = await channel.send({
 				poll: {
 					question: { text: 'Expiry test' },
-					answers: [{ poll_media: { text: 'A' } }],
-					duration: 24
+					answers: [{ text: 'A' }],
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 
@@ -206,8 +213,9 @@ describe('Phase 5: Polls', () => {
 			const message = await channel.send({
 				poll: {
 					question: { text: 'Fetch test' },
-					answers: [{ poll_media: { text: 'Yes' } }, { poll_media: { text: 'No' } }],
-					duration: 24
+					answers: [{ text: 'Yes' }, { text: 'No' }],
+					duration: 24,
+					allowMultiselect: false
 				}
 			})
 
@@ -220,7 +228,7 @@ describe('Phase 5: Polls', () => {
 			const message = await channel.send({
 				poll: {
 					question: { text: 'Maintain test' },
-					answers: [{ poll_media: { text: 'A' } }, { poll_media: { text: 'B' } }, { poll_media: { text: 'C' } }],
+					answers: [{ text: 'A' }, { text: 'B' }, { text: 'C' }],
 					duration: 24,
 					allowMultiselect: true
 				}

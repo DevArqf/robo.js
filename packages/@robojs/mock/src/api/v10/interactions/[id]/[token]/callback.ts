@@ -129,7 +129,7 @@ export default async (request: RoboRequest) => {
 				const attachmentId = generateSnowflake()
 
 				// Find metadata from payload_json.data.attachments (if provided)
-				const meta = body.data?.attachments?.find((a) => a.id === i) || {}
+				const meta: Partial<AttachmentPayload> = body.data?.attachments?.find((a) => a.id === i) || {}
 
 				// Detect image dimensions if applicable
 				let width: number | undefined

@@ -729,7 +729,7 @@ export class GatewayServer {
 		}
 
 		// Clear all connection states from the session
-		for (const [connectionId, connState] of session.connections) {
+		for (const [_connectionId, connState] of session.connections) {
 			// Reset connection state flags
 			connState.identified = false
 			connState.sequence = 0

@@ -18,12 +18,39 @@ export interface Session {
 	config?: SessionConfig
 	readonly isExpired: boolean
 	readonly isEnding: boolean
+	readonly recorder: IActionRecorder
+
+	// Event Dispatch
+	dispatch(event: string, data: unknown): Promise<void>
+
+	// Recording Methods
+	recordAction(type: ActionType, data: unknown, options?: RecordActionOptions): RecordedAction
+	getActions(): RecordedAction[]
+	getActionsSince(timestamp: number): RecordedAction[]
+	getActionsByType(type: ActionType): RecordedAction[]
+	getMessagesSent(): RecordedAction[]
+	getInteractionResponses(): RecordedAction[]
+	getRestRequests(): RecordedAction[]
+	getGatewayMessages(): RecordedAction[]
+	getDispatches(): RecordedAction[]
+	clearActions(): void
+	exportRecording(): SessionRecording
+
+	// Rate Limit Simulation
+	setRateLimitSimulation(enabled: boolean, retryAfter?: number): void
+	checkRateLimit(): { retryAfter: number } | null
+
+	// State Management
+	reset(): void
+	startAutoArchive(intervalMs?: number): void
+	stopAutoArchive(): void
 }
 
 /**
  * Isolated state for a session
  */
 export interface SessionState {
+	// Data Maps
 	guilds: Map<Snowflake, MockGuild>
 	channels: Map<Snowflake, MockChannel>
 	dmChannels: Map<Snowflake, MockChannel> // By recipient user ID
@@ -45,9 +72,248 @@ export interface SessionState {
 	autoModRules: Map<string, MockAutoModRule> // Phase 5C: key = `${guildId}:${ruleId}`
 	stageInstances: Map<Snowflake, MockStageInstance> // Phase 11: Stage instances by channel ID
 	commandPermissions: Map<string, MockCommandPermission[]> // Phase 11: key = `${guildId}:${commandId}`
+	threadMembers: Map<Snowflake, Map<Snowflake, MockThreadMember>> // threadId -> userId -> member
+	voiceStates: Map<string, MockVoiceState> // Phase 7: `${guildId}:${userId}` -> voice state
+	auditLogs: Map<string, MockAuditLogEntry[]> // Phase 14: guildId -> audit log entries
 	botUser: MockUser
 	applicationId: Snowflake
 	sequence: number
+
+	// Sequence Management
+	nextSequence(): number
+
+	// Guild Operations
+	getGuild(id: Snowflake): MockGuild | undefined
+	addGuild(guild: MockGuild): void
+	removeGuild(id: Snowflake): boolean
+
+	// Channel Operations
+	getChannel(id: Snowflake): MockChannel | undefined
+	getChannelsForGuild(guildId: Snowflake): MockChannel[]
+	addChannel(channel: MockChannel): void
+	addChannelToGuild(guildId: Snowflake, channel: MockChannel): void
+	removeChannel(id: Snowflake): boolean
+
+	// User Operations
+	getUser(id: Snowflake): MockUser | undefined
+	addUser(user: MockUser): void
+	removeUser(id: Snowflake): boolean
+	getOrCreateTestUser(userId?: Snowflake): MockUser
+
+	// Message Operations
+	getMessage(id: Snowflake): MockMessage | undefined
+	getMessagesForChannel(channelId: Snowflake, limit?: number): MockMessage[]
+	createMessage(config: MockMessageConfig): MockMessage
+	updateMessage(id: Snowflake, updates: Partial<MockMessage>): MockMessage | undefined
+	deleteMessage(id: Snowflake): boolean
+
+	// Reaction Operations
+	addReaction(
+		messageId: Snowflake,
+		userId: Snowflake,
+		emoji: { id: Snowflake | null; name: string }
+	): MockReaction[] | undefined
+	removeReaction(
+		messageId: Snowflake,
+		userId: Snowflake,
+		emoji: { id: Snowflake | null; name: string }
+	): MockReaction[] | undefined
+
+	// Attachment Operations
+	storeAttachment(attachment: StoredAttachment): void
+	getAttachment(id: Snowflake): StoredAttachment | undefined
+	deleteAttachment(id: Snowflake): boolean
+	getAttachmentsForMessage(messageId: Snowflake): StoredAttachment[]
+
+	// DM Channel Operations
+	getDMChannel(recipientId: Snowflake): MockChannel | undefined
+	getOrCreateDMChannel(recipientId: Snowflake): MockChannel
+
+	// Interaction Operations
+	getInteraction(id: Snowflake): MockInteraction | undefined
+	getInteractionByToken(token: string): MockInteraction | undefined
+	addInteraction(interaction: MockInteraction): void
+	removeInteraction(id: Snowflake): boolean
+	cleanupExpiredInteractions(): void
+
+	// Thread Operations
+	isThread(channelId: Snowflake): boolean
+	getThread(id: Snowflake): MockThread | undefined
+	getThreadsForChannel(channelId: Snowflake, options?: { archived?: boolean }): MockThread[]
+	getActiveThreadsForGuild(guildId: Snowflake): MockThread[]
+	createThread(config: MockThreadConfig): MockThread
+	updateThread(
+		threadId: Snowflake,
+		updates: Partial<{
+			name: string
+			archived: boolean
+			locked: boolean
+			auto_archive_duration: 60 | 1440 | 4320 | 10080
+			invitable: boolean
+			rateLimitPerUser: number
+		}>
+	): MockThread | undefined
+	deleteThread(threadId: Snowflake): boolean
+	addThreadMember(threadId: Snowflake, userId: Snowflake): MockThreadMember | undefined
+	removeThreadMember(threadId: Snowflake, userId: Snowflake): boolean
+	getThreadMember(threadId: Snowflake, userId: Snowflake): MockThreadMember | undefined
+	getThreadMembers(threadId: Snowflake): MockThreadMember[]
+	incrementThreadMessageCount(threadId: Snowflake): void
+	checkAutoArchiveThreads(): Snowflake[]
+
+	// Forum Channel Operations
+	isForumChannel(channelId: Snowflake): boolean
+	getForumChannel(id: Snowflake): MockForumChannel | undefined
+	getForumChannelsForGuild(guildId: Snowflake): MockForumChannel[]
+	createForumChannel(config: MockForumChannelConfig): MockForumChannel
+	addForumTag(channelId: Snowflake, tag: Omit<MockForumTag, 'id'>): MockForumTag | undefined
+	removeForumTag(channelId: Snowflake, tagId: Snowflake): boolean
+	updateForumTag(
+		channelId: Snowflake,
+		tagId: Snowflake,
+		updates: Partial<Omit<MockForumTag, 'id'>>
+	): MockForumTag | undefined
+	isForumThread(threadId: Snowflake): boolean
+	getForumThread(id: Snowflake): MockForumThread | undefined
+	createForumPost(config: MockForumPostConfig): { thread: MockForumThread; message: MockMessage }
+	updateForumThreadTags(threadId: Snowflake, appliedTags: Snowflake[]): MockForumThread | undefined
+	getForumPosts(forumChannelId: Snowflake, options?: { archived?: boolean }): MockForumThread[]
+
+	// Poll Operations
+	addPollVote(messageId: Snowflake, userId: Snowflake, answerId: number): boolean
+	removePollVote(messageId: Snowflake, userId: Snowflake, answerId: number): boolean
+	getPollVoters(messageId: Snowflake, answerId: number): Snowflake[]
+	getUserPollVotes(messageId: Snowflake, userId: Snowflake): number[]
+	updatePollResults(messageId: Snowflake): void
+	expirePoll(messageId: Snowflake): boolean
+	checkPollExpiry(messageId: Snowflake): boolean
+
+	// Sticker Operations
+	getSticker(stickerId: Snowflake): MockSticker | undefined
+	getGuildStickers(guildId: Snowflake): MockSticker[]
+	createGuildSticker(guildId: Snowflake, config: MockStickerConfig, uploaderId: Snowflake): MockSticker | null
+	updateGuildSticker(
+		stickerId: Snowflake,
+		updates: { name?: string; description?: string; tags?: string }
+	): MockSticker | null
+	deleteGuildSticker(stickerId: Snowflake): boolean
+	addSticker(sticker: MockSticker): void
+
+	// Webhook Operations
+	getWebhook(webhookId: Snowflake): MockWebhook | undefined
+	getWebhookByToken(token: string): MockWebhook | undefined
+	getWebhooksForChannel(channelId: Snowflake): MockWebhook[]
+	getWebhooksForGuild(guildId: Snowflake): MockWebhook[]
+	createWebhook(channelId: Snowflake, config: MockWebhookConfig, creatorId: Snowflake): MockWebhook | null
+	updateWebhook(
+		webhookId: Snowflake,
+		updates: { name?: string; avatar?: string | null; channel_id?: Snowflake }
+	): MockWebhook | null
+	deleteWebhook(webhookId: Snowflake): boolean
+
+	// Emoji Operations
+	getEmoji(emojiId: Snowflake): MockEmoji | undefined
+	getGuildEmojis(guildId: Snowflake): MockEmoji[]
+	createGuildEmoji(guildId: Snowflake, config: MockEmojiConfig, uploaderId: Snowflake): MockEmoji | null
+	updateGuildEmoji(emojiId: Snowflake, updates: { name?: string; roles?: Snowflake[] }): MockEmoji | null
+	deleteGuildEmoji(emojiId: Snowflake): boolean
+
+	// Role Operations
+	getGuildRoles(guildId: Snowflake): MockRole[]
+	getRole(roleId: Snowflake): MockRole | undefined
+	getGuildRole(guildId: Snowflake, roleId: Snowflake): MockRole | undefined
+	createEveryoneRole(guildId: Snowflake): MockRole
+	createGuildRole(guildId: Snowflake, config?: MockRoleConfig): MockRole | null
+	updateGuildRole(guildId: Snowflake, roleId: Snowflake, updates: Partial<MockRoleConfig>, reason?: string): MockRole | null
+	updateGuildRolePositions(guildId: Snowflake, positions: Array<{ id: Snowflake; position: number }>): MockRole[]
+	deleteGuildRole(guildId: Snowflake, roleId: Snowflake, reason?: string): boolean
+
+	// Guild Member Operations
+	getGuildMember(guildId: Snowflake, userId: Snowflake): MockGuildMember | undefined
+	getGuildMembers(guildId: Snowflake): MockGuildMember[]
+	createGuildMember(guildId: Snowflake, userId: Snowflake, config?: MockGuildMemberConfig): MockGuildMember | null
+	updateGuildMember(guildId: Snowflake, userId: Snowflake, updates: Partial<MockGuildMemberConfig>): MockGuildMember | null
+	removeGuildMember(guildId: Snowflake, userId: Snowflake): boolean
+	addMemberRole(guildId: Snowflake, userId: Snowflake, roleId: Snowflake): boolean
+	removeMemberRole(guildId: Snowflake, userId: Snowflake, roleId: Snowflake): boolean
+
+	// Channel Overwrite Operations
+	getChannelOverwrites(channelId: Snowflake): MockChannelOverwrite[]
+	setChannelOverwrite(channelId: Snowflake, overwrite: MockChannelOverwrite): boolean
+	deleteChannelOverwrite(channelId: Snowflake, overwriteId: Snowflake): boolean
+
+	// Ban Operations
+	getBan(guildId: Snowflake, userId: Snowflake): MockBan | undefined
+	getGuildBans(guildId: Snowflake): MockBan[]
+	createBan(guildId: Snowflake, userId: Snowflake, config?: MockBanConfig): MockBan | null
+	removeBan(guildId: Snowflake, userId: Snowflake): boolean
+	isBanned(guildId: Snowflake, userId: Snowflake): boolean
+
+	// Command Operations
+	getCommand(commandId: Snowflake): MockApplicationCommand | undefined
+	getGlobalCommands(): MockApplicationCommand[]
+	getGuildCommands(guildId: Snowflake): MockApplicationCommand[]
+	findCommandByName(name: string, guildId?: Snowflake): MockApplicationCommand | undefined
+	createCommand(config: MockApplicationCommandConfig, guildId?: Snowflake): MockApplicationCommand | null
+	updateCommand(commandId: Snowflake, updates: Partial<MockApplicationCommandConfig>): MockApplicationCommand | null
+	deleteCommand(commandId: Snowflake): boolean
+	bulkOverwriteCommands(configs: MockApplicationCommandConfig[], guildId?: Snowflake): MockApplicationCommand[] | null
+
+	// Invite Operations
+	getInvite(code: string): MockInvite | undefined
+	getGuildInvites(guildId: Snowflake): MockInvite[]
+	getChannelInvites(channelId: Snowflake): MockInvite[]
+	createInvite(guildId: Snowflake, channelId: Snowflake, config: MockInviteConfig, inviterId: Snowflake): MockInvite | null
+	deleteInvite(code: string): MockInvite | null
+	useInvite(code: string): boolean
+
+	// Scheduled Event Operations
+	getScheduledEvent(guildId: Snowflake, eventId: Snowflake): MockScheduledEvent | undefined
+	getGuildScheduledEvents(guildId: Snowflake): MockScheduledEvent[]
+	createScheduledEvent(guildId: Snowflake, config: MockScheduledEventConfig, creatorId: Snowflake): MockScheduledEvent | null
+	updateScheduledEvent(guildId: Snowflake, eventId: Snowflake, updates: MockScheduledEventUpdateConfig): MockScheduledEvent | null
+	deleteScheduledEvent(guildId: Snowflake, eventId: Snowflake): boolean
+	addScheduledEventSubscriber(guildId: Snowflake, eventId: Snowflake, userId: Snowflake): boolean
+	removeScheduledEventSubscriber(guildId: Snowflake, eventId: Snowflake, userId: Snowflake): boolean
+	getScheduledEventSubscribers(
+		guildId: Snowflake,
+		eventId: Snowflake,
+		options?: { limit?: number; withMember?: boolean; before?: Snowflake; after?: Snowflake }
+	): Array<{ user: MockUser; member?: MockGuildMember }>
+
+	// Auto-Moderation Operations
+	getAutoModRule(guildId: Snowflake, ruleId: Snowflake): MockAutoModRule | undefined
+	getGuildAutoModRules(guildId: Snowflake): MockAutoModRule[]
+	createAutoModRule(guildId: Snowflake, config: MockAutoModRuleConfig, creatorId: Snowflake): MockAutoModRule | null
+	updateAutoModRule(guildId: Snowflake, ruleId: Snowflake, updates: MockAutoModRuleUpdateConfig): MockAutoModRule | null
+	deleteAutoModRule(guildId: Snowflake, ruleId: Snowflake): MockAutoModRule | null
+
+	// Stage Instance Operations
+	getStageInstance(channelId: Snowflake): MockStageInstance | undefined
+	getGuildStageInstances(guildId: Snowflake): MockStageInstance[]
+	createStageInstance(guildId: Snowflake, config: MockStageInstanceConfig): MockStageInstance | null
+	updateStageInstance(
+		channelId: Snowflake,
+		updates: { topic?: string; privacy_level?: StageInstancePrivacyLevel }
+	): MockStageInstance | null
+	deleteStageInstance(channelId: Snowflake): MockStageInstance | null
+
+	// Audit Log Operations
+	createAuditLogEntry(guildId: Snowflake, config: MockAuditLogEntryConfig): MockAuditLogEntry
+	getAuditLogEntries(
+		guildId: Snowflake,
+		options?: {
+			user_id?: Snowflake
+			action_type?: number
+			before?: Snowflake
+			after?: Snowflake
+			limit?: number
+		}
+	): MockAuditLogEntry[]
+
+	// State Management
+	reset(): void
+	serialize(): SerializedSessionState
 }
 
 /**
@@ -166,6 +432,8 @@ export interface MockGuild {
 	features?: string[] // Phase 7: Guild features array
 	premiumProgressBarEnabled?: boolean // Phase 11: Whether premium progress bar is enabled
 	preferredLocale?: string // Phase 11: Guild's preferred locale
+	vanityUrlCode?: string | null // Vanity URL code for the guild
+	vanityUrlUses?: number // Number of times vanity URL has been used
 	// Phase 19: Welcome Screen
 	welcomeScreen?: MockWelcomeScreen
 	// Phase 19: Guild Onboarding
@@ -902,6 +1170,7 @@ export interface MockGuildMember {
 	pending: boolean // Has not passed membership screening
 	communicationDisabledUntil?: string | null // Timeout expiry
 	flags: number // Guild member flags
+	user?: MockUser // Optional user object for convenience
 }
 
 /**
@@ -1519,6 +1788,8 @@ export type ActionType =
 	| 'message_deleted'
 	| 'message_pinned'
 	| 'message_unpinned'
+	| 'message_crossposted'
+	| 'messages_bulk_deleted'
 	| 'reaction_added'
 	| 'reaction_removed'
 	| 'interaction_response'
@@ -1526,6 +1797,13 @@ export type ActionType =
 	| 'interaction_edit'
 	| 'typing_started'
 	| 'rest_request'
+	// Channel actions
+	| 'channel_created'
+	| 'channel_updated'
+	| 'channel_deleted'
+	| 'channels_positions_updated'
+	| 'channel_overwrite_updated'
+	| 'channel_overwrite_deleted'
 	// Thread actions (Phase 4D)
 	| 'thread_created'
 	| 'thread_updated'
@@ -1559,6 +1837,23 @@ export type ActionType =
 	| 'guild_member_removed'
 	| 'member_role_added'
 	| 'member_role_removed'
+	| 'member_updated'
+	| 'member_kicked'
+	// Ban actions
+	| 'ban_created'
+	| 'ban_removed'
+	| 'bulk_ban'
+	// Voice actions
+	| 'voice_channel_status_updated'
+	| 'voice_state_updated'
+	// Stage instance actions
+	| 'stage_instance_created'
+	| 'stage_instance_updated'
+	| 'stage_instance_deleted'
+	// DM actions
+	| 'dm_channel_opened'
+	// Guild actions
+	| 'GUILD_UPDATE'
 	// Gateway WebSocket actions (client → server)
 	| 'gateway_message'
 	| 'gateway_identify'
@@ -1614,6 +1909,29 @@ export interface RecordActionOptions {
 	interactionId?: string
 	responseType?: number
 	triggeredBy?: string
+}
+
+/**
+ * Action recorder interface for recording and querying bot actions
+ */
+export interface IActionRecorder {
+	record(type: ActionType, data: unknown, options?: RecordActionOptions): RecordedAction
+	getAll(): RecordedAction[]
+	getSince(timestamp: number): RecordedAction[]
+	getByType(type: ActionType): RecordedAction[]
+	getByTypes(types: ActionType[]): RecordedAction[]
+	getMessagesSent(): RecordedAction[]
+	getMessagesEdited(): RecordedAction[]
+	getMessagesDeleted(): RecordedAction[]
+	getInteractionResponses(): RecordedAction[]
+	getRestRequests(): RecordedAction[]
+	getGatewayMessages(): RecordedAction[]
+	getDispatches(): RecordedAction[]
+	getTriggeredBy(eventId: string): RecordedAction[]
+	getForInteraction(interactionId: string): RecordedAction[]
+	clear(): void
+	readonly length: number
+	readonly maxLength: number
 }
 
 // ============================================================================

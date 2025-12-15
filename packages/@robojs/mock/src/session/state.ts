@@ -87,14 +87,13 @@ import type {
 	MockAuditLogEntryConfig
 } from '../types/index.js'
 import { AuditLogEvent, AuditLogLimits } from '../types/index.js'
-import { ComponentLimits, ComponentsV2Limits, ComponentTypeV2, PollLayoutType, ForumLayoutType, ForumSortOrderType, StickerType, StickerFormatType, StickerLimits, WebhookType, WebhookLimits, EmojiLimits, RoleLimits, BanLimits, ApplicationCommandType, CommandLimits, InviteLimits, ScheduledEventLimits, GuildScheduledEventPrivacyLevel, GuildScheduledEventStatus, GuildScheduledEventEntityType, AutoModLimits, AutoModerationEventType } from '../types/index.js'
+import { ComponentLimits, ComponentsV2Limits, ComponentTypeV2, PollLayoutType, ForumLayoutType, ForumSortOrderType, StickerType, StickerFormatType, StickerLimits, WebhookType, WebhookLimits, EmojiLimits, RoleLimits, BanLimits, ApplicationCommandType, CommandLimits, InviteLimits, ScheduledEventLimits, GuildScheduledEventStatus, GuildScheduledEventEntityType, AutoModLimits } from '../types/index.js'
 import { generateSnowflake } from '../utils/snowflake.js'
-import { MemoryAttachmentStorage, type AttachmentStorage, type StorageConfig, createStorage } from '../storage/attachment-storage.js'
+import { MemoryAttachmentStorage, type StorageConfig } from '../storage/attachment-storage.js'
 
 // Default limits for memory management
 const DEFAULT_MAX_MESSAGES = 1000
 const DEFAULT_MAX_INTERACTIONS = 1000
-const INTERACTION_TTL = 15 * 60 * 1000 // 15 minutes
 
 /**
  * Options for creating a MockServerState
