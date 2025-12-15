@@ -22,11 +22,26 @@
 	/* Brand colors */
 	--brand-500: #5865f2; /* Blurple */
 	--brand-560: #4752c4;
+	--brand-600: #3c45a5;
+
+	/* Green variants */
 	--green-360: #23a559;
 	--green-400: #57f287;
+	--green-500: #1a8346;
+	--green-600: #156b39;
+
+	/* Yellow variants */
 	--yellow-300: #fee75c;
 	--yellow-400: #faa81a;
+
+	/* Red variants */
 	--red-400: #f23f43;
+	--red-500: #a12d2f;
+	--red-600: #8a2729;
+
+	/* Grey variants for secondary buttons */
+	--grey-400: #6d6f78;
+	--grey-500: #5d5f66;
 
 	/* Status colors */
 	--status-online: #23a559;
@@ -39,7 +54,7 @@
 
 	/* Channel colors */
 	--channel-icon: #80848e;
-	--channel-text-area: #383a40;
+	--channel-text-area: #222327;
 
 	/* Interactive colors */
 	--interactive-normal: #b5bac1;
@@ -61,6 +76,7 @@
 	--font-code: 'Consolas', 'Monaco', 'Andale Mono', monospace;
 
 	/* Border radius */
+	--radius-xs: 3px;
 	--radius-sm: 4px;
 	--radius-md: 8px;
 	--radius-lg: 16px;

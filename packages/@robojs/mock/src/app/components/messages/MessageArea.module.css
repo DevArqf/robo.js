@@ -158,21 +158,6 @@
 	width: 100%;
 }
 
-.inputContainer {
-	padding: 0 16px 24px;
-}
-
-.input {
-	background: var(--channel-text-area);
-	border-radius: var(--radius-md);
-	padding: 11px 16px;
-}
-
-.inputPlaceholder {
-	color: var(--text-muted);
-	font-size: 16px;
-}
-
 /* Playback Mode Banner */
 .playbackBanner {
 	display: flex;
@@ -192,6 +177,11 @@
 }
 
 @keyframes pulse {
-	0%, 100% { opacity: 1; }
-	50% { opacity: 0.5; }
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.5;
+	}
 }

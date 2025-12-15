@@ -23,11 +23,12 @@
 		"upgrade": "sage upgrade"
 	},
 	"dependencies": {
-		"@robojs/discordjs": "link:/Users/pkmmte/Documents/GitHub/robo.js/packages/@robojs/discordjs",
-		"@robojs/mock": "link:/Users/pkmmte/Documents/GitHub/robo.js/packages/@robojs/mock",
-		"@robojs/server": "link:/Users/pkmmte/Documents/GitHub/robo.js/packages/plugin-api",
+		"@robojs/discordjs": "link:/Users/sushi/Documents/GitHub/robo.js/packages/@robojs/discordjs",
+		"@robojs/mock": "link:/Users/sushi/Documents/GitHub/robo.js/packages/@robojs/mock",
+		"@robojs/server": "link:/Users/sushi/Documents/GitHub/robo.js/packages/plugin-api",
 		"discord.js": "^14.25.1",
-		"robo.js": "link:/Users/pkmmte/Documents/GitHub/robo.js/packages/robo"
+		"mockbot-ts": "link:",
+		"robo.js": "link:/Users/sushi/Documents/GitHub/robo.js/packages/robo"
 	},
 	"devDependencies": {
 		"@swc/core": "^1.15.4",

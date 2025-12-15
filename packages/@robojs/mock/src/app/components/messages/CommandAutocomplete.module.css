@@ -1,15 +1,8 @@
 .container {
-	position: absolute;
 	bottom: 100%;
 	left: 16px;
 	right: 16px;
 	margin-bottom: 8px;
-	background: var(--background-floating);
-	border-radius: var(--radius-md);
-	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.3);
-	overflow: hidden;
-	z-index: 100;
-	max-height: 400px;
 	display: flex;
 	flex-direction: column;
 }
@@ -19,31 +12,10 @@
 	border-bottom: 1px solid var(--background-modifier-accent);
 }
 
-.headerText {
-	font-size: 12px;
-	font-weight: 700;
-	text-transform: uppercase;
-	color: var(--header-secondary);
-}
-
 .commandList {
 	overflow-y: auto;
 	max-height: 300px;
 	padding: 8px;
-}
-
-.command {
-	display: flex;
-	align-items: center;
-	gap: 12px;
-	padding: 8px;
-	border-radius: 4px;
-	cursor: pointer;
-}
-
-.command:hover,
-.highlighted {
-	background: var(--background-modifier-hover);
 }
 
 .commandIcon {
@@ -52,32 +24,9 @@
 	justify-content: center;
 	width: 32px;
 	height: 32px;
-	border-radius: 4px;
+	border-radius: var(--radius-sm);
 	background: var(--brand-500);
 	color: white;
-	flex-shrink: 0;
-}
-
-.commandInfo {
-	flex: 1;
-	min-width: 0;
-}
-
-.commandNameItem {
-	font-size: 16px;
-	font-weight: 500;
-	color: var(--header-primary);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.commandDescriptionItem {
-	font-size: 14px;
-	color: var(--text-muted);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 .empty {
@@ -106,7 +55,7 @@
 	border: none;
 	color: var(--interactive-normal);
 	cursor: pointer;
-	border-radius: 4px;
+	border-radius: var(--radius-sm);
 	padding: 0;
 }
 
@@ -121,7 +70,7 @@
 	justify-content: center;
 	width: 24px;
 	height: 24px;
-	border-radius: 4px;
+	border-radius: var(--radius-sm);
 	background: var(--brand-500);
 	color: white;
 }
@@ -164,7 +113,7 @@
 	background: var(--brand-500);
 	color: white;
 	border: none;
-	border-radius: 3px;
+	border-radius: var(--radius-xs);
 	cursor: pointer;
 	transition: background-color 0.17s ease;
 }

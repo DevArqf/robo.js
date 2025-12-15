@@ -8,16 +8,44 @@ import { Header } from './Header'
 import { StatusBar } from './StatusBar'
 import { MessageArea } from '../messages/MessageArea'
 import { MemberList } from '../members/MemberList'
+import { ThreadList } from '../threads/ThreadList'
 import { PlaybackControls } from '../playback/PlaybackControls'
 import { DevToolsPanel } from '../devtools/DevToolsPanel'
 import styles from './AppShell.module.css'
 
 export function AppShell() {
-	const { guilds, guildChannels, guildMembers, guildRoles, guildVoiceStates, users, selectedGuildId, selectedChannelId, showMembers, selectGuild, selectChannel, toggleMembers, selectedChannel, selectedGuild, botUser, sessionId, joinVoice, leaveVoice } =
-		useSession()
+	const {
+		guilds,
+		guildChannels,
+		guildMembers,
+		guildRoles,
+		guildVoiceStates,
+		users,
+		selectedGuildId,
+		selectedChannelId,
+		showMembers,
+		selectGuild,
+		selectChannel,
+		toggleMembers,
+		selectedChannel,
+		selectedGuild,
+		botUser,
+		sessionId,
+		joinVoice,
+		leaveVoice
+	} = useSession()
 
 	// Mobile sidebar state
 	const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+
+	// Threads panel state
+	const [showThreads, setShowThreads] = useState(false)
+
+	// Notifications dropdown state
+	const [showNotifications, setShowNotifications] = useState(false)
+
+	// Pinned messages dropdown state
+	const [showPinnedMessages, setShowPinnedMessages] = useState(false)
 
 	// Playback mode hooks
 	const isPlaybackMode = useIsPlaybackMode()
@@ -55,40 +83,58 @@ export function AppShell() {
 		[selectChannel]
 	)
 
+	const handleToggleThreads = useCallback(() => {
+		setShowThreads((prev) => {
+			if (!prev) {
+				setShowNotifications(false)
+				setShowPinnedMessages(false)
+			}
+			return !prev
+		})
+	}, [])
+
+	const handleToggleNotifications = useCallback(() => {
+		setShowNotifications((prev) => {
+			if (!prev) {
+				setShowThreads(false)
+				setShowPinnedMessages(false)
+			}
+			return !prev
+		})
+	}, [])
+
+	const handleTogglePinnedMessages = useCallback(() => {
+		setShowPinnedMessages((prev) => {
+			if (!prev) {
+				setShowThreads(false)
+				setShowNotifications(false)
+			}
+			return !prev
+		})
+	}, [])
+
+	const guildName = () => {
+		const filterGuilds = guilds.filter((guild) => guild.id === selectedGuildId)
+
+		if (filterGuilds.length > 0) {
+			return `${filterGuilds[0].icon ? filterGuilds[0].icon + ' | ' : ''}  ${filterGuilds[0].name}`
+		} else {
+			return 'unknown guild name'
+		}
+	}
+
 	const shellClassName = `${styles.shell}${mobileSidebarOpen ? ` ${styles.sidebarOpen}` : ''}`
 
 	return (
 		<div className={shellClassName}>
-			{/* Server list (far left - guild icons) */}
-			<div className={styles.serverList}>
-				<ServerList guilds={guilds} selectedId={selectedGuildId} onSelect={selectGuild} sessionId={sessionId} />
+			<div className={styles.topShell}>
+				<span>{guildName()}</span>
 			</div>
-
-			{/* Channel list */}
-			<div className={styles.channelList}>
-				<ChannelList
-					guild={selectedGuild ?? undefined}
-					channels={displayChannels}
-					selectedId={selectedChannelId}
-					onSelect={handleChannelSelect}
-					voiceStates={guildVoiceStates}
-					users={allUsers}
-					onJoinVoice={joinVoice}
-					onLeaveVoice={leaveVoice}
-					currentUserId={botUser?.id}
-				/>
-				<UserArea user={botUser} />
-			</div>
-
-			{/* Mobile sidebar overlay */}
-			<div className={styles.sidebarOverlay} onClick={handleCloseMobileSidebar} aria-hidden="true" />
-
-			{/* Mobile sidebar (duplicates server + channel list for mobile) */}
-			<div className={styles.sidebarMobile} role="navigation" aria-label="Server and channel navigation">
+			<div className={styles.contentWrapper}>
 				<div className={styles.serverList}>
 					<ServerList guilds={guilds} selectedId={selectedGuildId} onSelect={selectGuild} sessionId={sessionId} />
 				</div>
-				<div className={styles.channelList}>
+				<div className={styles.mainContent}>
 					<ChannelList
 						guild={selectedGuild ?? undefined}
 						channels={displayChannels}
@@ -100,35 +146,32 @@ export function AppShell() {
 						onLeaveVoice={leaveVoice}
 						currentUserId={botUser?.id}
 					/>
-					<UserArea user={botUser} />
+					<div className={styles.main}>
+						<Header
+							channel={selectedChannel}
+							onToggleMembers={toggleMembers}
+							showMembers={showMembers}
+							onToggleThreads={handleToggleThreads}
+							showThreads={showThreads}
+							onToggleNotifications={handleToggleNotifications}
+							showNotifications={showNotifications}
+							onTogglePinnedMessages={handleTogglePinnedMessages}
+							showPinnedMessages={showPinnedMessages}
+							onMobileMenuToggle={handleMobileMenuToggle}
+							isMobileSidebarOpen={mobileSidebarOpen}
+						/>
+
+						<div className={styles.content}>
+							<MessageArea channelId={selectedChannelId} />
+
+							{showThreads && <ThreadList />}
+							{showMembers && <MemberList members={displayMembers} roles={guildRoles} />}
+						</div>
+					</div>
 				</div>
 			</div>
-
-			{/* Main content area */}
-			<div className={styles.main}>
-				<Header
-					channel={selectedChannel}
-					onToggleMembers={toggleMembers}
-					showMembers={showMembers}
-					onMobileMenuToggle={handleMobileMenuToggle}
-					isMobileSidebarOpen={mobileSidebarOpen}
-				/>
-
-				<div className={styles.content}>
-					<MessageArea channelId={selectedChannelId} />
-
-					{showMembers && <MemberList members={displayMembers} roles={guildRoles} />}
-				</div>
-			</div>
-
-			{/* Bottom bar - full width with playback controls and status */}
-			<div className={styles.bottomBar}>
-				<PlaybackControls />
-				<StatusBar />
-			</div>
-
-			{/* Developer Tools Panel */}
-			<DevToolsPanel />
 		</div>
 	)
 }
+
+/** */

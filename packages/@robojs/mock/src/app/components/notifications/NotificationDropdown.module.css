@@ -1,0 +1,43 @@
+.container {
+	display: flex;
+	top: 100%;
+	right: 0;
+	margin-top: 8px;
+	width: fit-content;
+}
+
+.mainPanel {
+	padding: 8px;
+}
+
+.submenuPanel {
+	min-width: 200px;
+	padding: 8px;
+	background: var(--background-floating);
+	border-left: 1px solid var(--background-modifier-accent);
+	border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+/* Radio button */
+.radio {
+	width: 20px;
+	height: 20px;
+	border-radius: 50%;
+	border: 2px solid var(--interactive-normal);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.radioSelected {
+	border-color: var(--brand-500);
+	background: var(--brand-500);
+}
+
+.radioInner {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: white;
+}

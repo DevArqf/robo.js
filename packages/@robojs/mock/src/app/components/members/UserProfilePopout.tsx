@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { StageMember, StageRole } from '../../types/stage'
+import { DropdownContainer } from '../base'
 import styles from './UserProfilePopout.module.css'
 
 interface UserProfilePopoutProps {
@@ -63,7 +64,7 @@ export function UserProfilePopout({ member, roles, onClose }: UserProfilePopoutP
 
 	return (
 		<div className={styles.overlay}>
-			<div ref={popoutRef} className={styles.popout}>
+			<DropdownContainer ref={popoutRef} className={styles.popout} role="dialog" aria-label="User profile">
 				{/* Banner/Header */}
 				<div className={styles.banner} />
 
@@ -112,7 +113,7 @@ export function UserProfilePopout({ member, roles, onClose }: UserProfilePopoutP
 						</div>
 					)}
 				</div>
-			</div>
+			</DropdownContainer>
 		</div>
 	)
 }

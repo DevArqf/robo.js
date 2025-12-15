@@ -2,6 +2,8 @@ import { useState } from 'react'
 import type { StageChannel, StageGuild, StageVoiceState, StageUser } from '../../types/stage'
 import { VoiceChannel } from './VoiceChannel'
 import styles from './ChannelList.module.css'
+import CogwheelIcon from '../icons/cogwheel'
+import InviteIcon from '../icons/invite'
 
 interface ChannelListProps {
 	guild: StageGuild | undefined
@@ -60,9 +62,7 @@ export function ChannelList({
 
 	// Group regular channels by category
 	const categories = regularChannels.filter((c) => c.type === ChannelType.GUILD_CATEGORY)
-	const uncategorizedChannels = regularChannels.filter(
-		(c) => c.type !== ChannelType.GUILD_CATEGORY && !c.parent_id
-	)
+	const uncategorizedChannels = regularChannels.filter((c) => c.type !== ChannelType.GUILD_CATEGORY && !c.parent_id)
 
 	// Group threads by parent channel
 	const getThreadsForChannel = (channelId: string, includeArchived = false) => {
@@ -91,8 +91,7 @@ export function ChannelList({
 		return regularChannels.filter((c) => c.parent_id === categoryId && c.type !== ChannelType.GUILD_CATEGORY)
 	}
 
-	const isVoiceChannel = (type: number) =>
-		type === ChannelType.GUILD_VOICE || type === ChannelType.GUILD_STAGE_VOICE
+	const isVoiceChannel = (type: number) => type === ChannelType.GUILD_VOICE || type === ChannelType.GUILD_STAGE_VOICE
 
 	// Render a channel item - uses VoiceChannel for voice channels
 	const renderChannelItem = (channel: StageChannel) => {
@@ -111,22 +110,33 @@ export function ChannelList({
 		}
 
 		return (
-			<ChannelItemWithThreads
-				key={channel.id}
-				channel={channel}
-				threads={getThreadsForChannel(channel.id)}
-				isSelected={selectedId === channel.id}
-				isUnread={unreadChannelIds?.has(channel.id)}
-				selectedThreadId={selectedId}
-				onClick={() => onSelect(channel.id)}
-				onThreadSelect={onSelect}
-			/>
+			<div style={{ position: 'relative' }}>
+				<div className={styles.channelIconsExtra}>
+					<button>
+						<CogwheelIcon width={20} height={20} />
+					</button>
+					<button>
+						<InviteIcon width={20} height={20} />
+					</button>
+				</div>
+				<ChannelItemWithThreads
+					key={channel.id}
+					channel={channel}
+					threads={getThreadsForChannel(channel.id)}
+					isSelected={selectedId === channel.id}
+					isUnread={unreadChannelIds?.has(channel.id)}
+					selectedThreadId={selectedId}
+					onClick={() => onSelect(channel.id)}
+					onThreadSelect={onSelect}
+				/>
+			</div>
 		)
 	}
 
 	return (
 		<div className={styles.container}>
 			{/* Server header */}
+
 			<div className={styles.header}>
 				<span className={styles.serverName}>{guild?.name ?? 'Select a server'}</span>
 				<ChevronDown className={styles.headerIcon} />
@@ -136,7 +146,6 @@ export function ChannelList({
 			<nav className={styles.channels} aria-label="Channels">
 				{/* Uncategorized channels */}
 				{uncategorizedChannels.map((channel) => renderChannelItem(channel))}
-
 				{/* Categories with their channels */}
 				{categories.map((category) => {
 					const categoryChannels = getChannelsInCategory(category.id)
@@ -170,14 +179,10 @@ export function ChannelList({
 						</div>
 					)
 				})}
-
 				{/* Archived threads section */}
 				{archivedThreads.length > 0 && (
 					<div className={styles.category}>
-						<button
-							className={styles.categoryHeader}
-							onClick={() => setShowArchivedThreads(!showArchivedThreads)}
-						>
+						<button className={styles.categoryHeader} onClick={() => setShowArchivedThreads(!showArchivedThreads)}>
 							<svg
 								className={`${styles.collapseIcon} ${!showArchivedThreads ? styles.collapsed : ''}`}
 								width="12"
@@ -203,7 +208,6 @@ export function ChannelList({
 						)}
 					</div>
 				)}
-
 				{/* Empty state */}
 				{channels.length === 0 && guild && (
 					<div className={styles.empty}>

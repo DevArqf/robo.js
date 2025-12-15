@@ -12,11 +12,13 @@
 	padding: 8px 12px;
 	background: var(--background-secondary);
 	border: 1px solid transparent;
-	border-radius: 4px;
+	border-radius: var(--radius-sm);
 	cursor: pointer;
 	font-size: 14px;
 	color: var(--text-normal);
-	transition: border-color 0.15s ease, background-color 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		background-color 0.15s ease;
 	user-select: none;
 }
 
@@ -70,67 +72,17 @@
 	transform: rotate(180deg);
 }
 
-/* Dropdown */
+/* Dropdown - extends base DropdownContainer */
 .dropdown {
-	position: absolute;
-	top: calc(100% + 4px);
 	left: 0;
 	right: 0;
-	background: var(--background-floating);
-	border-radius: 4px;
-	box-shadow: 0 8px 16px rgba(0, 0, 0, 0.24);
-	max-height: 300px;
-	overflow-y: auto;
-	z-index: 1000;
 	padding: 4px;
 }
 
-/* Scrollbar styling */
-.dropdown::-webkit-scrollbar {
-	width: 8px;
-}
-
-.dropdown::-webkit-scrollbar-track {
-	background: transparent;
-}
-
-.dropdown::-webkit-scrollbar-thumb {
-	background: var(--background-tertiary);
-	border-radius: 4px;
-}
-
-.dropdown::-webkit-scrollbar-thumb:hover {
-	background: var(--background-modifier-accent);
-}
-
-/* Option */
-.option {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	padding: 10px 8px;
-	border-radius: 3px;
-	cursor: pointer;
-	transition: background-color 0.1s ease;
-}
-
-.option:hover {
-	background: var(--background-modifier-hover);
-}
-
-.optionSelected {
-	background: var(--background-modifier-selected);
-}
-
-.optionSelected:hover {
-	background: var(--background-modifier-selected);
-}
-
-/* Option Emoji */
+/* Emoji in options */
 .optionEmoji {
 	display: flex;
 	align-items: center;
-	flex-shrink: 0;
 	font-size: 16px;
 	line-height: 1;
 }
@@ -139,34 +91,4 @@
 	width: 20px;
 	height: 20px;
 	object-fit: contain;
-}
-
-/* Option Content */
-.optionContent {
-	flex: 1;
-	min-width: 0;
-	overflow: hidden;
-}
-
-.optionLabel {
-	font-size: 14px;
-	color: var(--text-normal);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.optionDescription {
-	font-size: 12px;
-	color: var(--text-muted);
-	margin-top: 2px;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-/* Check Icon */
-.optionCheck {
-	flex-shrink: 0;
-	color: var(--brand-500);
 }

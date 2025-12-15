@@ -3,12 +3,11 @@
 	flex-direction: column;
 	align-items: center;
 	gap: 8px;
-	padding: 12px 0;
+	padding: 5px 0;
 	width: 100%;
 }
 
 .serverWrapper {
-	position: relative;
 	display: flex;
 	align-items: center;
 	width: 100%;
@@ -23,7 +22,9 @@
 	background: var(--header-primary);
 	border-radius: 0 4px 4px 0;
 	opacity: 0;
-	transition: height 0.15s ease, opacity 0.15s ease;
+	transition:
+		height 0.15s ease,
+		opacity 0.15s ease;
 }
 
 .serverWrapper:hover .pill {
@@ -46,14 +47,15 @@
 .serverIcon {
 	width: 48px;
 	height: 48px;
-	border-radius: 50%;
+	border-radius: 10px;
 	background: var(--background-primary);
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	overflow: hidden;
-	transition: border-radius 0.15s ease, background 0.15s ease;
-	color: var(--green-360);
+	transition:
+		border-radius 0.15s ease,
+		background 0.15s ease;
 }
 
 .homeButton:hover,

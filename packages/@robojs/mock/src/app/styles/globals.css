@@ -97,3 +97,123 @@ textarea:focus {
 	background: var(--brand-500);
 	color: white;
 }
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+/* Text Truncation */
+.text-truncate {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Flex utilities */
+.flex-center {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.flex-between {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+/* ============================================
+   DROPDOWN / POPOVER BASE STYLES
+   ============================================ */
+
+/* Base dropdown container */
+.dropdown-base {
+	position: absolute;
+	background: var(--background-floating);
+	border-radius: var(--radius-md);
+	box-shadow: 0 8px 16px rgba(0, 0, 0, 0.24);
+	z-index: 1000;
+	overflow: hidden;
+}
+
+/* Dropdown with max height and scroll */
+.dropdown-scrollable {
+	max-height: 300px;
+	overflow-y: auto;
+}
+
+/* ============================================
+   INTERACTIVE ELEMENT STATES
+   ============================================ */
+
+/* Standard interactive item (channels, menu items, etc.) */
+.interactive-item {
+	cursor: pointer;
+	transition:
+		background 0.1s ease,
+		color 0.1s ease;
+}
+
+.interactive-item:hover {
+	background: var(--background-modifier-hover);
+}
+
+.interactive-item.selected,
+.interactive-item.active {
+	background: var(--background-modifier-selected);
+}
+
+/* Interactive with color change */
+.interactive-item-fade {
+	color: var(--channel-icon);
+	cursor: pointer;
+	transition:
+		background 0.1s ease,
+		color 0.1s ease;
+}
+
+.interactive-item-fade:hover {
+	background: var(--background-modifier-hover);
+	color: var(--interactive-hover);
+}
+
+.interactive-item-fade.selected,
+.interactive-item-fade.active {
+	background: var(--background-modifier-selected);
+	color: var(--interactive-active);
+}
+
+/* Icon button base */
+.icon-button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: none;
+	border: none;
+	color: var(--interactive-normal);
+	cursor: pointer;
+	border-radius: var(--radius-sm);
+	padding: 0;
+	transition:
+		background 0.15s ease,
+		color 0.15s ease;
+}
+
+.icon-button:hover {
+	background: var(--background-modifier-hover);
+	color: var(--interactive-hover);
+}
+
+/* Menu row item (for dropdown menus) */
+.menu-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 12px;
+	cursor: pointer;
+	transition: background 0.15s ease;
+}
+
+.menu-row:hover {
+	background: var(--background-modifier-hover);
+}

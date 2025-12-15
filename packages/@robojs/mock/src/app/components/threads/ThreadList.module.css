@@ -1,0 +1,179 @@
+.container {
+	background: var(--background-secondary);
+	overflow-y: auto;
+	border-left: 1px solid var(--background-modifier-accent);
+	display: flex;
+	flex-direction: column;
+	width: fit-content;
+	border-radius: 10px;
+	position: absolute;
+	z-index: 10;
+}
+
+.header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 16px;
+	border-bottom: 1px solid var(--background-modifier-accent);
+}
+
+.headerIcon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.headerTitle {
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--header-primary);
+	white-space: nowrap;
+}
+
+.searchContainer {
+	flex: 1;
+	position: relative;
+	display: flex;
+	align-items: center;
+}
+
+.searchInput {
+	width: 100%;
+	padding: 6px 12px;
+	border: 1px solid var(--background-modifier-accent);
+	border-radius: var(--radius-sm);
+	background: var(--background-tertiary);
+	color: var(--text-normal);
+	font-size: 14px;
+	outline: none;
+}
+
+.searchInput::placeholder {
+	color: var(--text-muted);
+}
+
+.searchInput:focus {
+	border-color: var(--brand-500);
+}
+
+.createButton {
+	padding: 6px 16px;
+	background: var(--brand-500);
+	border: none;
+	border-radius: 4px;
+	color: white;
+	font-size: 14px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background 0.15s ease;
+	white-space: nowrap;
+}
+
+.createButton:hover {
+	background: var(--brand-560);
+}
+
+.section {
+	padding: 16px 16px 8px;
+}
+
+.sectionTitle {
+	font-size: 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+	color: var(--channels-default);
+	letter-spacing: 0.02em;
+}
+
+.threadList {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 0 16px 16px;
+	width: max-content;
+}
+
+.threadItem {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 12px 16px;
+	background: var(--background-secondary-alt);
+	border: 1px solid var(--background-modifier-accent);
+	border-radius: 8px;
+	cursor: pointer;
+	transition: background 0.15s ease;
+}
+
+.threadItem:hover {
+	background: var(--background-modifier-hover);
+}
+
+.threadContent {
+	flex: 1;
+	min-width: 0;
+}
+
+.threadName {
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--header-primary);
+	margin-bottom: 4px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.threadMeta {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 14px;
+	color: var(--text-muted);
+}
+
+.threadAuthorAvatar {
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	object-fit: cover;
+}
+
+.threadAuthorName {
+	color: var(--brand-500);
+	font-weight: 500;
+}
+
+.metaDot {
+	color: var(--text-muted);
+}
+
+.threadAvatars {
+	display: flex;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+.participantAvatar {
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	border: 3px solid var(--background-secondary-alt);
+	object-fit: cover;
+	margin-left: -10px;
+}
+
+.participantAvatar:first-child {
+	margin-left: 0;
+}
+
+.empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 32px 16px;
+	color: var(--text-muted);
+	font-size: 14px;
+	text-align: center;
+}

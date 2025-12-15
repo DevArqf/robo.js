@@ -59,13 +59,7 @@ export default function App() {
 			<KeyboardShortcuts />
 			<ConnectionStatusOverlay onChangeSession={handleChangeSession} />
 			<AppShell />
-			{activeModal && (
-				<Modal
-					modal={activeModal.modal}
-					onClose={closeModal}
-					onSubmit={handleModalSubmit}
-				/>
-			)}
+			{activeModal && <Modal modal={activeModal.modal} onClose={closeModal} onSubmit={handleModalSubmit} />}
 		</ErrorBoundary>
 	)
 }

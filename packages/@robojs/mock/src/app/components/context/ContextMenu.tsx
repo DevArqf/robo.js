@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect } from 'react'
 import type { StageApplicationCommand, StageMessage, StageUser } from '../../types/stage'
+import { useDropdownPosition, DropdownContainer, ListItem, ListItemSeparator, ListItemHeader } from '../base'
 import styles from './ContextMenu.module.css'
 
 interface ContextMenuProps {
@@ -28,9 +29,7 @@ export function ContextMenu({
 	onPinMessage,
 	onMessageUser
 }: ContextMenuProps) {
-	const menuRef = useRef<HTMLDivElement>(null)
-	const [adjustedPosition, setAdjustedPosition] = useState(position)
-	const [isPositioned, setIsPositioned] = useState(false)
+	const { dropdownRef, adjustedPosition, isPositioned } = useDropdownPosition({ position })
 
 	// Filter commands by type (2 = USER, 3 = MESSAGE)
 	const contextCommands = commands.filter((cmd) => (type === 'user' ? cmd.type === 2 : cmd.type === 3))
@@ -38,7 +37,7 @@ export function ContextMenu({
 	// Close on click outside
 	useEffect(() => {
 		const handleClickOutside = (event: MouseEvent) => {
-			if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+			if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
 				onClose()
 			}
 		}
@@ -52,7 +51,7 @@ export function ContextMenu({
 			clearTimeout(timer)
 			document.removeEventListener('mousedown', handleClickOutside)
 		}
-	}, [onClose])
+	}, [onClose, dropdownRef])
 
 	// Close on Escape
 	useEffect(() => {
@@ -65,35 +64,6 @@ export function ContextMenu({
 		document.addEventListener('keydown', handleKeyDown)
 		return () => document.removeEventListener('keydown', handleKeyDown)
 	}, [onClose])
-
-	// Adjust position to keep menu in viewport (runs after first render when we know the size)
-	useEffect(() => {
-		if (!menuRef.current) return
-
-		const menu = menuRef.current
-		const rect = menu.getBoundingClientRect()
-		const viewportWidth = window.innerWidth
-		const viewportHeight = window.innerHeight
-
-		let { x, y } = position
-
-		// Adjust horizontal position if menu would overflow right
-		if (x + rect.width > viewportWidth - 8) {
-			x = viewportWidth - rect.width - 8
-		}
-
-		// Adjust vertical position if menu would overflow bottom
-		if (y + rect.height > viewportHeight - 8) {
-			y = viewportHeight - rect.height - 8
-		}
-
-		// Ensure minimum position
-		x = Math.max(8, x)
-		y = Math.max(8, y)
-
-		setAdjustedPosition({ x, y })
-		setIsPositioned(true)
-	}, [position.x, position.y])
 
 	const handleCommandClick = async (command: StageApplicationCommand) => {
 		onClose()
@@ -139,92 +109,59 @@ export function ContextMenu({
 	const isPinned = type === 'message' ? (targetData as StageMessage).pinned : false
 
 	return (
-		<div
-			ref={menuRef}
-			className={styles.menu}
-			style={{
-				top: adjustedPosition.y,
-				left: adjustedPosition.x,
-				visibility: isPositioned ? 'visible' : 'hidden'
-			}}
+		<DropdownContainer
+			ref={dropdownRef}
+			position="fixed"
+			coordinates={adjustedPosition}
+			isPositioned={isPositioned}
 			role="menu"
+			className={styles.menu}
 		>
 			{/* App commands section */}
 			{contextCommands.length > 0 && (
 				<>
-					<div className={styles.header}>Apps</div>
+					<ListItemHeader>Apps</ListItemHeader>
 					{contextCommands.map((cmd) => (
-						<button
+						<ListItem
 							key={cmd.id}
-							className={styles.item}
+							label={cmd.name}
+							icon={<CommandIcon />}
 							onClick={() => handleCommandClick(cmd)}
 							role="menuitem"
-						>
-							<span className={styles.itemIcon}>
-								<CommandIcon />
-							</span>
-							<span className={styles.itemLabel}>{cmd.name}</span>
-						</button>
+						/>
 					))}
-					<div className={styles.separator} />
+					<ListItemSeparator />
 				</>
 			)}
 
 			{/* Standard Discord actions */}
 			{type === 'message' && (
 				<>
-					{onReply && (
-						<button className={styles.item} onClick={handleReply} role="menuitem">
-							<span className={styles.itemIcon}>
-								<ReplyIcon />
-							</span>
-							<span className={styles.itemLabel}>Reply</span>
-						</button>
-					)}
+					{onReply && <ListItem label="Reply" icon={<ReplyIcon />} onClick={handleReply} role="menuitem" />}
 					{onPinMessage && (
-						<button className={styles.item} onClick={handlePinMessage} role="menuitem">
-							<span className={styles.itemIcon}>
-								<PinIcon />
-							</span>
-							<span className={styles.itemLabel}>{isPinned ? 'Unpin Message' : 'Pin Message'}</span>
-						</button>
+						<ListItem
+							label={isPinned ? 'Unpin Message' : 'Pin Message'}
+							icon={<PinIcon />}
+							onClick={handlePinMessage}
+							role="menuitem"
+						/>
 					)}
-					<div className={styles.separator} />
-					<button className={styles.item} onClick={handleCopyText} role="menuitem">
-						<span className={styles.itemIcon}>
-							<CopyIcon />
-						</span>
-						<span className={styles.itemLabel}>Copy Text</span>
-					</button>
-					<button className={styles.item} onClick={handleCopyId} role="menuitem">
-						<span className={styles.itemIcon}>
-							<IdIcon />
-						</span>
-						<span className={styles.itemLabel}>Copy Message ID</span>
-					</button>
+					<ListItemSeparator />
+					<ListItem label="Copy Text" icon={<CopyIcon />} onClick={handleCopyText} role="menuitem" />
+					<ListItem label="Copy Message ID" icon={<IdIcon />} onClick={handleCopyId} role="menuitem" />
 				</>
 			)}
 
 			{type === 'user' && (
 				<>
 					{onMessageUser && (
-						<button className={styles.item} onClick={handleMessageUser} role="menuitem">
-							<span className={styles.itemIcon}>
-								<MessageIcon />
-							</span>
-							<span className={styles.itemLabel}>Message</span>
-						</button>
+						<ListItem label="Message" icon={<MessageIcon />} onClick={handleMessageUser} role="menuitem" />
 					)}
-					<div className={styles.separator} />
-					<button className={styles.item} onClick={handleCopyId} role="menuitem">
-						<span className={styles.itemIcon}>
-							<IdIcon />
-						</span>
-						<span className={styles.itemLabel}>Copy User ID</span>
-					</button>
+					<ListItemSeparator />
+					<ListItem label="Copy User ID" icon={<IdIcon />} onClick={handleCopyId} role="menuitem" />
 				</>
 			)}
-		</div>
+		</DropdownContainer>
 	)
 }
 

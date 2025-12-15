@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { DropdownContainer } from '../base'
 import styles from './EmojiPicker.module.css'
 
 interface EmojiPickerProps {
@@ -9,14 +10,38 @@ interface EmojiPickerProps {
 // Common emoji set for MVP
 const EMOJI_LIST = [
 	// Reactions
-	'👍', '👎', '❤️', '🔥', '🎉',
-	'😂', '😢', '😮', '😡', '🤔',
+	'👍',
+	'👎',
+	'❤️',
+	'🔥',
+	'🎉',
+	'😂',
+	'😢',
+	'😮',
+	'😡',
+	'🤔',
 	// Common
-	'👀', '💯', '✅', '❌', '⭐',
-	'🙏', '💪', '🚀', '💡', '📌',
+	'👀',
+	'💯',
+	'✅',
+	'❌',
+	'⭐',
+	'🙏',
+	'💪',
+	'🚀',
+	'💡',
+	'📌',
 	// Faces
-	'😊', '😎', '🤣', '😍', '🥳',
-	'😴', '🤯', '🥺', '😤', '🤝'
+	'😊',
+	'😎',
+	'🤣',
+	'😍',
+	'🥳',
+	'😴',
+	'🤯',
+	'🥺',
+	'😤',
+	'🤝'
 ]
 
 export function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
@@ -48,19 +73,14 @@ export function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
 	}, [onClose])
 
 	return (
-		<div ref={pickerRef} className={styles.picker} role="dialog" aria-label="Emoji picker">
+		<DropdownContainer ref={pickerRef} role="dialog" aria-label="Emoji picker" className={styles.picker}>
 			<div className={styles.grid}>
 				{EMOJI_LIST.map((emoji) => (
-					<button
-						key={emoji}
-						className={styles.emoji}
-						onClick={() => onSelect(emoji)}
-						title={emoji}
-					>
+					<button key={emoji} className={styles.emoji} onClick={() => onSelect(emoji)} title={emoji}>
 						{emoji}
 					</button>
 				))}
 			</div>
-		</div>
+		</DropdownContainer>
 	)
 }

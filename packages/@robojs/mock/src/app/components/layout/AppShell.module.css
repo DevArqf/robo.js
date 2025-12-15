@@ -1,43 +1,52 @@
 .shell {
-	display: grid;
-	grid-template-columns: var(--server-list-width) var(--sidebar-width) 1fr;
-	grid-template-rows: 1fr auto;
-	grid-template-areas:
-		"servers channels main"
-		"bottom bottom bottom";
-	height: 100vh;
-	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	background: var(--background-tertiary);
+	padding-left: 20px;
+	height: 100%;
+}
+
+.topShell {
+	display: flex;
+	width: 100%;
+	padding-block: 5px;
+	justify-content: center;
+	align-items: center;
+	background: var(--background-tertiary);
 }
 
 .serverList {
-	grid-area: servers;
 	background: var(--background-tertiary);
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	padding: 12px 0;
-	gap: 8px;
 	overflow-y: auto;
+	padding-right: 20px;
 }
 
-.channelList {
-	grid-area: channels;
-	background: var(--background-secondary);
+.contentWrapper {
 	display: flex;
-	flex-direction: column;
-	min-height: 0; /* Allow proper overflow scrolling */
+	flex-direction: row;
+	height: 100%;
+}
+.mainContent {
+	display: flex;
+	width: 100%;
+	border: 1px solid var(--background-modifier-accent);
+	border-radius: var(--radius-lg) 0;
 }
 
 .main {
-	grid-area: main;
 	display: flex;
 	flex-direction: column;
+	width: -webkit-fill-available;
 	background: var(--background-primary);
 	min-width: 0; /* Allow shrinking */
 	min-height: 0; /* Allow proper overflow scrolling in children */
 }
 
 .content {
+	justify-content: center;
 	flex: 1;
 	display: flex;
 	overflow: hidden;
@@ -67,8 +76,8 @@
 	.shell {
 		grid-template-columns: var(--sidebar-width) 1fr;
 		grid-template-areas:
-			"channels main"
-			"bottom bottom";
+			'channels main'
+			'bottom bottom';
 	}
 
 	.serverList {
@@ -81,8 +90,8 @@
 	.shell {
 		grid-template-columns: 1fr;
 		grid-template-areas:
-			"main"
-			"bottom";
+			'main'
+			'bottom';
 	}
 
 	.serverList,
