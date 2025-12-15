@@ -16,7 +16,7 @@ import path from 'node:path'
 import { getPluginOptions, Manifest } from 'robo.js'
 import type { BuildCompleteContext } from 'robo.js'
 import type { ConfigEnv, UserConfig } from 'vite'
-import type { PluginConfig } from '../start.js'
+import type { PluginConfig } from '../prepare.js'
 import type { PluginPrefixConfig, PluginPrefixMap } from '../../core/plugin-routes.js'
 
 /**

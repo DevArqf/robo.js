@@ -1,7 +1,7 @@
 import { RoboRequest, applyParams } from './robo-request.js'
 import { RoboResponse } from './robo-response.js'
 import { logger } from './logger.js'
-import { pluginOptions } from '../robo/start.js'
+import { pluginOptions } from '../robo/prepare.js'
 import { mimeDb } from './mime.js'
 import { getPluginRouteRegistry } from './plugin-routes.js'
 import { createReadStream } from 'node:fs'

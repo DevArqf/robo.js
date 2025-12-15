@@ -2,21 +2,21 @@
  * Start Hook - Server Initialization
  *
  * This hook runs during Robo.start() to:
- * 1. Initialize the HTTP server engine (Fastify or Node.js)
- * 2. Set up Vite dev server if available
- * 3. Register all API routes
- * 4. Start the server
- * 5. Optionally start a tunnel for external access
+ * 1. Set up Vite dev server if available
+ * 2. Register all API routes
+ * 3. Start the server
+ * 4. Optionally start a tunnel for external access
+ *
+ * Note: The server engine is initialized in the prepare hook (prepare.ts)
+ * so it's available to other plugins during their start hooks.
  */
 import { logger } from '../core/logger.js'
-import { initPluginRoutes, type PluginPrefixMap } from '../core/plugin-routes.js'
+import { getPluginRouteRegistry } from '../core/plugin-routes.js'
 import { hasDependency } from '../core/runtime-utils.js'
-import { setConfig, setEngine } from '../core/server.js'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { color, portal } from 'robo.js'
+import { portal } from 'robo.js'
 import { Nanocore } from 'robo.js/unstable.js'
-import type { BaseEngine } from '../engines/base.js'
 import type { StartContext, HandlerRecord } from 'robo.js'
 import type { ViteDevServer } from 'vite'
 import type { TunnelConfig, TunnelInstance, TunnelProvider } from '../core/tunnel/types.js'
@@ -24,36 +24,9 @@ import type { ApiHandler, ApiHandlerModule, HttpMethodExport } from './routes/ap
 import { HTTP_METHODS } from './routes/api.js'
 import type { RoboReply, RouteHandler } from '../core/types.js'
 import type { RoboRequest } from '../core/robo-request.js'
+import { pluginOptions, type PluginConfig } from './prepare.js'
 
 const PATH_REGEX = new RegExp(/\[(.+?)\]/g)
-
-/**
- * Plugin configuration options.
- */
-export interface PluginConfig {
-	cors?: boolean
-	engine?: BaseEngine
-	hostname?: string
-	/**
-	 * Plugin URL prefixes - centralized configuration for plugin route prefixing.
-	 *
-	 * Example:
-	 * ```typescript
-	 * pluginPrefixes: {
-	 *   '@robojs/mock': '/mock',  // Both API and static under /mock/*
-	 *   // OR granular:
-	 *   '@robojs/mock': { api: '/mock-api', static: '/mock-static' }
-	 * }
-	 * ```
-	 */
-	pluginPrefixes?: PluginPrefixMap
-	port?: number
-	prefix?: string | null | false
-	vite?: ViteDevServer
-	tunnel?: TunnelConfig
-}
-
-export let pluginOptions: PluginConfig = {}
 
 /**
  * Creates a method dispatcher that routes requests to the appropriate handler
@@ -123,38 +96,17 @@ function createMethodDispatcher(record: HandlerRecord<ApiHandler>): RouteHandler
 }
 
 /**
- * Start hook - Initializes the HTTP server and optionally starts a tunnel
+ * Start hook - Starts the HTTP server and optionally starts a tunnel
+ *
+ * Note: Engine and config are initialized in prepare.ts
  */
-export default async (context: StartContext<PluginConfig>) => {
-	const { pluginConfig } = context
-	pluginOptions = pluginConfig ?? {}
-	globalThis.roboServer = {}
+export default async (_context: StartContext<PluginConfig>) => {
+	// Get registry initialized in prepare hook
+	const registry = getPluginRouteRegistry()
 
-	// Set default options
-	if (pluginOptions.prefix === undefined) {
-		pluginOptions.prefix = '/api'
-	}
-	if (!pluginOptions.engine) {
-		pluginOptions.engine = await getDefaultEngine()
-	}
-
-	// Assign config instance for `Server.config()`
-	setConfig(pluginOptions)
-
-	// Assign engine instance for `Server.getEngine()`
-	setEngine(pluginOptions.engine)
-
-	// Initialize plugin route registry for prefix stripping and static asset serving
-	const registry = initPluginRoutes(pluginOptions.pluginPrefixes)
-	if (pluginOptions.pluginPrefixes) {
-		const pluginCount = Object.keys(pluginOptions.pluginPrefixes).length
-		logger.debug(`Initialized plugin route registry with ${pluginCount} plugin prefix(es)`)
-	}
-
-	// Start HTTP server only if API Routes are defined
+	// Get engine and options from prepare hook
 	const { engine, hostname = process.env.ROBO_HOSTNAME, port = parseInt(process.env.PORT ?? '3000') } = pluginOptions
 	let vite: ViteDevServer | undefined = pluginOptions.vite
-	globalThis.roboServer.engine = engine
 
 	// Load API routes from the portal
 	await portal.ensureRoute('server', 'api')
@@ -208,13 +160,37 @@ export default async (context: StartContext<PluginConfig>) => {
 		// Import the handler if not already imported
 		await portal.importHandler('server', 'api', routeKey)
 
-		const key = prefix + '/' + routeKey.replace(PATH_REGEX, ':$1')
-		paths.push(key)
+		// Check if this route belongs to a plugin with exclusive prefix
+		const pluginName = record.plugin?.name
+		const pluginConfig = pluginName ? registry.getPlugin(pluginName) : null
+		const pluginPrefix = pluginConfig?.apiPrefix ?? ''
+		const isExclusive = pluginConfig?.exclusive ?? true
+
+		// Base route key (standard API prefix + route)
+		const baseKey = prefix + '/' + routeKey.replace(PATH_REGEX, ':$1')
 
 		// Use method dispatcher to handle named HTTP method exports
 		const wrappedHandler = createMethodDispatcher(record)
 		if (wrappedHandler) {
-			engine.registerRoute(key, wrappedHandler)
+			if (isExclusive && pluginPrefix) {
+				// Exclusive: register ONLY with plugin prefix
+				const exclusiveKey = pluginPrefix + baseKey
+				engine.registerRoute(exclusiveKey, wrappedHandler)
+				paths.push(exclusiveKey)
+				logger.debug(`Registered exclusive route: ${exclusiveKey} (plugin: ${pluginName})`)
+			} else if (!isExclusive && pluginPrefix) {
+				// Additive: register BOTH with and without plugin prefix
+				engine.registerRoute(baseKey, wrappedHandler)
+				paths.push(baseKey)
+				const prefixedKey = pluginPrefix + baseKey
+				engine.registerRoute(prefixedKey, wrappedHandler)
+				paths.push(prefixedKey)
+				logger.debug(`Registered additive routes: ${baseKey} and ${prefixedKey} (plugin: ${pluginName})`)
+			} else {
+				// No plugin prefix: register normally
+				engine.registerRoute(baseKey, wrappedHandler)
+				paths.push(baseKey)
+			}
 		}
 	}
 
@@ -269,20 +245,3 @@ async function startTunnel(port: number, config?: TunnelConfig): Promise<void> {
 	}
 }
 
-/**
- * Get the default server engine based on available dependencies
- */
-async function getDefaultEngine(): Promise<BaseEngine> {
-	// Return Fastify if available
-	const isFastifyAvailable = await hasDependency('fastify')
-	if (isFastifyAvailable) {
-		logger.debug(color.bold('Fastify'), 'is available. Using it as the server engine.')
-		const { FastifyEngine } = await import('../engines/fastify.js')
-		return new FastifyEngine()
-	}
-
-	// Default engine
-	logger.debug('Using', color.bold('Node.js'), 'as the server engine.')
-	const { NodeEngine } = await import('../engines/node.js')
-	return new NodeEngine()
-}

@@ -7,9 +7,8 @@
  * 3. Stop the server engine
  */
 import { logger } from '../core/logger.js'
-import { pluginOptions } from './start.js'
+import { pluginOptions, type PluginConfig } from './prepare.js'
 import type { StopContext } from 'robo.js'
-import type { PluginConfig } from './start.js'
 
 /**
  * Stop hook - Gracefully shuts down the server and tunnel
