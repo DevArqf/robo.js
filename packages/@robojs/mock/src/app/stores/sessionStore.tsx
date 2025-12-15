@@ -42,6 +42,24 @@ export interface PendingMessage {
 	createdAt: number
 }
 
+// Filtered event for intent diagnostics
+export interface FilteredEvent {
+	eventName: string
+	requiredIntent: string | null
+	timestamp: number
+}
+
+// Loop warning for event loop detection
+export interface LoopWarning {
+	eventType: string
+	count: number
+	windowMs: number
+	cooldownMs: number
+	lastAuthorUsername: string | null
+	lastContent: string | null
+	timestamp: number
+}
+
 // Session state shape
 export interface SessionState {
 	// Connection
@@ -81,6 +99,12 @@ export interface SessionState {
 	// Reply state (Phase 5N enhancement)
 	replyingTo: StageMessage | null
 
+	// Intent diagnostics - events filtered due to missing intents
+	filteredEvents: FilteredEvent[]
+
+	// Loop detection warning
+	loopWarning: LoopWarning | null
+
 	// Stats
 	eventCount: number
 	lastHeartbeat: number | null
@@ -119,6 +143,10 @@ type SessionAction =
 	| { type: 'SET_REPLYING_TO'; payload: StageMessage }
 	| { type: 'CLEAR_REPLYING_TO' }
 	| { type: 'HANDLE_VOICE_STATE_UPDATE'; payload: StageVoiceState }
+	| { type: 'ADD_FILTERED_EVENT'; payload: FilteredEvent }
+	| { type: 'CLEAR_FILTERED_EVENTS' }
+	| { type: 'SET_LOOP_WARNING'; payload: LoopWarning }
+	| { type: 'CLEAR_LOOP_WARNING' }
 
 // Initial state
 const initialState: SessionState = {
@@ -143,6 +171,8 @@ const initialState: SessionState = {
 	pendingInteractions: [],
 	pendingMessages: [],
 	replyingTo: null,
+	filteredEvents: [],
+	loopWarning: null,
 	eventCount: 0,
 	lastHeartbeat: null
 }
@@ -482,6 +512,36 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 				replyingTo: null
 			}
 
+		case 'ADD_FILTERED_EVENT': {
+			// Only add if we don't already have this event type
+			const exists = state.filteredEvents.some((f) => f.eventName === action.payload.eventName)
+			if (exists) {
+				return state
+			}
+			return {
+				...state,
+				filteredEvents: [...state.filteredEvents, action.payload]
+			}
+		}
+
+		case 'CLEAR_FILTERED_EVENTS':
+			return {
+				...state,
+				filteredEvents: []
+			}
+
+		case 'SET_LOOP_WARNING':
+			return {
+				...state,
+				loopWarning: action.payload
+			}
+
+		case 'CLEAR_LOOP_WARNING':
+			return {
+				...state,
+				loopWarning: null
+			}
+
 		default:
 			return state
 	}
@@ -777,6 +837,54 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 					setIsSessionInvalid(true)
 					setError(invalidData.reason || 'Session no longer exists')
 					// Don't dispatch anything else - connection will be closed by server
+					break
+				}
+
+				case 'event_filtered': {
+					// Intent diagnostics - event was not delivered to bot due to missing intent
+					const filteredData = event.data as {
+						connectionId: string
+						eventName: string
+						requiredIntent: string | null
+						message: string
+						timestamp: number
+					}
+					dispatch({
+						type: 'ADD_FILTERED_EVENT',
+						payload: {
+							eventName: filteredData.eventName,
+							requiredIntent: filteredData.requiredIntent,
+							// Use server timestamp for accurate playback sync
+							timestamp: filteredData.timestamp
+						}
+					})
+					break
+				}
+
+				case 'loop_detected': {
+					// Event loop detected - circuit breaker triggered
+					const loopData = event.data as {
+						eventType: string
+						count: number
+						windowMs: number
+						cooldownMs: number
+						lastAuthorId: string | null
+						lastAuthorUsername: string | null
+						lastContent: string | null
+						timestamp: number
+					}
+					dispatch({
+						type: 'SET_LOOP_WARNING',
+						payload: {
+							eventType: loopData.eventType,
+							count: loopData.count,
+							windowMs: loopData.windowMs,
+							cooldownMs: loopData.cooldownMs,
+							lastAuthorUsername: loopData.lastAuthorUsername,
+							lastContent: loopData.lastContent,
+							timestamp: loopData.timestamp
+						}
+					})
 					break
 				}
 

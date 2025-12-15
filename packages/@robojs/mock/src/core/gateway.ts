@@ -17,7 +17,8 @@ import {
 	stripMessageContent,
 	hasApprovedPrivilegedIntents,
 	DEFAULT_APPROVED_PRIVILEGED_INTENTS,
-	INTENT_CLOSE_CODES
+	INTENT_CLOSE_CODES,
+	getRequiredIntentName
 } from './intents.js'
 
 /**
@@ -36,6 +37,8 @@ export class GatewayServer {
 	private connections: Map<WebSocket, ConnectionState> = new Map()
 	private controlFlags: Map<string, ConnectionControlFlags> = new Map()
 	private heartbeatInterval: number = DEFAULT_HEARTBEAT_INTERVAL
+	// Track warned intent filters to avoid spam (connectionId:eventName -> true)
+	private warnedIntentFilters: Set<string> = new Set()
 
 	constructor() {
 		this.wss = new WebSocketServer({ noServer: true })
@@ -61,8 +64,9 @@ export class GatewayServer {
 
 	/**
 	 * Create initial connection state for a new WebSocket connection
+	 * @param customInterval - Optional custom heartbeat interval (from session preference)
 	 */
-	private createConnectionState(): ConnectionState {
+	private createConnectionState(customInterval?: number): ConnectionState {
 		return {
 			id: generateGatewaySessionId(),
 			sessionId: '',
@@ -72,7 +76,7 @@ export class GatewayServer {
 			sequence: 0,
 			lastAckSequence: null,
 			lastHeartbeat: Date.now(),
-			heartbeatInterval: this.heartbeatInterval,
+			heartbeatInterval: customInterval ?? this.heartbeatInterval,
 			missedHeartbeats: 0
 		}
 	}
@@ -551,6 +555,36 @@ export class GatewayServer {
 	}
 
 	/**
+	 * Log a warning when an event is filtered due to missing intent.
+	 * Only warns once per (connectionId, eventName) pair to avoid spam.
+	 * Also notifies Stage UI if available.
+	 */
+	private warnAboutFilteredEvent(sessionId: string, connectionId: string, event: string, data: unknown): void {
+		// Capture timestamp immediately for accurate playback sync
+		const timestamp = Date.now()
+
+		const warnKey = `${connectionId}:${event}`
+		if (this.warnedIntentFilters.has(warnKey)) {
+			return // Already warned about this event type for this connection
+		}
+
+		this.warnedIntentFilters.add(warnKey)
+
+		// Determine if this is a guild event to get the correct intent name
+		const isGuild = (data as Record<string, unknown>)?.guild_id != null
+		const intentName = getRequiredIntentName(event, isGuild)
+
+		mockLogger.warn(`${event} not delivered to bot (missing ${intentName} intent)`)
+
+		// Notify Stage UI with the exact timestamp
+		try {
+			getStageBridge().onEventFiltered(sessionId, connectionId, event, intentName, timestamp)
+		} catch {
+			// Stage bridge may not be initialized
+		}
+	}
+
+	/**
 	 * Dispatch an event to all connections in a session
 	 * Handles intent filtering and sequence number management
 	 *
@@ -579,13 +613,13 @@ export class GatewayServer {
 			// Phase 2H: Check intents using comprehensive filtering when enforceIntents is enabled
 			if (enforceIntents) {
 				if (!shouldDispatchEvent(event, data, connState.intents)) {
-					mockLogger.debug(`Connection ${connectionId} lacks intent for ${event}, skipping`)
+					this.warnAboutFilteredEvent(session.id, connectionId, event, data)
 					continue
 				}
 			} else {
 				// Legacy behavior: use basic intent check
 				if (!this.hasRequiredIntent(connState, event, guildId)) {
-					mockLogger.debug(`Connection ${connectionId} lacks intent for ${event}, skipping`)
+					this.warnAboutFilteredEvent(session.id, connectionId, event, data)
 					continue
 				}
 			}

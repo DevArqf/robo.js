@@ -275,3 +275,65 @@ export function hasApprovedPrivilegedIntents(declaredIntents: number, approvedPr
 	// All declared privileged intents must be approved
 	return declaredPrivilegedBigInt === approved
 }
+
+/**
+ * Map intent bit value to human-readable name.
+ */
+const INTENT_NAMES: Record<number, string> = {
+	[GatewayIntentBits.Guilds]: 'Guilds',
+	[GatewayIntentBits.GuildMembers]: 'GuildMembers',
+	[GatewayIntentBits.GuildModeration]: 'GuildModeration',
+	[GatewayIntentBits.GuildEmojisAndStickers]: 'GuildEmojisAndStickers',
+	[GatewayIntentBits.GuildIntegrations]: 'GuildIntegrations',
+	[GatewayIntentBits.GuildWebhooks]: 'GuildWebhooks',
+	[GatewayIntentBits.GuildInvites]: 'GuildInvites',
+	[GatewayIntentBits.GuildVoiceStates]: 'GuildVoiceStates',
+	[GatewayIntentBits.GuildPresences]: 'GuildPresences',
+	[GatewayIntentBits.GuildMessages]: 'GuildMessages',
+	[GatewayIntentBits.GuildMessageReactions]: 'GuildMessageReactions',
+	[GatewayIntentBits.GuildMessageTyping]: 'GuildMessageTyping',
+	[GatewayIntentBits.DirectMessages]: 'DirectMessages',
+	[GatewayIntentBits.DirectMessageReactions]: 'DirectMessageReactions',
+	[GatewayIntentBits.DirectMessageTyping]: 'DirectMessageTyping',
+	[GatewayIntentBits.MessageContent]: 'MessageContent',
+	[GatewayIntentBits.GuildScheduledEvents]: 'GuildScheduledEvents',
+	[GatewayIntentBits.AutoModerationConfiguration]: 'AutoModerationConfiguration',
+	[GatewayIntentBits.AutoModerationExecution]: 'AutoModerationExecution',
+	[GatewayIntentBits.GuildMessagePolls]: 'GuildMessagePolls',
+	[GatewayIntentBits.DirectMessagePolls]: 'DirectMessagePolls'
+}
+
+/**
+ * Get the human-readable name for an intent bit value.
+ *
+ * @param intent - The intent bit value
+ * @returns Human-readable intent name
+ */
+function getIntentName(intent: number): string {
+	return INTENT_NAMES[intent] || `Intent(${intent})`
+}
+
+/**
+ * Get the human-readable intent name required for an event.
+ * Returns null if the event doesn't require any intent.
+ *
+ * @param eventName - The Gateway event name (e.g., 'MESSAGE_CREATE')
+ * @param isGuild - Whether this is a guild event (vs DM)
+ * @returns Human-readable intent name, or null if no intent required
+ */
+export function getRequiredIntentName(eventName: string, isGuild: boolean): string | null {
+	// Check guild/DM variants first
+	const guildDm = GUILD_DM_EVENTS[eventName]
+	if (guildDm) {
+		const intent = isGuild ? guildDm.guild : guildDm.dm
+		return getIntentName(intent)
+	}
+
+	// Check standard mapping
+	const intent = EVENT_INTENTS[eventName]
+	if (intent === null || intent === undefined) {
+		return null
+	}
+
+	return getIntentName(intent)
+}

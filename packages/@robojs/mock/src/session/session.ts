@@ -106,6 +106,20 @@ export class Session implements ISession {
 	private _simulateRateLimit = false
 	private _rateLimitRetryAfter = 1 // seconds
 
+	// Loop detection state
+	private messageCreateTimestamps: number[] = []
+	private loopDetected = false
+	private loopCooldownTimeout: ReturnType<typeof setTimeout> | null = null
+	private _loopProtectionEnabled = true
+
+	// Heartbeat interval (per-session, default matches Discord's standard interval)
+	private _heartbeatInterval: number | null = null
+
+	// Loop detection constants
+	private static readonly LOOP_THRESHOLD = 10 // events
+	private static readonly LOOP_WINDOW_MS = 1000 // 1 second
+	private static readonly LOOP_COOLDOWN_MS = 5000 // 5 second recovery
+
 	constructor(options?: CreateSessionOptions) {
 		this.id = options?.id ?? generateSessionId()
 		this.token = createMockToken(this.id)
@@ -260,6 +274,28 @@ export class Session implements ISession {
 		if (this.ending) {
 			mockLogger.warn(`Cannot dispatch to ending session: ${this.id}`)
 			return
+		}
+
+		// Loop detection for MESSAGE_CREATE
+		if (event === 'MESSAGE_CREATE' && this._loopProtectionEnabled) {
+			if (this.loopDetected) {
+				// Still in cooldown, drop silently
+				mockLogger.debug(`Dropping MESSAGE_CREATE during loop cooldown`)
+				return
+			}
+
+			const now = Date.now()
+			this.messageCreateTimestamps.push(now)
+
+			// Keep only recent timestamps (within window)
+			const windowStart = now - Session.LOOP_WINDOW_MS
+			this.messageCreateTimestamps = this.messageCreateTimestamps.filter((t) => t > windowStart)
+
+			// Check if loop threshold exceeded
+			if (this.messageCreateTimestamps.length >= Session.LOOP_THRESHOLD) {
+				this.triggerLoopProtection(data)
+				return
+			}
 		}
 
 		// Record the dispatched event
@@ -2079,6 +2115,114 @@ export class Session implements ISession {
 	}
 
 	// ============================================================================
+	// Loop Protection (Phase 5R)
+	// ============================================================================
+
+	/**
+	 * Enable or disable loop protection.
+	 * When disabled, the server will not detect or prevent event loops.
+	 */
+	set loopProtectionEnabled(enabled: boolean) {
+		this._loopProtectionEnabled = enabled
+		if (!enabled) {
+			// Clear any active cooldown when disabling
+			this.loopDetected = false
+			this.messageCreateTimestamps = []
+			if (this.loopCooldownTimeout) {
+				clearTimeout(this.loopCooldownTimeout)
+				this.loopCooldownTimeout = null
+			}
+		}
+		mockLogger.debug(`Session ${this.id}: Loop protection ${enabled ? 'enabled' : 'disabled'}`)
+	}
+
+	/**
+	 * Check if loop protection is enabled
+	 */
+	get loopProtectionEnabled(): boolean {
+		return this._loopProtectionEnabled
+	}
+
+	/**
+	 * Check if a loop is currently detected (in cooldown)
+	 */
+	get isLoopDetected(): boolean {
+		return this.loopDetected
+	}
+
+	// ============================================================================
+	// Heartbeat Interval (Per-Session)
+	// ============================================================================
+
+	/**
+	 * Set the heartbeat interval for new connections in this session.
+	 * Set to null to use the global gateway default.
+	 * Only affects NEW connections - existing connections keep their original interval.
+	 *
+	 * @param interval - Heartbeat interval in milliseconds (100-120000), or null for default
+	 */
+	set heartbeatInterval(interval: number | null) {
+		if (interval !== null && (interval < 100 || interval > 120000)) {
+			throw new Error('Heartbeat interval must be between 100 and 120000 ms')
+		}
+		this._heartbeatInterval = interval
+		mockLogger.debug(`Session ${this.id}: Heartbeat interval set to ${interval ?? 'default'}`)
+	}
+
+	/**
+	 * Get the heartbeat interval for this session.
+	 * Returns null if using the global gateway default.
+	 */
+	get heartbeatInterval(): number | null {
+		return this._heartbeatInterval
+	}
+
+	/**
+	 * Trigger loop protection circuit breaker.
+	 * Logs a warning, notifies Stage UI, and starts cooldown period.
+	 */
+	private triggerLoopProtection(lastEventData: unknown): void {
+		this.loopDetected = true
+		this.messageCreateTimestamps = []
+
+		// Extract info about the triggering message
+		const messageData = lastEventData as Record<string, unknown>
+		const author = messageData.author as Record<string, unknown> | undefined
+		const authorId = author?.id as string | undefined
+		const authorUsername = author?.username as string | undefined
+		const content = ((messageData.content as string) ?? '').slice(0, 50)
+
+		mockLogger.warn(
+			`Event loop detected! ${Session.LOOP_THRESHOLD} MESSAGE_CREATE events in ${Session.LOOP_WINDOW_MS}ms. ` +
+				`Dropping further events for ${Session.LOOP_COOLDOWN_MS / 1000}s. ` +
+				`Last message from: ${authorUsername ?? authorId ?? 'unknown'}${content ? `, content: "${content}..."` : ''}`
+		)
+
+		// Notify Stage UI
+		try {
+			getStageBridge().onLoopDetected(this.id, {
+				eventType: 'MESSAGE_CREATE',
+				count: Session.LOOP_THRESHOLD,
+				windowMs: Session.LOOP_WINDOW_MS,
+				cooldownMs: Session.LOOP_COOLDOWN_MS,
+				lastAuthorId: authorId ?? null,
+				lastAuthorUsername: authorUsername ?? null,
+				lastContent: content || null,
+				timestamp: Date.now()
+			})
+		} catch {
+			// Stage bridge may not be initialized in some contexts
+		}
+
+		// Auto-recover after cooldown
+		this.loopCooldownTimeout = setTimeout(() => {
+			this.loopDetected = false
+			this.loopCooldownTimeout = null
+			mockLogger.info(`Session ${this.id}: Loop protection cooldown ended`)
+		}, Session.LOOP_COOLDOWN_MS)
+	}
+
+	// ============================================================================
 	// Recording Export (Phase 4A)
 	// ============================================================================
 
@@ -2232,6 +2376,12 @@ export class Session implements ISession {
 
 		// Stop auto-archive interval
 		this.stopAutoArchive()
+
+		// Clear loop protection timeout
+		if (this.loopCooldownTimeout) {
+			clearTimeout(this.loopCooldownTimeout)
+			this.loopCooldownTimeout = null
+		}
 
 		// Close all connections (will be implemented in future phases)
 		for (const _conn of this.connections.values()) {

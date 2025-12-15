@@ -277,6 +277,16 @@ export function useSession() {
 		dispatch({ type: 'CLEAR_REPLYING_TO' })
 	}
 
+	// Clear filtered events warnings (Intent diagnostics)
+	const clearFilteredEvents = () => {
+		dispatch({ type: 'CLEAR_FILTERED_EVENTS' })
+	}
+
+	// Clear loop warning
+	const clearLoopWarning = () => {
+		dispatch({ type: 'CLEAR_LOOP_WARNING' })
+	}
+
 	// Join a voice channel (Phase 5P)
 	const joinVoice = async (channelId: string, guildId?: string, userId?: string) => {
 		const targetGuildId = guildId || state.selectedGuildId
@@ -337,6 +347,8 @@ export function useSession() {
 		userCommands,
 		messageCommands,
 		guildVoiceStates,
+		filteredEvents: state.filteredEvents,
+		loopWarning: state.loopWarning,
 
 		// Connection
 		connect,
@@ -366,6 +378,8 @@ export function useSession() {
 		openDM,
 		setReplyingTo,
 		clearReplyingTo,
+		clearFilteredEvents,
+		clearLoopWarning,
 		joinVoice,
 		leaveVoice
 	}

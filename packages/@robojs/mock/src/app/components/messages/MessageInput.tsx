@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { EmojiPicker } from '../common/EmojiPicker'
+import { useSession } from '../../hooks/useSession'
 import styles from './MessageInput.module.css'
 
 interface MessageInputProps {
@@ -8,11 +8,70 @@ interface MessageInputProps {
 }
 
 export function MessageInput({ channelId, channelName }: MessageInputProps) {
-	const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+	const { sendMessage, replyingTo, clearReplyingTo } = useSession()
+	const [inputValue, setInputValue] = useState('')
+	const [isSending, setIsSending] = useState(false)
 	const inputRef = useRef<HTMLDivElement>(null)
 
+	// Handle input changes from contentEditable
+	const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+		setInputValue(e.currentTarget.textContent || '')
+	}
+
+	// Handle message submission
+	const handleSubmit = async () => {
+		const content = inputValue.trim()
+		if (!content || isSending) return
+
+		setIsSending(true)
+		try {
+			const messageReference = replyingTo
+				? { message_id: replyingTo.id, channel_id: channelId }
+				: undefined
+
+			await sendMessage(content, channelId, messageReference)
+
+			// Clear input and reply state
+			setInputValue('')
+			if (inputRef.current) inputRef.current.textContent = ''
+			clearReplyingTo()
+		} catch (err) {
+			console.error('Failed to send message:', err)
+		} finally {
+			setIsSending(false)
+		}
+	}
+
+	// Handle keyboard events - Enter to send, Shift+Enter for newline
+	const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+		if (e.key === 'Enter' && !e.shiftKey) {
+			e.preventDefault()
+			handleSubmit()
+		}
+	}
+
+	// Handle form submission
+	const handleFormSubmit = (e: React.FormEvent) => {
+		e.preventDefault()
+		handleSubmit()
+	}
+
 	return (
-		<form className={styles.form}>
+		<form className={styles.form} onSubmit={handleFormSubmit}>
+			{/* Reply preview */}
+			{replyingTo && (
+				<div className={styles.replyPreview}>
+					<div className={styles.replyContent}>
+						<ReplyIcon />
+						<span className={styles.replyText}>
+							Replying to <strong>{replyingTo.author.username}</strong>
+						</span>
+					</div>
+					<button type="button" className={styles.replyClose} onClick={clearReplyingTo}>
+						<CloseIcon />
+					</button>
+				</div>
+			)}
 			<div>
 				<div className={styles.container}>
 					<div className={styles.channelTextArea}>
@@ -44,7 +103,11 @@ export function MessageInput({ channelId, channelName }: MessageInputProps) {
 								</div>
 								<div className={styles.textAreaContainer}>
 									<div>
-										<div className={styles.placeholder} aria-hidden="true">
+										<div
+											className={styles.placeholder}
+											aria-hidden="true"
+											style={{ display: inputValue ? 'none' : undefined }}
+										>
 											Message #{channelName}
 										</div>
 										<div
@@ -58,9 +121,11 @@ export function MessageInput({ channelId, channelName }: MessageInputProps) {
 											autoCorrect="off"
 											data-can-focus="true"
 											aria-label={`Message #${channelName}`}
-											contentEditable="true"
+											contentEditable={!isSending}
 											suppressContentEditableWarning={true}
 											ref={inputRef}
+											onInput={handleInput}
+											onKeyDown={handleKeyDown}
 										/>
 									</div>
 								</div>

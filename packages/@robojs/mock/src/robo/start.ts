@@ -7,6 +7,7 @@ import { mockLogger } from '../core/logger.js'
 import { getMockModeState } from './init.js'
 import { sessionManager } from '../core/manager.js'
 import { getStageUIUrl } from '../utils/server.js'
+import { resolveBotUser } from '../utils/bot-user-resolver.js'
 import { DEFAULT_MOCK_PLUGIN_CONFIG, type MockPluginConfig } from '../types/plugin.js'
 import { registerWebSocketHandlers, areHandlersRegistered, markHandlersRegistered } from './prepare.js'
 import type { Session } from '../session/session.js'
@@ -77,8 +78,18 @@ export default async (context: StartContext<MockPluginConfig>) => {
 	if (mockModeState.enabled && mockModeState.sessionId) {
 		mockLogger.debug('Creating mock mode session...')
 
-		// Merge default session config with any user-provided config
-		const sessionConfig = config.defaultSessionConfig
+		// Resolve bot user using fallback chain:
+		// 1. Explicit config from defaultSessionConfig.botUser
+		// 2. Fetch from Discord API using real token
+		// 3. Default "MockBot"
+		const resolvedBotUser = await resolveBotUser(config.defaultSessionConfig?.botUser)
+		mockLogger.info(`Bot identity: ${resolvedBotUser.config.username} (${resolvedBotUser.source})`)
+
+		// Merge resolved bot user with session config
+		const sessionConfig = {
+			...config.defaultSessionConfig,
+			botUser: resolvedBotUser.config
+		}
 
 		// Create the session with the pre-generated ID
 		mockModeSession = await sessionManager.create({

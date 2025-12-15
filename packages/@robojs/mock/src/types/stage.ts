@@ -46,6 +46,10 @@ export type StageEventType =
 	// REST API (Phase 5K)
 	| 'rest_call'              // REST API call made by bot
 
+	// Diagnostics
+	| 'event_filtered'         // Event was not delivered due to missing intent
+	| 'loop_detected'          // Event loop detected, circuit breaker triggered
+
 /**
  * Command types sent from stage clients to server
  */
@@ -364,6 +368,46 @@ export interface StageRESTCallData {
 	endpoint?: string
 	/** Error message if request failed */
 	error?: string
+}
+
+/**
+ * Data payload for event_filtered events
+ * Sent when an event is not delivered to a bot due to missing intent
+ */
+export interface StageEventFilteredData {
+	/** The gateway connection ID */
+	connectionId: string
+	/** The event that was filtered (e.g., "MESSAGE_CREATE") */
+	eventName: string
+	/** The intent required to receive this event (e.g., "GuildMessages") */
+	requiredIntent: string | null
+	/** Human-readable message */
+	message: string
+	/** Timestamp when the event was filtered (for playback sync) */
+	timestamp: number
+}
+
+/**
+ * Data payload for loop_detected events
+ * Sent when an event loop is detected and the circuit breaker is triggered
+ */
+export interface StageLoopDetectedData {
+	/** The event type that triggered the loop (e.g., "MESSAGE_CREATE") */
+	eventType: string
+	/** Number of events that triggered the detection */
+	count: number
+	/** Time window in milliseconds */
+	windowMs: number
+	/** Cooldown duration in milliseconds */
+	cooldownMs: number
+	/** Last message author ID (if available) */
+	lastAuthorId: string | null
+	/** Last message author username (if available) */
+	lastAuthorUsername: string | null
+	/** Last message content snippet (if available) */
+	lastContent: string | null
+	/** Timestamp when the loop was detected */
+	timestamp: number
 }
 
 // ============================================================================

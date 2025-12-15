@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { usePlaybackControls, formatTime } from '../../stores/playbackStore'
 import { useDevTools } from '../devtools/DevToolsPanel'
+import { FilteredEventsWarning } from '../layout/FilteredEventsWarning'
 import type { StageEventType } from '../../types/stage'
 import styles from './PlaybackControls.module.css'
 
@@ -272,6 +273,9 @@ export function PlaybackControls() {
 
 			{/* Actions */}
 			<div className={styles.actions}>
+				{/* Filtered Events Warning */}
+				<FilteredEventsWarning />
+
 				{/* Dev Tools Button */}
 				<button
 					className={styles.devButton}

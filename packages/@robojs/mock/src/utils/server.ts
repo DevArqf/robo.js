@@ -54,12 +54,18 @@ export function getMockRestApiUrl(): string {
 }
 
 /**
+ * Default prefix for @robojs/mock routes.
+ * This matches the prefix declared in config/plugins/robojs/server.ts
+ */
+export const DEFAULT_MOCK_PREFIX = '/mock'
+
+/**
  * Gets the plugin prefix for @robojs/mock.
  *
  * Resolution order (highest to lowest priority):
  * 1. User's explicit `pluginPrefixes['@robojs/mock']` in server config
  * 2. Plugin's declared `prefix` from manifest (pre-computed at build)
- * 3. Empty string (no prefix)
+ * 3. Default prefix '/mock' (matches plugin's declared default)
  */
 export function getMockPluginPrefix(): string {
 	// Check user's explicit pluginPrefixes config first
@@ -68,11 +74,12 @@ export function getMockPluginPrefix(): string {
 
 	if (userPrefix) {
 		if (typeof userPrefix === 'string') {
-			return userPrefix
+			return userPrefix.startsWith('/') ? userPrefix : `/${userPrefix}`
 		}
 		// Use static prefix for Stage UI (it's a static asset)
 		if (userPrefix.static) {
-			return userPrefix.static
+			const prefix = userPrefix.static
+			return prefix.startsWith('/') ? prefix : `/${prefix}`
 		}
 	}
 
@@ -84,10 +91,11 @@ export function getMockPluginPrefix(): string {
 			return prefix.startsWith('/') ? prefix : `/${prefix}`
 		}
 	} catch {
-		// Manifest may not be available
+		// Manifest may not be available in CLI context
 	}
 
-	return ''
+	// Default to the mock plugin's declared prefix
+	return DEFAULT_MOCK_PREFIX
 }
 
 /**

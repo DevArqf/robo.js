@@ -7,6 +7,8 @@ import type {
 	StageBotDisconnectedData,
 	StageBotErrorData,
 	StageRESTCallData,
+	StageEventFilteredData,
+	StageLoopDetectedData,
 	StageUser
 } from '../types/stage.js'
 import type { MockUser } from '../types/index.js'
@@ -197,6 +199,53 @@ export class StageBridge {
 		const stageServer = getStageServer()
 		stageServer.broadcastToSession(sessionId, {
 			type: 'rest_call',
+			data
+		})
+	}
+
+	/**
+	 * Called when an event is filtered due to missing intent.
+	 * Notifies Stage UI so developers can see why events aren't reaching their bot.
+	 *
+	 * @param sessionId - The session
+	 * @param connectionId - The gateway connection ID
+	 * @param eventName - The event that was filtered (e.g., "MESSAGE_CREATE")
+	 * @param requiredIntent - The intent required to receive this event (e.g., "GuildMessages")
+	 * @param timestamp - When the event was filtered (for playback sync)
+	 */
+	onEventFiltered(
+		sessionId: string,
+		connectionId: string,
+		eventName: string,
+		requiredIntent: string | null,
+		timestamp: number
+	): void {
+		const stageData: StageEventFilteredData = {
+			connectionId,
+			eventName,
+			requiredIntent,
+			message: `${eventName} not delivered (missing ${requiredIntent} intent)`,
+			timestamp
+		}
+
+		const stageServer = getStageServer()
+		stageServer.broadcastToSession(sessionId, {
+			type: 'event_filtered',
+			data: stageData
+		})
+	}
+
+	/**
+	 * Called when an event loop is detected and circuit breaker triggered.
+	 * Notifies Stage UI so developers can see what happened.
+	 *
+	 * @param sessionId - The session
+	 * @param data - Loop detection details
+	 */
+	onLoopDetected(sessionId: string, data: StageLoopDetectedData): void {
+		const stageServer = getStageServer()
+		stageServer.broadcastToSession(sessionId, {
+			type: 'loop_detected',
 			data
 		})
 	}

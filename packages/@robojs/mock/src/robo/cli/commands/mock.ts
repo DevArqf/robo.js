@@ -13,7 +13,7 @@ import path from 'node:path'
 import { execSync } from 'node:child_process'
 import { createCliCommandConfig, color, Env, getPluginOptions, setHookPriority } from 'robo.js'
 import { generateSessionId, createMockToken } from '../../../utils/id.js'
-import { getMockRestApiUrl, getStageUIUrl, getServerPort } from '../../../utils/server.js'
+import { getMockRestApiUrl, getStageUIUrl, getServerPort, getMockPluginPrefix } from '../../../utils/server.js'
 import { printSessionSummary } from '../../../core/summary.js'
 import { persistSession, cleanupOldSessions } from '../../../core/persistence.js'
 import { getMockModeSession, clearMockModeSession } from '../../start.js'
@@ -102,21 +102,27 @@ export default async function mockCommand({ options, logger }: CliContext<typeof
 	const sessionToken = createMockToken(sessionId)
 	const sessionName = `${projectName}-mock`
 
+	// Save real Discord token before overwriting (for bot user lookup)
+	const realDiscordToken = process.env.DISCORD_TOKEN
+
 	// Set environment variables for mock mode
 	process.env.ROBO_MOCK_MODE = 'true'
 	process.env.ROBO_MOCK_SESSION_ID = sessionId
 	process.env.ROBO_MOCK_SESSION_NAME = sessionName
+	process.env.ROBO_MOCK_REAL_TOKEN = realDiscordToken ?? ''
 	process.env.DISCORD_TOKEN = sessionToken
 
-	// Set REST API URL to point to mock server
+	// Set REST API URL to point to mock server (includes plugin prefix if configured)
 	const port = getServerPort()
-	process.env.DISCORD_REST_API = `http://localhost:${port}/api`
+	const prefix = getMockPluginPrefix()
+	process.env.DISCORD_REST_API = `http://localhost:${port}${prefix}/api`
 
 	if (verbose) {
 		logger.debug('Mock mode environment:')
 		logger.debug(`  ROBO_MOCK_MODE: true`)
 		logger.debug(`  ROBO_MOCK_SESSION_ID: ${sessionId}`)
 		logger.debug(`  ROBO_MOCK_SESSION_NAME: ${sessionName}`)
+		logger.debug(`  ROBO_MOCK_REAL_TOKEN: ${realDiscordToken ? '(saved)' : '(none)'}`)
 		logger.debug(`  DISCORD_TOKEN: ${sessionToken}`)
 		logger.debug(`  DISCORD_REST_API: ${process.env.DISCORD_REST_API}`)
 	}
@@ -187,10 +193,12 @@ export default async function mockCommand({ options, logger }: CliContext<typeof
 		logger.info('Starting mock server and bot...')
 	}
 
-	// Ensure server starts BEFORE discordjs so WebSocket handlers are ready
-	// when the Discord client tries to connect to the mock gateway.
-	// Server at priority 50 runs before discordjs at default priority 100.
+	// Ensure proper startup order for mock mode:
+	// 1. Server (priority 50) - WebSocket handlers must be ready
+	// 2. Mock (priority 75) - Session must exist before Discord.js connects
+	// 3. Discord.js (priority 100, default) - Connects to mock gateway
 	setHookPriority('start', '@robojs/server', 50)
+	setHookPriority('start', '@robojs/mock', 75)
 
 	try {
 		const { Robo } = await import('robo.js')

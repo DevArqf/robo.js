@@ -9,7 +9,6 @@ import type { MockAttachment, AttachmentPayload, StoredAttachment } from '../../
 import { MessageFlags, createComponentValidationError, createV2ConflictError } from '../../../../types/index.js'
 import { validateComponents, validateComponentsV2 } from '../../../../session/state.js'
 import { enforcePermissions } from '../../../../utils/permission-check.js'
-import { getGatewayServer } from '../../../../core/gateway.js'
 
 // Default port for CDN URLs (can be overridden via environment)
 const CDN_BASE_URL = process.env.MOCK_CDN_URL || 'http://localhost:53596'
@@ -401,14 +400,14 @@ export default async (request: RoboRequest) => {
 		}
 	)
 
-	// 8. Dispatch MESSAGE_CREATE event via Gateway
+	// 8. Dispatch MESSAGE_CREATE event via Gateway (routed through session for loop detection)
 	const author = session.state.botUser
 	const apiMessage = mockMessageToAPIMessage(message, author)
 	const dispatchData: Record<string, unknown> = { ...apiMessage }
 	if (message.guildId) {
 		dispatchData.guild_id = message.guildId
 	}
-	getGatewayServer().dispatchToSession(session.id, 'MESSAGE_CREATE', dispatchData, channel.guildId)
+	await session.dispatch('MESSAGE_CREATE', dispatchData)
 
 	// 9. Return APIMessage response
 	return apiMessage

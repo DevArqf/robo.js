@@ -1,0 +1,318 @@
+/* Container for positioning */
+.container {
+	position: relative;
+}
+
+/* Icon button */
+.button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+	width: 28px;
+	height: 28px;
+	border-radius: var(--radius-sm);
+	color: var(--yellow-400, #faa61a);
+	background: rgba(250, 166, 26, 0.15);
+	transition: all 0.15s ease;
+}
+
+.button:hover {
+	background: rgba(250, 166, 26, 0.25);
+}
+
+/* Danger variant (for active loop detection) */
+.button.danger {
+	color: var(--red-400, #ed4245);
+	background: rgba(237, 66, 69, 0.15);
+	animation: pulse-danger 1.5s ease-in-out infinite;
+}
+
+.button.danger:hover {
+	background: rgba(237, 66, 69, 0.25);
+}
+
+@keyframes pulse-danger {
+	0%,
+	100% {
+		box-shadow: 0 0 0 0 rgba(237, 66, 69, 0.4);
+	}
+	50% {
+		box-shadow: 0 0 0 4px rgba(237, 66, 69, 0);
+	}
+}
+
+/* Resolved variant (loop detected but cooldown complete) */
+.button.resolved {
+	color: var(--green-400, #57f287);
+	background: rgba(87, 242, 135, 0.15);
+}
+
+.button.resolved:hover {
+	background: rgba(87, 242, 135, 0.25);
+}
+
+/* Badge showing count */
+.badge {
+	position: absolute;
+	top: -4px;
+	right: -4px;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 4px;
+	border-radius: 8px;
+	background: var(--red-400, #ed4245);
+	color: white;
+	font-size: 10px;
+	font-weight: 700;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+/* Badge for resolved state */
+.badgeResolved {
+	position: absolute;
+	top: -4px;
+	right: -4px;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 4px;
+	border-radius: 8px;
+	background: var(--green-400, #57f287);
+	color: white;
+	font-size: 10px;
+	font-weight: 700;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+/* Popover */
+.popover {
+	position: absolute;
+	bottom: 100%;
+	right: 0;
+	margin-bottom: 8px;
+	width: 280px;
+	background: var(--background-floating);
+	border-radius: var(--radius-md);
+	box-shadow: 0 8px 16px rgba(0, 0, 0, 0.24);
+	z-index: 1000;
+	overflow: hidden;
+}
+
+.popoverHeader {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px;
+	border-bottom: 1px solid var(--background-modifier-accent);
+}
+
+.popoverTitle {
+	font-size: 12px;
+	font-weight: 700;
+	color: var(--yellow-400, #faa61a);
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+}
+
+.clearButton {
+	padding: 4px 8px;
+	border-radius: var(--radius-sm);
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--text-muted);
+	transition: all 0.15s ease;
+}
+
+.clearButton:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.popoverContent {
+	max-height: 200px;
+	overflow-y: auto;
+	padding: 8px;
+}
+
+/* Event item - now a button */
+.eventItem {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	width: 100%;
+	padding: 8px 10px;
+	border-radius: var(--radius-sm);
+	background: var(--background-secondary);
+	margin-bottom: 4px;
+	border: none;
+	text-align: left;
+	cursor: default;
+	transition: all 0.15s ease;
+}
+
+.eventItem:last-child {
+	margin-bottom: 0;
+}
+
+.eventItem:disabled {
+	opacity: 0.7;
+}
+
+/* Clickable variant */
+.eventItem.clickable {
+	cursor: pointer;
+}
+
+.eventItem.clickable:hover {
+	background: var(--background-modifier-hover);
+}
+
+.eventItem.clickable:hover .playIcon {
+	opacity: 1;
+	color: var(--brand-500);
+}
+
+/* Event info container */
+.eventInfo {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+	flex: 1;
+}
+
+.eventName {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-normal);
+	font-family: var(--font-code);
+}
+
+.intentName {
+	font-size: 11px;
+	color: var(--text-muted);
+}
+
+/* Play icon */
+.playIcon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border-radius: 50%;
+	background: var(--background-tertiary);
+	color: var(--text-muted);
+	opacity: 0.6;
+	flex-shrink: 0;
+	margin-left: 8px;
+	transition: all 0.15s ease;
+}
+
+.popoverHint {
+	padding: 10px 12px;
+	border-top: 1px solid var(--background-modifier-accent);
+	font-size: 11px;
+	color: var(--text-muted);
+	background: var(--background-secondary);
+}
+
+/* Danger header (for loop detection) */
+.popoverHeader.dangerHeader {
+	border-bottom-color: rgba(237, 66, 69, 0.3);
+}
+
+.popoverHeader.dangerHeader .popoverTitle {
+	color: var(--red-400, #ed4245);
+}
+
+/* Loop warning content */
+.loopWarningContent {
+	padding: 8px;
+	background: rgba(237, 66, 69, 0.08);
+}
+
+.loopInfo {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin-bottom: 8px;
+	padding: 8px;
+	background: var(--background-secondary);
+	border-radius: var(--radius-sm);
+}
+
+.loopEventType {
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--red-400, #ed4245);
+	font-family: var(--font-code);
+}
+
+.loopDetails {
+	font-size: 11px;
+	color: var(--text-muted);
+}
+
+.loopAuthor {
+	font-size: 11px;
+	color: var(--text-normal);
+}
+
+.loopContent {
+	font-size: 11px;
+	color: var(--text-muted);
+	font-style: italic;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Danger event item */
+.eventItem.danger {
+	background: rgba(237, 66, 69, 0.1);
+	border: 1px solid rgba(237, 66, 69, 0.2);
+}
+
+.eventItem.danger:hover {
+	background: rgba(237, 66, 69, 0.2);
+}
+
+/* Danger hint */
+.popoverHint.dangerHint {
+	background: rgba(237, 66, 69, 0.08);
+	color: var(--red-300, #f04747);
+}
+
+/* Resolved header (loop resolved) */
+.popoverHeader.resolvedHeader {
+	border-bottom-color: rgba(87, 242, 135, 0.3);
+}
+
+.popoverHeader.resolvedHeader .popoverTitle {
+	color: var(--green-400, #57f287);
+}
+
+/* Loop resolved content */
+.loopResolvedContent {
+	padding: 8px;
+	background: rgba(87, 242, 135, 0.08);
+}
+
+/* Resolved event type styling */
+.loopEventTypeResolved {
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--green-400, #57f287);
+	font-family: var(--font-code);
+}
+
+/* Resolved hint */
+.popoverHint.resolvedHint {
+	background: rgba(87, 242, 135, 0.08);
+	color: var(--green-400, #57f287);
+}

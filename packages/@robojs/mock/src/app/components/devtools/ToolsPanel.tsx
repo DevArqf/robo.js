@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { usePlaybackControls, type RecordedEvent } from '../../stores/playbackStore'
 import { useSession } from '../../hooks/useSession'
 import { useSessionDispatch, type PendingInteraction } from '../../stores/sessionStore'
@@ -12,6 +12,7 @@ export function ToolsPanel() {
 	const { addEvents } = usePlaybackControls()
 	const { showToast } = useToaster()
 	const [isGenerating, setIsGenerating] = useState(false)
+	const [loopProtectionEnabled, setLoopProtectionEnabled] = useState(true)
 
 	// Detect API prefix from current URL (e.g., /mock/stage -> /mock)
 	const getApiPrefix = useCallback(() => {
@@ -19,6 +20,54 @@ export function ToolsPanel() {
 		const stageIndex = pathname.indexOf('/stage')
 		return stageIndex !== -1 ? pathname.slice(0, stageIndex) : ''
 	}, [])
+
+	// Fetch initial loop protection status
+	useEffect(() => {
+		if (!sessionId) return
+
+		const fetchLoopProtectionStatus = async () => {
+			const apiPrefix = getApiPrefix()
+			try {
+				const response = await fetch(`${apiPrefix}/api/control/sessions/${sessionId}/loop-protection`)
+				if (response.ok) {
+					const data = await response.json()
+					setLoopProtectionEnabled(data.enabled)
+				}
+			} catch {
+				// Ignore errors - default to enabled
+			}
+		}
+
+		fetchLoopProtectionStatus()
+	}, [sessionId, getApiPrefix])
+
+	// Toggle loop protection
+	const toggleLoopProtection = useCallback(async () => {
+		if (!sessionId) {
+			showToast('No active session', 'warning')
+			return
+		}
+
+		const apiPrefix = getApiPrefix()
+		const newValue = !loopProtectionEnabled
+
+		try {
+			const response = await fetch(`${apiPrefix}/api/control/sessions/${sessionId}/loop-protection`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ enabled: newValue })
+			})
+
+			if (response.ok) {
+				setLoopProtectionEnabled(newValue)
+				showToast(`Loop protection ${newValue ? 'enabled' : 'disabled'}`, newValue ? 'success' : 'warning')
+			} else {
+				showToast('Failed to toggle loop protection', 'error')
+			}
+		} catch {
+			showToast('Failed to toggle loop protection', 'error')
+		}
+	}, [sessionId, loopProtectionEnabled, getApiPrefix, showToast])
 
 	// Generate test data for visual testing (moved from PlaybackControls)
 	const generateTestData = useCallback(async () => {
@@ -858,6 +907,38 @@ export function ToolsPanel() {
 				</button>
 			</section>
 
+			{/* Loop Protection Settings */}
+			<section className={styles.section}>
+				<h3 className={styles.sectionTitle}>
+					<ShieldIcon /> Loop Protection
+				</h3>
+				<p className={styles.description}>
+					Detects and prevents infinite loops when bots respond to their own MESSAGE_CREATE events.
+				</p>
+				<div className={styles.toggleRow}>
+					<label className={styles.toggleLabel}>
+						<span>Status</span>
+						<button
+							className={`${styles.toggleButton} ${loopProtectionEnabled ? styles.enabled : styles.disabled}`}
+							onClick={toggleLoopProtection}
+							title={loopProtectionEnabled ? 'Click to disable loop protection' : 'Click to enable loop protection'}
+						>
+							<span className={styles.toggleIcon}>
+								{loopProtectionEnabled ? <ToggleCheckIcon /> : <ToggleOffIcon />}
+							</span>
+							<span className={styles.toggleText}>
+								{loopProtectionEnabled ? 'Enabled' : 'Disabled'}
+							</span>
+						</button>
+					</label>
+				</div>
+				{!loopProtectionEnabled && (
+					<p className={styles.warning}>
+						Loop protection is disabled. The server will not prevent infinite loops.
+					</p>
+				)}
+			</section>
+
 			{/* Phase 5O: Visual States Testing */}
 			<section className={styles.section}>
 				<h3 className={styles.sectionTitle}>Message States (Phase 5O)</h3>
@@ -1690,6 +1771,31 @@ function SpoilerIcon() {
 	return (
 		<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
 			<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" />
+		</svg>
+	)
+}
+
+function ShieldIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+			<path d="M5.338 1.59a61.44 61.44 0 0 0-2.837.856.481.481 0 0 0-.328.39c-.554 4.157.726 7.19 2.253 9.188a10.725 10.725 0 0 0 2.287 2.233c.346.244.652.42.893.533.12.057.218.095.293.118a.55.55 0 0 0 .101.025.615.615 0 0 0 .1-.025c.076-.023.174-.061.294-.118.24-.113.547-.29.893-.533a10.726 10.726 0 0 0 2.287-2.233c1.527-1.997 2.807-5.031 2.253-9.188a.48.48 0 0 0-.328-.39c-.651-.213-1.75-.56-2.837-.855C9.552 1.29 8.531 1.067 8 1.067c-.53 0-1.552.223-2.662.524zM5.072.56C6.157.265 7.31 0 8 0s1.843.265 2.928.56c1.11.3 2.229.655 2.887.87a1.54 1.54 0 0 1 1.044 1.262c.596 4.477-.787 7.795-2.465 9.99a11.775 11.775 0 0 1-2.517 2.453 7.159 7.159 0 0 1-1.048.625c-.28.132-.581.24-.877.24s-.596-.108-.877-.24a7.158 7.158 0 0 1-1.048-.625 11.777 11.777 0 0 1-2.517-2.453C1.928 10.487.545 7.169 1.141 2.692A1.54 1.54 0 0 1 2.185 1.43 62.456 62.456 0 0 1 5.072.56z" />
+			<path d="M10.854 5.146a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 1 1 .708-.708L7.5 7.793l2.646-2.647a.5.5 0 0 1 .708 0z" />
+		</svg>
+	)
+}
+
+function ToggleCheckIcon() {
+	return (
+		<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+			<path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 1 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z" />
+		</svg>
+	)
+}
+
+function ToggleOffIcon() {
+	return (
+		<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+			<path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
 		</svg>
 	)
 }

@@ -189,3 +189,61 @@
 	align-items: center;
 	justify-content: center;
 }
+
+/* Reply preview bar */
+.replyPreview {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 16px;
+	background: var(--background-secondary);
+	border-radius: 8px 8px 0 0;
+	margin: 0 16px;
+	border-bottom: 1px solid var(--background-tertiary);
+}
+
+.replyContent {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--text-muted);
+	font-size: 14px;
+	overflow: hidden;
+}
+
+.replyContent svg {
+	flex-shrink: 0;
+	color: var(--text-muted);
+}
+
+.replyText {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.replyText strong {
+	color: var(--text-normal);
+	font-weight: 500;
+}
+
+.replyClose {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	background: none;
+	border: none;
+	border-radius: 4px;
+	color: var(--interactive-normal);
+	cursor: pointer;
+	padding: 0;
+	flex-shrink: 0;
+	transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.replyClose:hover {
+	color: var(--interactive-hover);
+	background-color: var(--background-modifier-hover);
+}
