@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from '../../hooks/useSession'
 import styles from './ConnectionScreen.module.css'
 
+// Detect if user is on macOS
+const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)
+
 export function ConnectionScreen() {
 	const { sessionId, isConnecting, error, setSessionId, connect, hasGivenUp, isSessionInvalid, retryCount, retry } = useSession()
 	const [inputValue, setInputValue] = useState(sessionId || '')
@@ -64,10 +67,10 @@ export function ConnectionScreen() {
 		}
 	}, [getApiPrefix])
 
-	// Keyboard shortcut: Cmd/Ctrl+N to create new session
+	// Keyboard shortcut: Cmd/Ctrl+K to create new session
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
-			if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+			if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
 				e.preventDefault()
 				if (!isCreating && !isConnecting) {
 					createNewSession()
@@ -107,25 +110,15 @@ export function ConnectionScreen() {
 
 				<div className={styles.form}>
 					<label className={styles.label}>Session ID</label>
-					<div className={styles.inputRow}>
-						<input
-							type="text"
-							className={styles.input}
-							placeholder="Enter session ID (e.g., sess_abc123)"
-							value={inputValue}
-							onChange={(e) => setInputValue(e.target.value)}
-							onKeyDown={handleKeyDown}
-							disabled={isConnecting || isCreating}
-						/>
-						<button
-							className={styles.createButton}
-							onClick={createNewSession}
-							disabled={isCreating || isConnecting}
-							title="Create new session (⌘N / Ctrl+N)"
-						>
-							{isCreating ? <span className={styles.spinner} /> : '+'}
-						</button>
-					</div>
+					<input
+						type="text"
+						className={styles.input}
+						placeholder="Enter session ID (e.g., sess_abc123)"
+						value={inputValue}
+						onChange={(e) => setInputValue(e.target.value)}
+						onKeyDown={handleKeyDown}
+						disabled={isConnecting || isCreating}
+					/>
 
 					<button className={styles.button} onClick={handleConnect} disabled={isConnecting || !inputValue.trim()}>
 						{isConnecting ? (
@@ -166,8 +159,7 @@ export function ConnectionScreen() {
 
 				<div className={styles.help}>
 					<p>
-						Press <kbd className={styles.kbd}>⌘N</kbd> or <kbd className={styles.kbd}>Ctrl+N</kbd> to create a new
-						session
+						Press <kbd className={styles.kbd}>{isMac ? '⌘' : 'Ctrl+'}K</kbd> to create a new session
 					</p>
 				</div>
 			</div>

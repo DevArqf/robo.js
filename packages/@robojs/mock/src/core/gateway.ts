@@ -118,14 +118,28 @@ export class GatewayServer {
 	private handleConnection(ws: WebSocket, req: IncomingMessage): void {
 		mockLogger.debug(`Gateway connection established from ${req.socket.remoteAddress}`)
 
-		// Create connection state
-		const connState = this.createConnectionState()
+		// Try to determine heartbeat interval from session preferences
+		// This uses the URL's session_id hint if available (for reconnections or testing)
+		const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
+		const sessionHint = url.searchParams.get('session_id')
+		let effectiveInterval: number | undefined
+
+		if (sessionHint) {
+			const session = sessionManager.get(sessionHint)
+			if (session?.heartbeatInterval !== null && session?.heartbeatInterval !== undefined) {
+				effectiveInterval = session.heartbeatInterval
+				mockLogger.debug(`Using session ${sessionHint} heartbeat interval: ${effectiveInterval}ms`)
+			}
+		}
+
+		// Create connection state with the effective interval
+		const connState = this.createConnectionState(effectiveInterval)
 		this.connections.set(ws, connState)
 
 		// Send HELLO immediately (Discord Gateway protocol)
 		const hello = buildHelloPayload(connState.heartbeatInterval)
 		this.send(ws, hello)
-		mockLogger.debug(`Sent HELLO payload (connection ${connState.id})`)
+		mockLogger.debug(`Sent HELLO payload (connection ${connState.id}, heartbeat: ${connState.heartbeatInterval}ms)`)
 
 		// Handle incoming messages
 		ws.on('message', (data, isBinary) => {
@@ -332,10 +346,11 @@ export class GatewayServer {
 		mockLogger.info(`Client identified: connection=${connState.id}, session=${session.id}, intents=${data.intents}`)
 
 		// Send READY event (Phase 1D)
+		// Include session_id in resume_gateway_url so reconnections can use per-session heartbeat interval
 		const readyPayload = buildReadyPayload({
 			sessionState: session.state,
 			connectionSessionId: connState.id,
-			gatewayUrl: 'ws://localhost:8765'
+			gatewayUrl: `ws://localhost:8765?v=${GATEWAY_VERSION}&encoding=json&session_id=${session.id}`
 		})
 		this.send(ws, readyPayload)
 		connState.sequence = 1 // READY is sequence 1

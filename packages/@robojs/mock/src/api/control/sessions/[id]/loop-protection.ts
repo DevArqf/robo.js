@@ -34,7 +34,8 @@ export default async (request: RoboRequest) => {
 		return notFound('Session ID required')
 	}
 
-	const session = sessionManager.get(id)
+	// Try to find session by ID first, then by token
+	const session = sessionManager.get(id) ?? sessionManager.getByToken(id)
 
 	if (!session) {
 		return notFound('Session not found')
