@@ -42,19 +42,19 @@ export function createServerHandler(router: Router, vite?: ViteDevServer, onNotF
 		// Find matching route and execute handler
 		logger.debug(color.bold(req.method), req.url)
 
-		// Check for plugin API prefix and strip it for transparent routing
+		// Check for plugin API prefix (needed for static asset handling and Vite bypass)
+		// Note: Route lookup now happens on the original path because:
+		// - Exclusive plugins: routes are registered WITH the prefix
+		// - Additive plugins: routes are registered BOTH with and without prefix
 		const registry = getPluginRouteRegistry()
 		const apiMatch = registry.matchApiPrefix(parsedUrl.pathname ?? '')
-		let lookupPath = parsedUrl.pathname
-		let activePluginPrefix: string | null = null
+		const activePluginPrefix: string | null = apiMatch?.prefix ?? null
 
-		if (apiMatch) {
-			lookupPath = registry.stripPrefix(parsedUrl.pathname ?? '', apiMatch.prefix)
-			activePluginPrefix = apiMatch.prefix
-			logger.debug(`Stripped plugin prefix ${apiMatch.prefix} → ${lookupPath}`)
+		if (activePluginPrefix) {
+			logger.debug(`Plugin prefix detected: ${activePluginPrefix}`)
 		}
 
-		const route = router.find(lookupPath)
+		const route = router.find(parsedUrl.pathname ?? '/')
 
 		// If no route found and we have a plugin prefix, check plugin static assets FIRST
 		// This must happen before Vite middleware to avoid Vite serving index.html for prefixed paths
@@ -73,8 +73,12 @@ export function createServerHandler(router: Router, vite?: ViteDevServer, onNotF
 					}
 
 					try {
-						const handled = await handlePluginStaticFile(strippedPath, pluginPublicDir, fileCallback)
-						if (handled) {
+						const result = await handlePluginStaticFile(strippedPath, pluginPublicDir, req.url ?? '', fileCallback)
+						if (result.type === 'served') {
+							return
+						} else if (result.type === 'redirect') {
+							res.writeHead(301, { Location: result.location })
+							res.end()
 							return
 						}
 					} catch (error) {
@@ -185,8 +189,12 @@ export function createServerHandler(router: Router, vite?: ViteDevServer, onNotF
 					const pluginPublicDir = registry.getPublicDir(staticMatch.plugin)
 
 					if (pluginPublicDir) {
-						const handled = await handlePluginStaticFile(strippedPath, pluginPublicDir, fileCallback)
-						if (handled) {
+						const result = await handlePluginStaticFile(strippedPath, pluginPublicDir, req.url ?? '', fileCallback)
+						if (result.type === 'served') {
+							return
+						} else if (result.type === 'redirect') {
+							res.writeHead(301, { Location: result.location })
+							res.end()
 							return
 						}
 					}
@@ -380,14 +388,29 @@ export async function handlePublicFile(
 }
 
 /**
+ * Result from handlePluginStaticFile indicating what action was taken.
+ */
+export type StaticFileResult =
+	| { type: 'served' }
+	| { type: 'redirect'; location: string }
+	| { type: 'not_found' }
+
+/**
  * Serve static files from a plugin's public directory.
  * Similar to handlePublicFile but operates on a specific plugin's public dir.
+ *
+ * @param pathname - The stripped pathname (without plugin prefix)
+ * @param pluginPublicDir - Path to the plugin's public directory
+ * @param originalUrl - The original request URL (for redirect calculation)
+ * @param callback - Function to call when serving a file
+ * @returns Result indicating what action was taken
  */
 export async function handlePluginStaticFile(
 	pathname: string,
 	pluginPublicDir: string,
+	originalUrl: string,
 	callback: (filePath: string, mimeType: string) => void | Promise<void>
-): Promise<boolean> {
+): Promise<StaticFileResult> {
 	// Decode and resolve the file path
 	const decodedPath = decodeURI(pathname)
 	const filePath = path.join(pluginPublicDir, decodedPath)
@@ -414,8 +437,16 @@ export async function handlePluginStaticFile(
 			const ext = path.extname(filePath).slice(1)
 			const mimeType = mimeDb[ext] ?? 'application/octet-stream'
 			await callback(filePath, mimeType)
-			return true
+			return { type: 'served' }
 		} else if (stats.isDirectory()) {
+			// If URL doesn't end with /, redirect to add trailing slash
+			// This ensures relative URLs in the served HTML resolve correctly
+			if (!originalUrl.endsWith('/')) {
+				const redirectUrl = originalUrl + '/'
+				logger.debug(`Redirecting to add trailing slash: ${redirectUrl}`)
+				return { type: 'redirect', location: redirectUrl }
+			}
+
 			// Look for an index file in the directory
 			const files = await readdir(filePath)
 			const indexExtensions = ['html', 'htm', 'js', 'json']
@@ -430,7 +461,7 @@ export async function handlePluginStaticFile(
 				const mimeType = mimeDb[ext] ?? 'application/octet-stream'
 				logger.debug('Serving plugin index file:', indexFilePath)
 				await callback(indexFilePath, mimeType)
-				return true
+				return { type: 'served' }
 			}
 		}
 	} catch (error) {
@@ -440,7 +471,7 @@ export async function handlePluginStaticFile(
 		}
 	}
 
-	return false
+	return { type: 'not_found' }
 }
 
 /**

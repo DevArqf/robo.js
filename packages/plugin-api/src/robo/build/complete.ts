@@ -13,11 +13,11 @@ import { hasDependency } from '../../core/runtime-utils.js'
 import { existsSync } from 'node:fs'
 import { cp, mkdir } from 'node:fs/promises'
 import path from 'node:path'
-import { getPluginOptions } from 'robo.js'
+import { getPluginOptions, Manifest } from 'robo.js'
 import type { BuildCompleteContext } from 'robo.js'
 import type { ConfigEnv, UserConfig } from 'vite'
 import type { PluginConfig } from '../start.js'
-import type { PluginPrefixConfig } from '../../core/plugin-routes.js'
+import type { PluginPrefixConfig, PluginPrefixMap } from '../../core/plugin-routes.js'
 
 /**
  * Build complete hook - Bundles frontend assets with Vite and copies plugin assets
@@ -104,15 +104,19 @@ async function buildVite(): Promise<void> {
 
 /**
  * Copy plugin static assets to production public directory.
- * For each plugin with a static prefix, copies public/ from node_modules
- * to .robo/public/{namespace}/ for production serving.
+ * For each plugin with a static prefix (declared in manifest or user config),
+ * copies public/ from node_modules to .robo/public/{namespace}/.
+ *
+ * Uses the same resolution order as prepare.ts:
+ * 1. User's explicit `pluginPrefixes` in server config
+ * 2. Plugin's declared `pluginPrefix` from manifest
  */
 async function copyPluginAssets(): Promise<void> {
-	const pluginConfig = getPluginOptions('@robojs/server') as PluginConfig | null
-	const pluginPrefixes = pluginConfig?.pluginPrefixes
+	// Get merged plugin prefixes (same logic as prepare.ts)
+	const pluginPrefixes = getMergedPluginPrefixes()
 
-	if (!pluginPrefixes || Object.keys(pluginPrefixes).length === 0) {
-		logger.debug('No plugin prefixes configured. Skipping plugin asset copy...')
+	if (Object.keys(pluginPrefixes).length === 0) {
+		logger.debug('No plugin prefixes found. Skipping plugin asset copy...')
 		return
 	}
 
@@ -153,6 +157,36 @@ async function copyPluginAssets(): Promise<void> {
 	if (copiedCount > 0) {
 		logger.debug(`Copied assets for ${copiedCount} plugin(s) in ${Date.now() - time}ms`)
 	}
+}
+
+/**
+ * Get merged plugin prefixes from manifest defaults and user config.
+ * This mirrors the logic in prepare.ts to ensure consistent behavior.
+ */
+function getMergedPluginPrefixes(): PluginPrefixMap {
+	const merged: PluginPrefixMap = {}
+
+	// Get plugin defaults from manifest
+	try {
+		const plugins = Manifest.plugins()
+		for (const plugin of plugins) {
+			if (plugin.prefix) {
+				// Store with leading slash for consistency
+				const prefixValue = plugin.prefix.startsWith('/') ? plugin.prefix : `/${plugin.prefix}`
+				merged[plugin.name] = prefixValue
+			}
+		}
+	} catch {
+		logger.debug('Could not load plugin prefixes from manifest')
+	}
+
+	// User config overrides plugin defaults
+	const pluginConfig = getPluginOptions('@robojs/server') as PluginConfig | null
+	if (pluginConfig?.pluginPrefixes) {
+		Object.assign(merged, pluginConfig.pluginPrefixes)
+	}
+
+	return merged
 }
 
 /**

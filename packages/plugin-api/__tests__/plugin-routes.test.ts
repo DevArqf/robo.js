@@ -267,6 +267,92 @@ describe('Global Registry Functions', () => {
 	})
 })
 
+describe('Exclusive Mode', () => {
+	let registry: PluginRouteRegistry
+
+	beforeEach(() => {
+		registry = new PluginRouteRegistry()
+	})
+
+	it('should default to exclusive: true for string prefix', () => {
+		registry.register({
+			'@robojs/mock': '/mock'
+		})
+
+		const plugin = registry.getPlugin('@robojs/mock')
+		expect(plugin?.exclusive).toBe(true)
+	})
+
+	it('should default to exclusive: true for object prefix', () => {
+		registry.register({
+			'@robojs/mock': {
+				api: '/mock-api',
+				static: '/mock-static'
+			}
+		})
+
+		const plugin = registry.getPlugin('@robojs/mock')
+		expect(plugin?.exclusive).toBe(true)
+	})
+
+	it('should support explicit exclusive: false', () => {
+		registry.register({
+			'@robojs/mock': {
+				api: '/mock',
+				exclusive: false
+			}
+		})
+
+		const plugin = registry.getPlugin('@robojs/mock')
+		expect(plugin?.exclusive).toBe(false)
+	})
+
+	it('should support explicit exclusive: true', () => {
+		registry.register({
+			'@robojs/mock': {
+				api: '/mock',
+				exclusive: true
+			}
+		})
+
+		const plugin = registry.getPlugin('@robojs/mock')
+		expect(plugin?.exclusive).toBe(true)
+	})
+
+	it('should return exclusive status via isExclusive()', () => {
+		registry.register({
+			'@robojs/mock': '/mock',
+			'@robojs/other': {
+				api: '/other',
+				exclusive: false
+			}
+		})
+
+		expect(registry.isExclusive('@robojs/mock')).toBe(true)
+		expect(registry.isExclusive('@robojs/other')).toBe(false)
+		expect(registry.isExclusive('@robojs/unknown')).toBe(true) // Default for unknown
+	})
+
+	it('should include exclusive status in getApiPrefixes()', () => {
+		registry.register({
+			'@robojs/mock': '/mock',
+			'@robojs/other': {
+				api: '/other',
+				exclusive: false
+			}
+		})
+
+		const prefixes = registry.getApiPrefixes()
+		expect(prefixes).toHaveLength(2)
+
+		const mockPrefix = prefixes.find((p) => p.plugin === '@robojs/mock')
+		expect(mockPrefix?.exclusive).toBe(true)
+
+		const otherPrefix = prefixes.find((p) => p.plugin === '@robojs/other')
+		expect(otherPrefix?.exclusive).toBe(false)
+	})
+})
+
 describe('Prefix Edge Cases', () => {
 	let registry: PluginRouteRegistry
 

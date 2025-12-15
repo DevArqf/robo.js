@@ -216,6 +216,88 @@ describe('Plugin Prefix Integration', () => {
 	})
 })
 
+describe('Exclusive vs Additive Mode', () => {
+	afterEach(() => {
+		resetPluginRouteRegistry()
+	})
+
+	describe('Exclusive Mode (default)', () => {
+		it('should default to exclusive: true', () => {
+			const registry = initPluginRoutes({
+				'@robojs/mock': '/mock'
+			})
+
+			expect(registry.isExclusive('@robojs/mock')).toBe(true)
+		})
+
+		it('should indicate exclusive mode for route registration', () => {
+			const registry = initPluginRoutes({
+				'@robojs/mock': '/mock'
+			})
+
+			const plugin = registry.getPlugin('@robojs/mock')
+			expect(plugin?.exclusive).toBe(true)
+
+			// In exclusive mode, start.ts should register routes WITH prefix only
+			// e.g., /mock/api/v10/guilds - not /api/v10/guilds
+			const prefixes = registry.getApiPrefixes()
+			expect(prefixes[0].exclusive).toBe(true)
+		})
+	})
+
+	describe('Additive Mode (exclusive: false)', () => {
+		it('should support additive mode via config', () => {
+			const registry = initPluginRoutes({
+				'@robojs/mock': {
+					api: '/mock',
+					exclusive: false
+				}
+			})
+
+			expect(registry.isExclusive('@robojs/mock')).toBe(false)
+		})
+
+		it('should indicate additive mode for route registration', () => {
+			const registry = initPluginRoutes({
+				'@robojs/mock': {
+					api: '/mock',
+					exclusive: false
+				}
+			})
+
+			const plugin = registry.getPlugin('@robojs/mock')
+			expect(plugin?.exclusive).toBe(false)
+
+			// In additive mode, start.ts should register routes BOTH ways
+			// e.g., /api/v10/guilds AND /mock/api/v10/guilds
+			const prefixes = registry.getApiPrefixes()
+			expect(prefixes[0].exclusive).toBe(false)
+		})
+	})
+
+	describe('Mixed Mode (multiple plugins)', () => {
+		it('should support different modes per plugin', () => {
+			const registry = initPluginRoutes({
+				'@robojs/mock': '/mock', // exclusive (default)
+				'@robojs/shared': {
+					api: '/shared',
+					exclusive: false // additive
+				}
+			})
+
+			expect(registry.isExclusive('@robojs/mock')).toBe(true)
+			expect(registry.isExclusive('@robojs/shared')).toBe(false)
+
+			const prefixes = registry.getApiPrefixes()
+			const mockPrefix = prefixes.find((p) => p.plugin === '@robojs/mock')
+			const sharedPrefix = prefixes.find((p) => p.plugin === '@robojs/shared')
+
+			expect(mockPrefix?.exclusive).toBe(true)
+			expect(sharedPrefix?.exclusive).toBe(false)
+		})
+	})
+})
+
 describe('Example: @robojs/mock with Prefix', () => {
 	/**
 	 * This test demonstrates the expected behavior for @robojs/mock

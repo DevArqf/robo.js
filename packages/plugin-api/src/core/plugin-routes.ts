@@ -15,15 +15,22 @@ import { logger } from './logger.js'
  * Plugin prefix configuration - supports both simple string and granular object.
  *
  * Examples:
- * - `'/mock'` - Both API and static under /mock/*
+ * - `'/mock'` - Both API and static under /mock/* (exclusive by default)
  * - `{ api: '/mock-api', static: '/mock-static' }` - Separate prefixes
  * - `{ api: '/other', static: false }` - API prefixed, static at root
+ * - `{ api: '/mock', exclusive: false }` - Both prefixed and non-prefixed routes work
  */
 export type PluginPrefixConfig =
 	| string
 	| {
 			api?: string | false
 			static?: string | false
+			/**
+			 * Whether routes are ONLY accessible via the prefix (default: true).
+			 * - `true`: Only `/mock/api/health` works, `/api/health` returns 404
+			 * - `false`: Both `/mock/api/health` and `/api/health` work
+			 */
+			exclusive?: boolean
 	  }
 
 /**
@@ -54,6 +61,8 @@ export interface ResolvedPluginRoute {
 	staticPrefix: string | null
 	/** Path to plugin's public directory (null if none exists) */
 	publicDir: string | null
+	/** Whether routes are exclusive to the prefix (default: true) */
+	exclusive: boolean
 }
 
 /**
@@ -87,7 +96,8 @@ export class PluginRouteRegistry {
 			logger.debug(`Registered plugin ${pluginName}:`, {
 				apiPrefix: resolved.apiPrefix,
 				staticPrefix: resolved.staticPrefix,
-				publicDir: resolved.publicDir
+				publicDir: resolved.publicDir,
+				exclusive: resolved.exclusive
 			})
 		}
 
@@ -153,6 +163,25 @@ export class PluginRouteRegistry {
 		return this._plugins.get(pluginName)?.publicDir ?? null
 	}
 
+	/**
+	 * Check if a plugin uses exclusive prefix mode.
+	 * Returns true if the plugin exists and has exclusive=true (default).
+	 */
+	public isExclusive(pluginName: string): boolean {
+		return this._plugins.get(pluginName)?.exclusive ?? true
+	}
+
+	/**
+	 * Get all API prefixes with their plugin info.
+	 * Used for route registration.
+	 */
+	public getApiPrefixes(): Array<{ prefix: string; plugin: string; exclusive: boolean }> {
+		return this._apiPrefixes.map((p) => ({
+			...p,
+			exclusive: this._plugins.get(p.plugin)?.exclusive ?? true
+		}))
+	}
+
 	private _matchPrefix(
 		pathname: string,
 		prefixes: Array<{ prefix: string; plugin: string }>
@@ -169,6 +198,7 @@ export class PluginRouteRegistry {
 	private _resolveConfig(pluginName: string, config: PluginPrefixConfig): ResolvedPluginRoute {
 		let apiPrefix: string | null = null
 		let staticPrefix: string | null = null
+		let exclusive = true // Default to exclusive
 
 		if (typeof config === 'string') {
 			// Simple string: both API and static use the same prefix
@@ -182,6 +212,10 @@ export class PluginRouteRegistry {
 			if (config.static !== false && config.static !== undefined) {
 				staticPrefix = this._normalizePrefix(config.static)
 			}
+			// Check for explicit exclusive setting
+			if (config.exclusive !== undefined) {
+				exclusive = config.exclusive
+			}
 		}
 
 		// Detect plugin's public directory
@@ -191,7 +225,8 @@ export class PluginRouteRegistry {
 			name: pluginName,
 			apiPrefix,
 			staticPrefix,
-			publicDir
+			publicDir,
+			exclusive
 		}
 	}
 
