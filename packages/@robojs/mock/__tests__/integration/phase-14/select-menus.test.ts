@@ -4,6 +4,7 @@
  * Tests for String, User, Role, Channel, and Mentionable select menus.
  */
 import {
+	ActionRow,
 	ActionRowBuilder,
 	ChannelSelectMenuBuilder,
 	ChannelType,
@@ -11,6 +12,7 @@ import {
 	ComponentType,
 	GatewayIntentBits,
 	MentionableSelectMenuBuilder,
+	MessageActionRowComponent,
 	RoleSelectMenuBuilder,
 	StringSelectMenuBuilder,
 	TextChannel,
@@ -19,6 +21,11 @@ import {
 import { createSession } from '../setup/control-api.js'
 import { createClientWithIntents, destroyClient } from '../setup/test-client.js'
 import { waitForReady } from '../utils/helpers.js'
+
+/** Helper to safely access action row components */
+function getActionRowComponents(component: unknown): MessageActionRowComponent[] {
+	return (component as ActionRow<MessageActionRowComponent>).components
+}
 
 describe('Phase 14: Select Menu Variations', () => {
 	let client: Client | null = null
@@ -61,7 +68,7 @@ describe('Phase 14: Select Menu Variations', () => {
 			)
 
 			const message = await channel.send({ content: 'Placeholder', components: [row] })
-			expect((message.components[0].components[0] as { placeholder?: string }).placeholder).toBe('Choose an option')
+			expect((getActionRowComponents(message.components[0])[0] as { placeholder?: string }).placeholder).toBe('Choose an option')
 		})
 
 		it('should send with min/max values', async () => {
@@ -80,7 +87,7 @@ describe('Phase 14: Select Menu Variations', () => {
 			)
 
 			const message = await channel.send({ content: 'MinMax', components: [row] })
-			const component = message.components[0].components[0] as { minValues?: number; maxValues?: number }
+			const component = getActionRowComponents(message.components[0])[0] as { minValues?: number; maxValues?: number }
 			expect(component.minValues).toBe(2)
 			expect(component.maxValues).toBe(4)
 		})
@@ -97,7 +104,7 @@ describe('Phase 14: Select Menu Variations', () => {
 			)
 
 			const message = await channel.send({ content: 'Emoji', components: [row] })
-			const component = message.components[0].components[0] as { options?: Array<{ emoji?: { name?: string } }> }
+			const component = getActionRowComponents(message.components[0])[0] as { options?: Array<{ emoji?: { name?: string } }> }
 			expect(component.options?.[0]?.emoji?.name).toBe('🍎')
 		})
 
@@ -112,7 +119,7 @@ describe('Phase 14: Select Menu Variations', () => {
 			)
 
 			const message = await channel.send({ content: 'Descriptions', components: [row] })
-			const component = message.components[0].components[0] as { options?: Array<{ description?: string }> }
+			const component = getActionRowComponents(message.components[0])[0] as { options?: Array<{ description?: string }> }
 			expect(component.options?.[0]?.description).toBe('This is option A')
 		})
 
@@ -127,7 +134,7 @@ describe('Phase 14: Select Menu Variations', () => {
 			)
 
 			const message = await channel.send({ content: 'Default', components: [row] })
-			const component = message.components[0].components[0] as { options?: Array<{ default?: boolean }> }
+			const component = getActionRowComponents(message.components[0])[0] as { options?: Array<{ default?: boolean }> }
 			expect(component.options?.[1]?.default).toBe(true)
 		})
 
@@ -155,7 +162,7 @@ describe('Phase 14: Select Menu Variations', () => {
 			)
 
 			const message = await channel.send({ content: 'Disabled', components: [row] })
-			expect(message.components[0].components[0].disabled).toBe(true)
+			expect(getActionRowComponents(message.components[0])[0].disabled).toBe(true)
 		})
 	})
 
@@ -170,7 +177,7 @@ describe('Phase 14: Select Menu Variations', () => {
 			)
 
 			const message = await channel.send({ content: 'User Select', components: [row] })
-			expect(message.components[0].components[0].type).toBe(ComponentType.UserSelect)
+			expect(getActionRowComponents(message.components[0])[0].type).toBe(ComponentType.UserSelect)
 		})
 
 		it('should send user select with default users', async () => {
@@ -179,7 +186,7 @@ describe('Phase 14: Select Menu Variations', () => {
 			)
 
 			const message = await channel.send({ content: 'Default User', components: [row] })
-			expect(message.components[0].components[0].type).toBe(ComponentType.UserSelect)
+			expect(getActionRowComponents(message.components[0])[0].type).toBe(ComponentType.UserSelect)
 		})
 	})
 
@@ -190,7 +197,7 @@ describe('Phase 14: Select Menu Variations', () => {
 			)
 
 			const message = await channel.send({ content: 'Role Select', components: [row] })
-			expect(message.components[0].components[0].type).toBe(ComponentType.RoleSelect)
+			expect(getActionRowComponents(message.components[0])[0].type).toBe(ComponentType.RoleSelect)
 		})
 
 		it('should send role select with default roles', async () => {
@@ -203,7 +210,7 @@ describe('Phase 14: Select Menu Variations', () => {
 				)
 
 				const message = await channel.send({ content: 'Default Role', components: [row] })
-				expect(message.components[0].components[0].type).toBe(ComponentType.RoleSelect)
+				expect(getActionRowComponents(message.components[0])[0].type).toBe(ComponentType.RoleSelect)
 			} finally {
 				await role.delete()
 			}
@@ -217,7 +224,7 @@ describe('Phase 14: Select Menu Variations', () => {
 			)
 
 			const message = await channel.send({ content: 'Channel Select', components: [row] })
-			expect(message.components[0].components[0].type).toBe(ComponentType.ChannelSelect)
+			expect(getActionRowComponents(message.components[0])[0].type).toBe(ComponentType.ChannelSelect)
 		})
 
 		it('should filter channel types', async () => {
@@ -228,7 +235,7 @@ describe('Phase 14: Select Menu Variations', () => {
 			)
 
 			const message = await channel.send({ content: 'Filtered', components: [row] })
-			const component = message.components[0].components[0] as { channelTypes?: number[] }
+			const component = getActionRowComponents(message.components[0])[0] as { channelTypes?: number[] }
 			expect(component.channelTypes).toContain(ChannelType.GuildText)
 		})
 
@@ -238,7 +245,7 @@ describe('Phase 14: Select Menu Variations', () => {
 			)
 
 			const message = await channel.send({ content: 'Default Channel', components: [row] })
-			expect(message.components[0].components[0].type).toBe(ComponentType.ChannelSelect)
+			expect(getActionRowComponents(message.components[0])[0].type).toBe(ComponentType.ChannelSelect)
 		})
 	})
 
@@ -249,7 +256,7 @@ describe('Phase 14: Select Menu Variations', () => {
 			)
 
 			const message = await channel.send({ content: 'Mentionable', components: [row] })
-			expect(message.components[0].components[0].type).toBe(ComponentType.MentionableSelect)
+			expect(getActionRowComponents(message.components[0])[0].type).toBe(ComponentType.MentionableSelect)
 		})
 	})
 })

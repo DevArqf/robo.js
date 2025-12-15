@@ -6,7 +6,6 @@
  */
 import {
 	Client,
-	Events,
 	ChannelType,
 	TextChannel,
 	EmbedBuilder,

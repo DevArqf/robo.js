@@ -34,9 +34,6 @@ import type {
 	MockForumTag,
 	MockForumThread,
 	MockForumPostConfig,
-	SerializedMockForumChannel,
-	SerializedMockForumTag,
-	SerializedMockForumThread,
 	// Phase 4I: Stickers
 	MockSticker,
 	MockStickerConfig,
@@ -79,7 +76,6 @@ import type {
 	// Phase 11: Stage Instances
 	MockStageInstance,
 	MockStageInstanceConfig,
-	StageInstancePrivacyLevel,
 	// Phase 11: Command Permissions
 	MockCommandPermission,
 	// Phase 14: Audit Logs
@@ -87,7 +83,7 @@ import type {
 	MockAuditLogEntryConfig
 } from '../types/index.js'
 import { AuditLogEvent, AuditLogLimits } from '../types/index.js'
-import { ComponentLimits, ComponentsV2Limits, ComponentTypeV2, PollLayoutType, ForumLayoutType, ForumSortOrderType, StickerType, StickerFormatType, StickerLimits, WebhookType, WebhookLimits, EmojiLimits, RoleLimits, BanLimits, ApplicationCommandType, CommandLimits, InviteLimits, ScheduledEventLimits, GuildScheduledEventStatus, GuildScheduledEventEntityType, AutoModLimits } from '../types/index.js'
+import { ComponentLimits, ComponentsV2Limits, ComponentTypeV2, PollLayoutType, ForumLayoutType, ForumSortOrderType, StickerType, StickerFormatType, StickerLimits, WebhookType, WebhookLimits, EmojiLimits, RoleLimits, BanLimits, ApplicationCommandType, CommandLimits, InviteLimits, ScheduledEventLimits, GuildScheduledEventStatus, GuildScheduledEventEntityType, AutoModLimits, StageInstancePrivacyLevel } from '../types/index.js'
 import { generateSnowflake } from '../utils/snowflake.js'
 import { MemoryAttachmentStorage, type StorageConfig } from '../storage/attachment-storage.js'
 

@@ -7,10 +7,10 @@
  * Note: Components V2 uses special component types and requires the
  * IsComponentsV2 message flag (1 << 15 = 32768).
  */
-import { Client, Events, ChannelType, TextChannel, MessageFlags, AttachmentBuilder } from 'discord.js'
+import { Client, ChannelType, TextChannel, MessageFlags, AttachmentBuilder } from 'discord.js'
 import { createSession, mockRestAPI } from '../setup/control-api.js'
 import { createTestClient, destroyClient } from '../setup/test-client.js'
-import { waitForReady, delay } from '../utils/helpers.js'
+import { waitForReady } from '../utils/helpers.js'
 import { MOCK_CONFIG } from '../setup/constants.js'
 
 // Components V2 types (not exported by discord.js yet in all versions)

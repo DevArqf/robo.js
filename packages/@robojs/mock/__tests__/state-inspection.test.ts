@@ -8,7 +8,6 @@
  * - POST /api/control/sessions/:id/reset
  */
 
-import { Session } from '../src/session/session.js'
 import { SessionManager } from '../src/session/manager.js'
 import { createMockGuild, createMockChannel, createMockUser } from '../src/session/state.js'
 

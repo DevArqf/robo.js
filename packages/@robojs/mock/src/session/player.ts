@@ -5,10 +5,8 @@ import type {
 	ReplayState,
 	ReplayResult,
 	ValidationResult,
-	ValidationMismatch,
 	ValidationMode,
 	ActionType,
-	SessionConfig,
 	MockGuildConfig
 } from '../types/index.js'
 import type { Session } from './session.js'
@@ -119,8 +117,9 @@ export class RecordingPlayer {
 		mockLogger.debug(`Starting replay of ${inputActions.length} actions at ${speed}x speed`)
 
 		for (let i = 0; i < inputActions.length; i++) {
-			// Check for pause
-			if (this.state.mode === 'paused') {
+			// Check for pause - mode can change asynchronously, so we need to re-read it
+			const currentMode = this.state.mode as ReplayState['mode']
+			if (currentMode === 'paused') {
 				await this.waitForResume()
 			}
 

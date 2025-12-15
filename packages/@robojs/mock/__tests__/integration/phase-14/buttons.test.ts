@@ -4,17 +4,24 @@
  * Tests for all button styles, emoji, disabled state, and row limits.
  */
 import {
+	ActionRow,
 	ActionRowBuilder,
 	ButtonBuilder,
 	ButtonStyle,
 	ChannelType,
 	Client,
 	GatewayIntentBits,
+	MessageActionRowComponent,
 	TextChannel
 } from 'discord.js'
 import { createSession } from '../setup/control-api.js'
 import { createClientWithIntents, destroyClient } from '../setup/test-client.js'
 import { waitForReady } from '../utils/helpers.js'
+
+/** Helper to safely access action row components */
+function getActionRowComponents(component: unknown): MessageActionRowComponent[] {
+	return (component as ActionRow<MessageActionRowComponent>).components
+}
 
 describe('Phase 14: Button Variations', () => {
 	let client: Client | null = null
@@ -53,7 +60,7 @@ describe('Phase 14: Button Variations', () => {
 		)
 
 		const message = await channel.send({ content: 'Primary', components: [row] })
-		expect(message.components[0].components[0].style).toBe(ButtonStyle.Primary)
+		expect(getActionRowComponents(message.components[0])[0].style).toBe(ButtonStyle.Primary)
 	})
 
 	it('should send secondary button', async () => {
@@ -62,7 +69,7 @@ describe('Phase 14: Button Variations', () => {
 		)
 
 		const message = await channel.send({ content: 'Secondary', components: [row] })
-		expect(message.components[0].components[0].style).toBe(ButtonStyle.Secondary)
+		expect(getActionRowComponents(message.components[0])[0].style).toBe(ButtonStyle.Secondary)
 	})
 
 	it('should send success button', async () => {
@@ -71,7 +78,7 @@ describe('Phase 14: Button Variations', () => {
 		)
 
 		const message = await channel.send({ content: 'Success', components: [row] })
-		expect(message.components[0].components[0].style).toBe(ButtonStyle.Success)
+		expect(getActionRowComponents(message.components[0])[0].style).toBe(ButtonStyle.Success)
 	})
 
 	it('should send danger button', async () => {
@@ -80,7 +87,7 @@ describe('Phase 14: Button Variations', () => {
 		)
 
 		const message = await channel.send({ content: 'Danger', components: [row] })
-		expect(message.components[0].components[0].style).toBe(ButtonStyle.Danger)
+		expect(getActionRowComponents(message.components[0])[0].style).toBe(ButtonStyle.Danger)
 	})
 
 	it('should send link button', async () => {
@@ -89,7 +96,7 @@ describe('Phase 14: Button Variations', () => {
 		)
 
 		const message = await channel.send({ content: 'Link', components: [row] })
-		expect(message.components[0].components[0].style).toBe(ButtonStyle.Link)
+		expect(getActionRowComponents(message.components[0])[0].style).toBe(ButtonStyle.Link)
 	})
 
 	it('should send button with emoji', async () => {
@@ -98,7 +105,7 @@ describe('Phase 14: Button Variations', () => {
 		)
 
 		const message = await channel.send({ content: 'Emoji', components: [row] })
-		expect(message.components[0].components[0].emoji?.name).toBe('👍')
+		expect(getActionRowComponents(message.components[0])[0].emoji?.name).toBe('👍')
 	})
 
 	it('should send button with custom emoji', async () => {
@@ -117,7 +124,7 @@ describe('Phase 14: Button Variations', () => {
 			)
 
 			const message = await channel.send({ content: 'Custom Emoji', components: [row] })
-			expect(message.components[0].components[0].emoji?.id).toBe(emoji.id)
+			expect(getActionRowComponents(message.components[0])[0].emoji?.id).toBe(emoji.id)
 		} finally {
 			await emoji.delete()
 		}
@@ -129,7 +136,7 @@ describe('Phase 14: Button Variations', () => {
 		)
 
 		const message = await channel.send({ content: 'Disabled', components: [row] })
-		expect(message.components[0].components[0].disabled).toBe(true)
+		expect(getActionRowComponents(message.components[0])[0].disabled).toBe(true)
 	})
 
 	it('should send multiple buttons in row', async () => {
@@ -142,7 +149,7 @@ describe('Phase 14: Button Variations', () => {
 		)
 
 		const message = await channel.send({ content: 'Multiple', components: [row] })
-		expect(message.components[0].components.length).toBe(5)
+		expect(getActionRowComponents(message.components[0]).length).toBe(5)
 	})
 
 	it('should enforce max 5 buttons per row', async () => {

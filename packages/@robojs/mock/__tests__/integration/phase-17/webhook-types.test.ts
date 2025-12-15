@@ -5,9 +5,9 @@
  * isUserCreated, isApplicationCreated) and properties (owner, token, avatar, url).
  */
 import { ChannelType, Client, GatewayIntentBits, TextChannel, WebhookType } from 'discord.js'
-import { createSession, controlAPI } from '../setup/control-api.js'
+import { createSession } from '../setup/control-api.js'
 import { createClientWithIntents, destroyClient } from '../setup/test-client.js'
-import { generateSnowflake, waitForReady } from '../utils/helpers.js'
+import { waitForReady } from '../utils/helpers.js'
 
 describe('Phase 17: Webhook Types & Properties', () => {
 	let client: Client | null = null

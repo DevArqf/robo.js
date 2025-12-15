@@ -333,7 +333,7 @@ export class Session implements ISession {
 		author?: Partial<MockUser> & { id?: string; username?: string }
 		guildId?: string
 		embeds?: unknown[]
-		attachments?: unknown[]
+		attachments?: MockAttachment[]
 		components?: unknown[]
 		/** User IDs that are mentioned in this message */
 		mentions?: string[]

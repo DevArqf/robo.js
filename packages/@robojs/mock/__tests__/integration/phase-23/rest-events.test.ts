@@ -3,7 +3,7 @@
  *
  * Tests for REST client events including rate limiting and response events.
  */
-import { Client, Events, ChannelType, TextChannel, RESTEvents, GatewayIntentBits } from 'discord.js'
+import { Client, ChannelType, TextChannel, RESTEvents, GatewayIntentBits } from 'discord.js'
 import { createSession, setRateLimitSimulation } from '../setup/control-api.js'
 import { createClientWithIntents, destroyClient } from '../setup/test-client.js'
 import { waitForReady } from '../utils/helpers.js'

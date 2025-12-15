@@ -8,8 +8,7 @@ import {
 	Client,
 	GatewayIntentBits,
 	TextChannel,
-	ThreadAutoArchiveDuration,
-	ThreadChannel
+	ThreadAutoArchiveDuration
 } from 'discord.js'
 import { createSession } from '../setup/control-api.js'
 import { createClientWithIntents, destroyClient } from '../setup/test-client.js'

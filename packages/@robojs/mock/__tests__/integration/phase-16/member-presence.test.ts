@@ -70,7 +70,7 @@ describe('Phase 16: Member Presence', () => {
       // Set up presence update listener
       const presencePromise = new Promise<Presence>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('Timeout waiting for presenceUpdate')), 5000)
-        client!.once(Events.PresenceUpdate, (oldPresence, newPresence) => {
+        client!.once(Events.PresenceUpdate, (_oldPresence, newPresence) => {
           clearTimeout(timeout)
           resolve(newPresence)
         })
@@ -104,7 +104,7 @@ describe('Phase 16: Member Presence', () => {
 
       const presencePromise = new Promise<Presence>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('Timeout waiting for presenceUpdate')), 5000)
-        client!.once(Events.PresenceUpdate, (oldPresence, newPresence) => {
+        client!.once(Events.PresenceUpdate, (_oldPresence, newPresence) => {
           clearTimeout(timeout)
           resolve(newPresence)
         })
@@ -144,7 +144,7 @@ describe('Phase 16: Member Presence', () => {
 
       const presencePromise = new Promise<Presence>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('Timeout waiting for presenceUpdate')), 5000)
-        client!.once(Events.PresenceUpdate, (oldPresence, newPresence) => {
+        client!.once(Events.PresenceUpdate, (_oldPresence, newPresence) => {
           clearTimeout(timeout)
           resolve(newPresence)
         })
@@ -185,7 +185,7 @@ describe('Phase 16: Member Presence', () => {
 
       const presencePromise = new Promise<Presence>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('Timeout waiting for presenceUpdate')), 5000)
-        client!.once(Events.PresenceUpdate, (oldPresence, newPresence) => {
+        client!.once(Events.PresenceUpdate, (_oldPresence, newPresence) => {
           clearTimeout(timeout)
           resolve(newPresence)
         })
@@ -222,7 +222,7 @@ describe('Phase 16: Member Presence', () => {
 
       const presencePromise = new Promise<Presence>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('Timeout waiting for presenceUpdate')), 5000)
-        client!.once(Events.PresenceUpdate, (oldPresence, newPresence) => {
+        client!.once(Events.PresenceUpdate, (_oldPresence, newPresence) => {
           clearTimeout(timeout)
           resolve(newPresence)
         })
@@ -256,7 +256,7 @@ describe('Phase 16: Member Presence', () => {
 
       const presencePromise = new Promise<Presence>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('Timeout waiting for presenceUpdate')), 5000)
-        client!.once(Events.PresenceUpdate, (oldPresence, newPresence) => {
+        client!.once(Events.PresenceUpdate, (_oldPresence, newPresence) => {
           clearTimeout(timeout)
           resolve(newPresence)
         })
@@ -292,7 +292,7 @@ describe('Phase 16: Member Presence', () => {
 
       const presencePromise = new Promise<Presence>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('Timeout waiting for presenceUpdate')), 5000)
-        client!.once(Events.PresenceUpdate, (oldPresence, newPresence) => {
+        client!.once(Events.PresenceUpdate, (_oldPresence, newPresence) => {
           clearTimeout(timeout)
           resolve(newPresence)
         })

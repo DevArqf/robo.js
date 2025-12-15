@@ -62,8 +62,8 @@ describe('Phase 13: Application & Bot User', () => {
 		it('should have application owner', async () => {
 			const app = await client!.application!.fetch()
 
-			// Owner could be user or team
-			expect(app.owner || app.team).toBeDefined()
+			// Owner is defined (can be User or Team)
+			expect(app.owner).toBeDefined()
 		})
 
 		it('should have application flags', async () => {

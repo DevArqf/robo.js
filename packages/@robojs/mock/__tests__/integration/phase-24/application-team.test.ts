@@ -32,7 +32,7 @@ describe('Phase 24: Application Team', () => {
 		client = null
 	})
 
-	it('should fetch application with team property', async () => {
+	it('should fetch application with owner property', async () => {
 		const app = await client!.application!.fetch()
 
 		// Application should be fetched successfully
@@ -40,59 +40,32 @@ describe('Phase 24: Application Team', () => {
 		expect(app.id).toBeDefined()
 		expect(app.name).toBeDefined()
 
-		// Team can be null for non-team apps (which is our default case)
-		// The property should exist (even if null)
-		expect('team' in app || app.team === null || app.team === undefined).toBe(true)
+		// Owner should be defined (can be User or Team)
+		expect(app.owner).toBeDefined()
 	})
 
-	it('should have team properties when team exists', async () => {
+	it('should have owner properties', async () => {
 		const app = await client!.application!.fetch()
 
-		// If team exists, verify its properties
-		if (app.team) {
-			expect(app.team.id).toBeDefined()
-			expect(app.team.name).toBeDefined()
-			expect(app.team.ownerId).toBeDefined()
-			expect(app.team.members).toBeDefined()
-		} else {
-			// Non-team apps have null or undefined team - this is valid
-			expect(app.team == null).toBe(true)
+		// Owner can be a User or Team - verify basic properties
+		if (app.owner) {
+			expect(app.owner.id).toBeDefined()
 		}
 	})
 
-	it('should have team members collection when team exists', async () => {
+	it('should have application flags', async () => {
 		const app = await client!.application!.fetch()
 
-		if (app.team) {
-			expect(app.team.members.size).toBeGreaterThan(0)
-
-			const member = app.team.members.first()
-			if (member) {
-				expect(member.user).toBeDefined()
-				expect(member.membershipState).toBeDefined()
-				expect(member.role).toBeDefined()
-			}
-		} else {
-			// Non-team apps - verify owner exists instead
-			expect(app.owner).toBeDefined()
-		}
+		// Application flags should be accessible
+		expect(app.flags).toBeDefined()
 	})
 
-	it('should have team iconURL method when team exists', async () => {
+	it('should have application iconURL method', async () => {
 		const app = await client!.application!.fetch()
 
-		if (app.team) {
-			// Team iconURL should be callable
-			const url = app.team.iconURL()
-			// URL may be null if no icon set
-			expect(url === null || typeof url === 'string').toBe(true)
-
-			if (app.team.icon && url) {
-				expect(url).toContain(app.team.icon)
-			}
-		} else {
-			// For non-team apps, owner should exist
-			expect(app.owner).toBeDefined()
-		}
+		// iconURL should be callable
+		const url = app.iconURL()
+		// URL may be null if no icon set
+		expect(url === null || typeof url === 'string').toBe(true)
 	})
 })

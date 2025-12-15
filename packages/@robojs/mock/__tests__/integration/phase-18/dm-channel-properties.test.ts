@@ -5,7 +5,7 @@
  * partial, type, and message operations.
  */
 import { ChannelType, Client, DMChannel, GatewayIntentBits } from 'discord.js'
-import { createSession, mockRestAPI } from '../setup/control-api.js'
+import { createSession } from '../setup/control-api.js'
 import { createTestClient, destroyClient } from '../setup/test-client.js'
 import { generateSnowflake, waitForReady } from '../utils/helpers.js'
 import { MOCK_CONFIG } from '../setup/constants.js'

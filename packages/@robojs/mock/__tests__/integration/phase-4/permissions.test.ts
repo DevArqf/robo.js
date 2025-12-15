@@ -4,11 +4,10 @@
  * Tests for channel permission checks, administrator bypass, owner bypass,
  * computed permissions, and role hierarchy enforcement.
  */
-import { ChannelType, Client, Events, PermissionFlagsBits, TextChannel } from 'discord.js'
+import { ChannelType, Client, PermissionFlagsBits, TextChannel } from 'discord.js'
 import { controlAPI, createSession } from '../setup/control-api.js'
 import { createTestClient, destroyClient } from '../setup/test-client.js'
 import { waitForReady } from '../utils/helpers.js'
-import { MOCK_CONFIG } from '../setup/constants.js'
 
 describe('Phase 4I-4L: Permission Enforcement', () => {
 	let client: Client | null = null

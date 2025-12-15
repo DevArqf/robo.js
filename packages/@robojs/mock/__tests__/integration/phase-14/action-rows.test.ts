@@ -4,6 +4,7 @@
  * Tests for action row limits and component mixing.
  */
 import {
+	ActionRow,
 	ActionRowBuilder,
 	ButtonBuilder,
 	ButtonStyle,
@@ -11,12 +12,18 @@ import {
 	Client,
 	ComponentType,
 	GatewayIntentBits,
+	MessageActionRowComponent,
 	StringSelectMenuBuilder,
 	TextChannel
 } from 'discord.js'
 import { createSession } from '../setup/control-api.js'
 import { createClientWithIntents, destroyClient } from '../setup/test-client.js'
 import { waitForReady } from '../utils/helpers.js'
+
+/** Helper to safely access action row components */
+function getActionRowComponents(component: unknown): MessageActionRowComponent[] {
+	return (component as ActionRow<MessageActionRowComponent>).components
+}
 
 describe('Phase 14: Multiple Action Rows', () => {
 	let client: Client | null = null
@@ -90,8 +97,8 @@ describe('Phase 14: Multiple Action Rows', () => {
 			components: [buttonRow, selectRow]
 		})
 
-		expect(message.components[0].components[0].type).toBe(ComponentType.Button)
-		expect(message.components[1].components[0].type).toBe(ComponentType.StringSelect)
+		expect(getActionRowComponents(message.components[0])[0].type).toBe(ComponentType.Button)
+		expect(getActionRowComponents(message.components[1])[0].type).toBe(ComponentType.StringSelect)
 	})
 
 	it('should validate component type consistency in row', () => {

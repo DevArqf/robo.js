@@ -4,7 +4,7 @@
  * Tests for replaying previously recorded sessions, including
  * speed control, validation, and timing preservation.
  */
-import { Client, Events, ChannelType, TextChannel, Message } from 'discord.js'
+import { Client, ChannelType, TextChannel, Message } from 'discord.js'
 import {
 	createSession,
 	getSessionRecording,

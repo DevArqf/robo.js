@@ -13,7 +13,7 @@ import {
 	serializeMockMessage,
 	serializeSessionState
 } from '../src/session/state.js'
-import type { MockMessage, MockMessageConfig } from '../src/types/index.js'
+import type { MockMessageConfig } from '../src/types/index.js'
 
 describe('MockServerState', () => {
 	describe('instantiation', () => {

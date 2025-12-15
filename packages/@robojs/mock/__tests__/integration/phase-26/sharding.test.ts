@@ -10,7 +10,7 @@
 import { Client, Events, GatewayIntentBits } from 'discord.js'
 import { createSession, disconnectSession } from '../setup/control-api.js'
 import { destroyClient } from '../setup/test-client.js'
-import { waitForReady, delay } from '../utils/helpers.js'
+import { waitForReady } from '../utils/helpers.js'
 import { MOCK_CONFIG, GATEWAY_CLOSE_CODES } from '../setup/constants.js'
 
 describe('Phase 26: Sharding', () => {

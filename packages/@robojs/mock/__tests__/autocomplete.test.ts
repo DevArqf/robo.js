@@ -3,7 +3,7 @@
  * Tests autocomplete dispatch and response validation
  */
 import { GatewayOpcodes, InteractionType, ApplicationCommandType } from 'discord-api-types/v10'
-import { buildAutocompleteInteractionPayload, mockUserToAPIUser } from '../src/discord/payloads.js'
+import { buildAutocompleteInteractionPayload } from '../src/discord/payloads.js'
 import {
 	createSessionState,
 	createMockUser,
@@ -12,7 +12,7 @@ import {
 import { Session } from '../src/session/session.js'
 import { generateSnowflake } from '../src/utils/snowflake.js'
 import { generateInteractionToken } from '../src/utils/id.js'
-import type { MockInteraction, MockUser, SessionState } from '../src/types/index.js'
+import type { MockInteraction, SessionState } from '../src/types/index.js'
 
 describe('Phase 3F: Autocomplete Interactions', () => {
 	describe('buildAutocompleteInteractionPayload', () => {

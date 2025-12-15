@@ -4,7 +4,7 @@
  * Tests for inspecting the mock server's internal state including
  * guilds, channels, messages, users, and session status.
  */
-import { Client, Events, ChannelType, TextChannel } from 'discord.js'
+import { Client, ChannelType, TextChannel } from 'discord.js'
 import {
 	createSession,
 	getSessionStatus,

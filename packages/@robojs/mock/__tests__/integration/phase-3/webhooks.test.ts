@@ -5,7 +5,6 @@
  */
 import {
 	Client,
-	DiscordAPIError,
 	EmbedBuilder,
 	GatewayIntentBits,
 	type TextChannel,

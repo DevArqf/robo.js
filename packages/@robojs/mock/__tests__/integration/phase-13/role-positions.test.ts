@@ -4,7 +4,7 @@
  * Tests for role position comparison including comparePositionTo,
  * highest role, hoist, and mentionable properties.
  */
-import { ChannelType, Client, GatewayIntentBits, Guild, GuildMember } from 'discord.js'
+import { ChannelType, Client, GatewayIntentBits, Guild } from 'discord.js'
 import { createSession, dispatchEvent } from '../setup/control-api.js'
 import { createClientWithIntents, destroyClient } from '../setup/test-client.js'
 import { generateSnowflake, waitForReady } from '../utils/helpers.js'

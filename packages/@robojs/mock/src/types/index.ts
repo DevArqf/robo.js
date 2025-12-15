@@ -1682,6 +1682,14 @@ export interface MockMessageConfig {
 		channel_id?: Snowflake
 		guild_id?: Snowflake
 	}
+	// Phase 20: Message position and subscription data
+	position?: number
+	roleSubscriptionData?: {
+		roleSubscriptionListingId: string
+		tierName: string
+		totalMonthsSubscribed: number
+		isRenewal: boolean
+	}
 }
 
 /**

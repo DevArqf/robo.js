@@ -4,10 +4,10 @@
  * Tests for sending messages with file attachments, handling
  * attachment metadata, CDN URLs, and attachment operations.
  */
-import { Client, Events, ChannelType, TextChannel, AttachmentBuilder, EmbedBuilder } from 'discord.js'
+import { Client, ChannelType, TextChannel, AttachmentBuilder, EmbedBuilder } from 'discord.js'
 import { createSession } from '../setup/control-api.js'
 import { createTestClient, destroyClient } from '../setup/test-client.js'
-import { waitForReady, delay } from '../utils/helpers.js'
+import { waitForReady } from '../utils/helpers.js'
 import { MOCK_CONFIG } from '../setup/constants.js'
 
 // 1x1 transparent PNG for image tests

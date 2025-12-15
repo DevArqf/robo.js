@@ -7,8 +7,7 @@ import {
 	MockServerState,
 	createMockGuild,
 	createMockChannel,
-	createMockForumChannel,
-	createMockUser
+	createMockForumChannel
 } from '../src/session/state.js'
 import {
 	mockForumChannelToAPIChannel,
@@ -16,7 +15,7 @@ import {
 	mockForumTagToAPIForumTag,
 	mockChannelToAPIChannel
 } from '../src/discord/payloads.js'
-import type { MockForumChannel, MockForumThread, MockForumTag } from '../src/types/index.js'
+import type { MockForumTag } from '../src/types/index.js'
 import { ForumSortOrderType, ForumLayoutType } from '../src/types/index.js'
 
 describe('Phase 4H: Forum & Media Channels', () => {

@@ -8,7 +8,6 @@ import {
 	ButtonBuilder,
 	ButtonStyle,
 	Client,
-	DiscordAPIError,
 	EmbedBuilder,
 	Events,
 	GatewayIntentBits,

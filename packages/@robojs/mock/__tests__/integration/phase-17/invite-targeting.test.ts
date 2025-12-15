@@ -14,9 +14,9 @@ import {
 	TextChannel,
 	VoiceChannel
 } from 'discord.js'
-import { createSession, dispatchEvent } from '../setup/control-api.js'
+import { createSession } from '../setup/control-api.js'
 import { createClientWithIntents, destroyClient } from '../setup/test-client.js'
-import { generateSnowflake, waitForReady, delay } from '../utils/helpers.js'
+import { waitForReady } from '../utils/helpers.js'
 
 describe('Phase 17: Invite Targeting', () => {
 	let client: Client | null = null

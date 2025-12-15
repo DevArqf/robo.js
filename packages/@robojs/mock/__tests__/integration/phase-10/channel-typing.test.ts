@@ -6,7 +6,7 @@
 import { ChannelType, Client, GatewayIntentBits, TextChannel } from 'discord.js'
 import { createSession, dispatchEvent } from '../setup/control-api.js'
 import { createClientWithIntents, destroyClient } from '../setup/test-client.js'
-import { generateSnowflake, waitForReady } from '../utils/helpers.js'
+import { waitForReady } from '../utils/helpers.js'
 
 describe('Phase 10: Channel.sendTyping()', () => {
 	let client: Client | null = null

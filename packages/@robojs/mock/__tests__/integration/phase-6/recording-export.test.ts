@@ -4,7 +4,7 @@
  * Tests for exporting session recordings that capture all events,
  * REST calls, and metadata during a test session.
  */
-import { Client, Events, ChannelType, TextChannel } from 'discord.js'
+import { Client, ChannelType, TextChannel } from 'discord.js'
 import { createSession, getSessionRecording, getSessionActions, type SessionRecording } from '../setup/control-api.js'
 import { createTestClient, destroyClient } from '../setup/test-client.js'
 import { waitForReady, delay } from '../utils/helpers.js'

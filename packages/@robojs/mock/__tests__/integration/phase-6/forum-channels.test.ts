@@ -6,7 +6,6 @@
  */
 import {
 	Client,
-	Events,
 	ChannelType,
 	ForumChannel,
 	ThreadAutoArchiveDuration,
@@ -14,9 +13,9 @@ import {
 	ForumLayoutType,
 	ChannelFlags
 } from 'discord.js'
-import { createSession, mockRestAPI } from '../setup/control-api.js'
+import { createSession } from '../setup/control-api.js'
 import { createTestClient, destroyClient } from '../setup/test-client.js'
-import { waitForReady, delay, generateSnowflake } from '../utils/helpers.js'
+import { waitForReady, generateSnowflake, delay } from '../utils/helpers.js'
 
 describe('Phase 6H: Forum Channels Deep', () => {
 	let client: Client | null = null

@@ -1,4 +1,4 @@
-import { Client, Events } from 'discord.js'
+import { Client } from 'discord.js'
 import { createSession } from '../setup/control-api.js'
 import { createTestClient, destroyClient } from '../setup/test-client.js'
 import { waitForReady } from '../utils/helpers.js'

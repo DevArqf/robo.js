@@ -11,7 +11,7 @@ import {
 	generateSnowflake
 } from '../src/index.js'
 import { Session } from '../src/session/session.js'
-import type { MockInteraction, MockMessage } from '../src/types/index.js'
+import type { MockInteraction } from '../src/types/index.js'
 
 describe('Context Menu Interactions (Phase 3G)', () => {
 	describe('buildContextMenuInteractionPayload', () => {

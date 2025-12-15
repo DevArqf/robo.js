@@ -5,7 +5,7 @@
  * and guild webhooks fetching.
  */
 import { ChannelType, Client, GatewayIntentBits, Guild, TextChannel } from 'discord.js'
-import { createSession, controlAPI, mockRestAPI } from '../setup/control-api.js'
+import { createSession, mockRestAPI } from '../setup/control-api.js'
 import { createClientWithIntents, destroyClient } from '../setup/test-client.js'
 import { waitForReady } from '../utils/helpers.js'
 

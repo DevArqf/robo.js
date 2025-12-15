@@ -3,7 +3,7 @@
  *
  * Tests for the message.call property on call messages in DM channels.
  */
-import { ChannelType, Client, DMChannel, GatewayIntentBits, MessageType } from 'discord.js'
+import { Client, DMChannel, GatewayIntentBits, MessageType } from 'discord.js'
 import { createSession, dispatchEvent } from '../setup/control-api.js'
 import { MOCK_CONFIG } from '../setup/constants.js'
 import { createTestClient, destroyClient } from '../setup/test-client.js'

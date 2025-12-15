@@ -3,7 +3,7 @@
  * Tests the DM channel creation endpoint and related functionality
  */
 import { ChannelType } from 'discord-api-types/v10'
-import { mockDMChannelToAPIDMChannel, mockUserToAPIUser } from '../src/discord/payloads.js'
+import { mockDMChannelToAPIDMChannel } from '../src/discord/payloads.js'
 import {
 	createSessionState,
 	createMockUser,

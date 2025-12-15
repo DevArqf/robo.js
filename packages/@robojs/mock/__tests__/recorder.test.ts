@@ -4,7 +4,6 @@
  */
 
 import { ActionRecorder } from '../src/session/recorder.js'
-import type { ActionType } from '../src/types/index.js'
 
 describe('ActionRecorder', () => {
 	describe('instantiation', () => {

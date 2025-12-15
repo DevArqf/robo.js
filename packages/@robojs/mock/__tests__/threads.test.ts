@@ -24,8 +24,6 @@ import {
 } from '../src/discord/payloads.js'
 import type {
 	MockThread,
-	MockThreadConfig,
-	MockThreadMetadata,
 	SessionState
 } from '../src/types/index.js'
 
