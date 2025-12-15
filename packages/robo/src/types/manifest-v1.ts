@@ -114,6 +114,8 @@ export interface PluginInfo {
 	routes: string[]
 	/** Hook types this plugin provides */
 	hooks: string[]
+	/** Plugin-declared server prefix (without leading slash, e.g., 'mock') */
+	prefix?: string
 }
 
 /**

@@ -6,8 +6,10 @@
  */
 
 import fs from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { pathToFileURL } from 'node:url'
 import { logger } from '../../core/logger.js'
 import { packageJson } from './utils.js'
 import { generateEnvMetadata, extractEnvVarsFromConfig } from './env-manifest.js'
@@ -229,17 +231,67 @@ export class ManifestGenerator {
 				this.hookEntries[hookType].some((h) => h.plugin === name)
 			)
 
+			// Extract prefix from plugin's server config (if any)
+			const prefix = await this.extractPluginPrefix(name)
+
 			registry[name] = {
 				name,
 				version: data.version ?? '0.0.0',
 				path: data.path ?? `node_modules/${name}`,
 				namespace: data.namespace ?? this.inferNamespace(name),
 				routes: pluginRoutes,
-				hooks: pluginHooks
+				hooks: pluginHooks,
+				...(prefix && { prefix })
 			}
 		}
 
 		await this.writeJson('plugins.json', registry)
+	}
+
+	/**
+	 * Extract prefix from a plugin's server config.
+	 * Checks multiple locations where plugins may store their @robojs/server config.
+	 *
+	 * @param pluginName - The plugin package name
+	 * @returns The prefix (normalized, without leading slash) or undefined
+	 */
+	private async extractPluginPrefix(pluginName: string): Promise<string | undefined> {
+		const pluginPath = path.join(process.cwd(), 'node_modules', pluginName)
+
+		// Possible locations for the server config (in order of preference)
+		const configPaths = [
+			// Built plugin config (from robo build plugin)
+			path.join(pluginPath, '.robo', 'config', 'config', 'plugins', 'robojs', 'server.mjs'),
+			path.join(pluginPath, '.robo', 'config', 'config', 'plugins', 'robojs', 'server.js'),
+			// Alternative build location
+			path.join(pluginPath, '.robo', 'build', 'config', 'plugins', 'robojs', 'server.js'),
+			// Source files (development/monorepo)
+			path.join(pluginPath, 'config', 'plugins', 'robojs', 'server.mjs'),
+			path.join(pluginPath, 'config', 'plugins', 'robojs', 'server.js'),
+			path.join(pluginPath, 'config', 'plugins', 'robojs', 'server.ts')
+		]
+
+		for (const configPath of configPaths) {
+			if (!existsSync(configPath)) {
+				continue
+			}
+
+			try {
+				// Dynamic import of the config file
+				const configUrl = pathToFileURL(configPath).href
+				const configModule = await import(configUrl)
+				const serverConfig = configModule.default ?? configModule
+
+				if (serverConfig?.prefix) {
+					// Normalize: remove leading slash if present
+					return serverConfig.prefix.replace(/^\//, '')
+				}
+			} catch (error) {
+				logger.debug(`Failed to load server config for ${pluginName}:`, error)
+			}
+		}
+
+		return undefined
 	}
 
 	/**
