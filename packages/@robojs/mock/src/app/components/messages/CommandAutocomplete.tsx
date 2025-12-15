@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { CommandOptionInput } from './CommandOptionInput'
 import { useSession } from '../../hooks/useSession'
-import type { StageApplicationCommand, StageApplicationCommandOption } from '../../types/stage'
+import { DropdownContainer, ListItem, ListItemHeader } from '../base'
+import type { StageApplicationCommand } from '../../types/stage'
 import styles from './CommandAutocomplete.module.css'
 
 interface CommandAutocompleteProps {
@@ -21,9 +22,8 @@ export function CommandAutocomplete({ search, commands, onSelect, onClose }: Com
 	// Filter commands by search
 	const filteredCommands = useMemo(() => {
 		const searchLower = search.toLowerCase()
-		return commands.filter(cmd =>
-			cmd.name.toLowerCase().includes(searchLower) ||
-			cmd.description.toLowerCase().includes(searchLower)
+		return commands.filter(
+			(cmd) => cmd.name.toLowerCase().includes(searchLower) || cmd.description.toLowerCase().includes(searchLower)
 		)
 	}, [commands, search])
 
@@ -36,14 +36,14 @@ export function CommandAutocomplete({ search, commands, onSelect, onClose }: Com
 	const commandOptions = useMemo(() => {
 		if (!selectedCommand?.options) return []
 		// Filter out subcommand and subcommand groups (types 1 and 2)
-		return selectedCommand.options.filter(opt => opt.type > 2)
+		return selectedCommand.options.filter((opt) => opt.type > 2)
 	}, [selectedCommand])
 
 	// Check if all required options are filled
 	const canSubmit = useMemo(() => {
 		if (!selectedCommand) return false
-		const requiredOptions = commandOptions.filter(opt => opt.required)
-		return requiredOptions.every(opt => {
+		const requiredOptions = commandOptions.filter((opt) => opt.required)
+		return requiredOptions.every((opt) => {
 			const value = optionValues[opt.name]
 			return value !== undefined && value !== ''
 		})
@@ -62,11 +62,11 @@ export function CommandAutocomplete({ search, commands, onSelect, onClose }: Com
 				}
 				if (e.key === 'Tab' && !e.shiftKey) {
 					e.preventDefault()
-					setFocusedOptionIndex(i => Math.min(i + 1, commandOptions.length - 1))
+					setFocusedOptionIndex((i) => Math.min(i + 1, commandOptions.length - 1))
 				}
 				if (e.key === 'Tab' && e.shiftKey) {
 					e.preventDefault()
-					setFocusedOptionIndex(i => Math.max(i - 1, 0))
+					setFocusedOptionIndex((i) => Math.max(i - 1, 0))
 				}
 				if (e.key === 'Enter' && canSubmit) {
 					e.preventDefault()
@@ -78,11 +78,11 @@ export function CommandAutocomplete({ search, commands, onSelect, onClose }: Com
 			// In command list mode
 			if (e.key === 'ArrowDown') {
 				e.preventDefault()
-				setHighlightedIndex(i => Math.min(i + 1, filteredCommands.length - 1))
+				setHighlightedIndex((i) => Math.min(i + 1, filteredCommands.length - 1))
 			}
 			if (e.key === 'ArrowUp') {
 				e.preventDefault()
-				setHighlightedIndex(i => Math.max(i - 1, 0))
+				setHighlightedIndex((i) => Math.max(i - 1, 0))
 			}
 			if (e.key === 'Enter') {
 				e.preventDefault()
@@ -104,19 +104,22 @@ export function CommandAutocomplete({ search, commands, onSelect, onClose }: Com
 		return () => document.removeEventListener('keydown', handler)
 	}, [filteredCommands, highlightedIndex, selectedCommand, commandOptions, canSubmit, optionValues, onSelect])
 
-	const handleCommandClick = useCallback((cmd: StageApplicationCommand) => {
-		// Check if command has options (excluding subcommands)
-		const editableOptions = cmd.options?.filter(opt => opt.type > 2) || []
-		if (editableOptions.length > 0) {
-			setSelectedCommand(cmd)
-			setFocusedOptionIndex(0)
-		} else {
-			onSelect(cmd, {})
-		}
-	}, [onSelect])
+	const handleCommandClick = useCallback(
+		(cmd: StageApplicationCommand) => {
+			// Check if command has options (excluding subcommands)
+			const editableOptions = cmd.options?.filter((opt) => opt.type > 2) || []
+			if (editableOptions.length > 0) {
+				setSelectedCommand(cmd)
+				setFocusedOptionIndex(0)
+			} else {
+				onSelect(cmd, {})
+			}
+		},
+		[onSelect]
+	)
 
 	const handleOptionChange = useCallback((optionName: string, value: unknown) => {
-		setOptionValues(prev => ({ ...prev, [optionName]: value }))
+		setOptionValues((prev) => ({ ...prev, [optionName]: value }))
 	}, [])
 
 	const handleSubmit = useCallback(() => {
@@ -134,17 +137,13 @@ export function CommandAutocomplete({ search, commands, onSelect, onClose }: Com
 	// Render option form for selected command
 	if (selectedCommand) {
 		return (
-			<div className={styles.container}>
+			<DropdownContainer className={styles.container} role="dialog">
 				<div className={styles.commandHeader}>
 					<button className={styles.backButton} onClick={handleBack} type="button">
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-							<path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
-						</svg>
+						<BackIcon />
 					</button>
 					<div className={styles.slashIcon}>
-						<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-							<path d="M6 14l1.5-2.9L6 8h1.8l.9 1.8.9-1.8H11l-1.5 2.9L11 14H9.2l-.9-1.8-.9 1.8H6zM16.1 14h-2.1l3-6h2.1l-3 6z" />
-						</svg>
+						<SlashIcon />
 					</div>
 					<span className={styles.commandName}>{selectedCommand.name}</span>
 					<span className={styles.commandDescription}>{selectedCommand.description}</span>
@@ -174,41 +173,52 @@ export function CommandAutocomplete({ search, commands, onSelect, onClose }: Com
 						Submit
 					</button>
 				</div>
-			</div>
+			</DropdownContainer>
 		)
 	}
 
 	// Render command list
 	return (
-		<div className={styles.container}>
-			<div className={styles.header}>
-				<span className={styles.headerText}>Commands</span>
-			</div>
+		<DropdownContainer className={styles.container} maxHeight={400} role="listbox">
+			<ListItemHeader className={styles.header}>Commands</ListItemHeader>
 
 			<div className={styles.commandList}>
 				{filteredCommands.length === 0 ? (
 					<div className={styles.empty}>No commands found</div>
 				) : (
 					filteredCommands.map((cmd, index) => (
-						<div
+						<ListItem
 							key={cmd.id}
-							className={`${styles.command} ${index === highlightedIndex ? styles.highlighted : ''}`}
+							label={cmd.name}
+							description={cmd.description}
+							isHighlighted={index === highlightedIndex}
 							onClick={() => handleCommandClick(cmd)}
 							onMouseEnter={() => setHighlightedIndex(index)}
-						>
-							<div className={styles.commandIcon}>
-								<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-									<path d="M6 14l1.5-2.9L6 8h1.8l.9 1.8.9-1.8H11l-1.5 2.9L11 14H9.2l-.9-1.8-.9 1.8H6zM16.1 14h-2.1l3-6h2.1l-3 6z" />
-								</svg>
-							</div>
-							<div className={styles.commandInfo}>
-								<div className={styles.commandNameItem}>{cmd.name}</div>
-								<div className={styles.commandDescriptionItem}>{cmd.description}</div>
-							</div>
-						</div>
+							icon={
+								<div className={styles.commandIcon}>
+									<SlashIcon />
+								</div>
+							}
+						/>
 					))
 				)}
 			</div>
-		</div>
+		</DropdownContainer>
+	)
+}
+
+function SlashIcon() {
+	return (
+		<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M6 14l1.5-2.9L6 8h1.8l.9 1.8.9-1.8H11l-1.5 2.9L11 14H9.2l-.9-1.8-.9 1.8H6zM16.1 14h-2.1l3-6h2.1l-3 6z" />
+		</svg>
+	)
+}
+
+function BackIcon() {
+	return (
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+		</svg>
 	)
 }

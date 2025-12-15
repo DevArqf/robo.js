@@ -85,7 +85,7 @@
 	font-size: 12px;
 	cursor: pointer;
 	padding: 2px 8px;
-	border-radius: 3px;
+	border-radius: var(--radius-xs);
 }
 
 .retryButton {

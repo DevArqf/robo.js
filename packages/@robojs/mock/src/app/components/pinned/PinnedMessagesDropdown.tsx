@@ -1,4 +1,5 @@
 import PinIcon from '../icons/pin'
+import { DropdownContainer } from '../base'
 import styles from './PinnedMessagesDropdown.module.css'
 
 interface PinnedMessage {
@@ -14,21 +15,11 @@ interface PinnedMessagesDropdownProps {
 	onClose?: () => void
 }
 
-const mockMessages: PinnedMessage[] = [
-	{
-		id: '1',
-		authorName: 'Fair',
-		authorAvatar: 'https://cdn.discordapp.com/embed/avatars/0.png',
-		content: 'fff',
-		timestamp: '14:55'
-	}
-]
-
 export function PinnedMessagesDropdown({ messages = [], onClose }: PinnedMessagesDropdownProps) {
 	const hasMessages = messages.length > 0
 
 	return (
-		<div className={styles.container}>
+		<DropdownContainer placement="bottom-end" className={styles.container} role="dialog" aria-label="Pinned Messages">
 			<div className={styles.header}>
 				<div className={styles.headerIcon}>
 					<PinIcon width={24} height={24} />
@@ -55,9 +46,7 @@ export function PinnedMessagesDropdown({ messages = [], onClose }: PinnedMessage
 							<div className={styles.messageActions}>
 								<button className={styles.jumpButton}>Jump</button>
 								<button className={styles.closeButton}>
-									<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-										<path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-									</svg>
+									<CloseIcon />
 								</button>
 							</div>
 						</div>
@@ -94,6 +83,14 @@ export function PinnedMessagesDropdown({ messages = [], onClose }: PinnedMessage
 					</div>
 				</>
 			)}
-		</div>
+		</DropdownContainer>
+	)
+}
+
+function CloseIcon() {
+	return (
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+		</svg>
 	)
 }

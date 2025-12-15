@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState } from 'react'
+import { useDropdown, DropdownContainer, ListItem } from '../base'
 import styles from './SelectMenu.module.css'
 
 // Discord select menu component types
@@ -46,41 +47,16 @@ function getEmojiUrl(emoji: SelectEmoji): string {
 }
 
 export function SelectMenu({ select, onSelect }: SelectMenuProps) {
-	const [isOpen, setIsOpen] = useState(false)
+	const { containerRef, isOpen, toggle, close } = useDropdown<HTMLDivElement>()
 	const [selected, setSelected] = useState<string[]>(() => {
 		// Initialize with default options
 		return select.options?.filter((o) => o.default).map((o) => o.value) || []
 	})
 	const [isLoading, setIsLoading] = useState(false)
-	const containerRef = useRef<HTMLDivElement>(null)
 
 	const minValues = select.min_values ?? 1
 	const maxValues = select.max_values ?? 1
 	const isSingleSelect = maxValues === 1
-
-	// Close on click outside
-	useEffect(() => {
-		const handler = (e: MouseEvent) => {
-			if (!containerRef.current?.contains(e.target as Node)) {
-				setIsOpen(false)
-			}
-		}
-		document.addEventListener('mousedown', handler)
-		return () => document.removeEventListener('mousedown', handler)
-	}, [])
-
-	// Close on escape key
-	useEffect(() => {
-		const handler = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') {
-				setIsOpen(false)
-			}
-		}
-		if (isOpen) {
-			document.addEventListener('keydown', handler)
-			return () => document.removeEventListener('keydown', handler)
-		}
-	}, [isOpen])
 
 	const handleSelect = async (value: string) => {
 		if (select.disabled || isLoading) return
@@ -103,7 +79,7 @@ export function SelectMenu({ select, onSelect }: SelectMenuProps) {
 
 		// Submit if single-select or reached min threshold
 		if (isSingleSelect || newSelected.length >= minValues) {
-			setIsOpen(false)
+			close()
 			setIsLoading(true)
 			try {
 				await onSelect(newSelected)
@@ -152,64 +128,66 @@ export function SelectMenu({ select, onSelect }: SelectMenuProps) {
 		select.disabled ? styles.disabled : '',
 		isOpen ? styles.open : '',
 		isLoading ? styles.loading : ''
-	].filter(Boolean).join(' ')
+	]
+		.filter(Boolean)
+		.join(' ')
+
+	const handleTriggerClick = () => {
+		if (!select.disabled && !isLoading && hasOptions) {
+			toggle()
+		}
+	}
+
+	const handleTriggerKeyDown = (e: React.KeyboardEvent) => {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault()
+			handleTriggerClick()
+		}
+	}
 
 	return (
 		<div className={styles.container} ref={containerRef}>
 			<div
 				className={triggerClasses}
-				onClick={() => !select.disabled && !isLoading && hasOptions && setIsOpen(!isOpen)}
+				onClick={handleTriggerClick}
 				role="button"
 				tabIndex={select.disabled ? -1 : 0}
 				aria-haspopup="listbox"
 				aria-expanded={isOpen}
-				onKeyDown={(e) => {
-					if (e.key === 'Enter' || e.key === ' ') {
-						e.preventDefault()
-						if (!select.disabled && !isLoading && hasOptions) {
-							setIsOpen(!isOpen)
-						}
-					}
-				}}
+				onKeyDown={handleTriggerKeyDown}
 			>
-				<span className={selected.length > 0 ? styles.selectedText : styles.placeholder}>
-					{getDisplayText()}
-				</span>
+				<span className={selected.length > 0 ? styles.selectedText : styles.placeholder}>{getDisplayText()}</span>
 				<ChevronIcon className={`${styles.chevron} ${isOpen ? styles.chevronOpen : ''}`} />
 			</div>
 
 			{isOpen && hasOptions && (
-				<div className={styles.dropdown} role="listbox">
+				<DropdownContainer maxHeight={300} className={styles.dropdown}>
 					{options.map((option) => {
-						const isSelected = selected.includes(option.value)
-						const optionClasses = [styles.option, isSelected ? styles.optionSelected : ''].filter(Boolean).join(' ')
+						const isOptionSelected = selected.includes(option.value)
 
 						return (
-							<div
+							<ListItem
 								key={option.value}
-								className={optionClasses}
+								label={option.label}
+								description={option.description}
+								isSelected={isOptionSelected}
 								onClick={() => handleSelect(option.value)}
-								role="option"
-								aria-selected={isSelected}
-							>
-								{option.emoji && (
-									<span className={styles.optionEmoji}>
-										{option.emoji.id ? (
-											<img src={getEmojiUrl(option.emoji)} alt="" className={styles.emojiImage} />
-										) : (
-											option.emoji.name
-										)}
-									</span>
-								)}
-								<div className={styles.optionContent}>
-									<div className={styles.optionLabel}>{option.label}</div>
-									{option.description && <div className={styles.optionDescription}>{option.description}</div>}
-								</div>
-								{isSelected && <CheckIcon className={styles.optionCheck} />}
-							</div>
+								icon={
+									option.emoji && (
+										<span className={styles.optionEmoji}>
+											{option.emoji.id ? (
+												<img src={getEmojiUrl(option.emoji)} alt="" className={styles.emojiImage} />
+											) : (
+												option.emoji.name
+											)}
+										</span>
+									)
+								}
+								rightContent={isOptionSelected ? <CheckIcon /> : undefined}
+							/>
 						)
 					})}
-				</div>
+				</DropdownContainer>
 			)}
 		</div>
 	)
@@ -224,9 +202,9 @@ function ChevronIcon({ className }: { className?: string }) {
 	)
 }
 
-function CheckIcon({ className }: { className?: string }) {
+function CheckIcon() {
 	return (
-		<svg className={className} viewBox="0 0 24 24" width="20" height="20">
+		<svg viewBox="0 0 24 24" width="20" height="20" style={{ color: 'var(--brand-500)' }}>
 			<path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
 		</svg>
 	)

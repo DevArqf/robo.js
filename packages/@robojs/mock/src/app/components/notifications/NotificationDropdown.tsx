@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { DropdownContainer, ListItem, ListItemSeparator } from '../base'
 import styles from './NotificationDropdown.module.css'
 
 type NotificationSetting = 'category-default' | 'all-messages' | 'only-mentions' | 'nothing'
@@ -20,72 +21,36 @@ export function NotificationDropdown({ onClose }: NotificationDropdownProps) {
 	const [selectedSetting, setSelectedSetting] = useState<NotificationSetting>('category-default')
 	const [showMuteSubmenu, setShowMuteSubmenu] = useState(false)
 
+	const settings: Array<{ value: NotificationSetting; label: string; sublabel?: string }> = [
+		{ value: 'category-default', label: 'Use Category Default', sublabel: 'Nothing' },
+		{ value: 'all-messages', label: 'All Messages' },
+		{ value: 'only-mentions', label: 'Only @mentions' },
+		{ value: 'nothing', label: 'Nothing' }
+	]
+
 	return (
-		<div className={styles.container}>
+		<DropdownContainer placement="bottom-end" className={styles.container} role="menu">
 			<div className={styles.mainPanel} onMouseLeave={() => setShowMuteSubmenu(false)}>
-				<div className={styles.muteRow} onMouseEnter={() => setShowMuteSubmenu(true)}>
-					<span className={styles.muteLabel}>Mute Channel</span>
-					<span className={styles.chevron}>
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-							<path d="M9.29 6.71a.996.996 0 0 0 0 1.41L13.17 12l-3.88 3.88a.996.996 0 1 0 1.41 1.41l4.59-4.59a.996.996 0 0 0 0-1.41L10.7 6.7c-.38-.38-1.02-.38-1.41.01z" />
-						</svg>
-					</span>
-				</div>
+				<ListItem
+					label="Mute Channel"
+					onMouseEnter={() => setShowMuteSubmenu(true)}
+					rightContent={<ChevronRightIcon />}
+					role="menuitem"
+				/>
 
-				<div className={styles.divider} />
+				<ListItemSeparator />
 
-				<div
-					className={styles.optionRow}
-					onClick={() => setSelectedSetting('category-default')}
-					onMouseEnter={() => setShowMuteSubmenu(false)}
-				>
-					<div className={styles.optionContent}>
-						<span className={styles.optionLabel}>Use Category Default</span>
-						<span className={styles.optionSublabel}>Nothing</span>
-					</div>
-					<div className={`${styles.radio} ${selectedSetting === 'category-default' ? styles.selected : ''}`}>
-						{selectedSetting === 'category-default' && <div className={styles.radioInner} />}
-					</div>
-				</div>
-
-				<div
-					className={styles.optionRow}
-					onClick={() => setSelectedSetting('all-messages')}
-					onMouseEnter={() => setShowMuteSubmenu(false)}
-				>
-					<div className={styles.optionContent}>
-						<span className={styles.optionLabel}>All Messages</span>
-					</div>
-					<div className={`${styles.radio} ${selectedSetting === 'all-messages' ? styles.selected : ''}`}>
-						{selectedSetting === 'all-messages' && <div className={styles.radioInner} />}
-					</div>
-				</div>
-
-				<div
-					className={styles.optionRow}
-					onClick={() => setSelectedSetting('only-mentions')}
-					onMouseEnter={() => setShowMuteSubmenu(false)}
-				>
-					<div className={styles.optionContent}>
-						<span className={styles.optionLabel}>Only @mentions</span>
-					</div>
-					<div className={`${styles.radio} ${selectedSetting === 'only-mentions' ? styles.selected : ''}`}>
-						{selectedSetting === 'only-mentions' && <div className={styles.radioInner} />}
-					</div>
-				</div>
-
-				<div
-					className={styles.optionRow}
-					onClick={() => setSelectedSetting('nothing')}
-					onMouseEnter={() => setShowMuteSubmenu(false)}
-				>
-					<div className={styles.optionContent}>
-						<span className={styles.optionLabel}>Nothing</span>
-					</div>
-					<div className={`${styles.radio} ${selectedSetting === 'nothing' ? styles.selected : ''}`}>
-						{selectedSetting === 'nothing' && <div className={styles.radioInner} />}
-					</div>
-				</div>
+				{settings.map((setting) => (
+					<ListItem
+						key={setting.value}
+						label={setting.label}
+						description={setting.sublabel}
+						onClick={() => setSelectedSetting(setting.value)}
+						onMouseEnter={() => setShowMuteSubmenu(false)}
+						rightContent={<Radio isSelected={selectedSetting === setting.value} />}
+						role="menuitem"
+					/>
+				))}
 			</div>
 
 			{showMuteSubmenu && (
@@ -95,12 +60,30 @@ export function NotificationDropdown({ onClose }: NotificationDropdownProps) {
 					onMouseLeave={() => setShowMuteSubmenu(false)}
 				>
 					{muteDurations.map((duration) => (
-						<div key={duration} className={styles.submenuItem}>
-							{duration}
-						</div>
+						<ListItem key={duration} label={duration} role="menuitem" />
 					))}
 				</div>
 			)}
+		</DropdownContainer>
+	)
+}
+
+function ChevronRightIcon() {
+	return (
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M9.29 6.71a.996.996 0 0 0 0 1.41L13.17 12l-3.88 3.88a.996.996 0 1 0 1.41 1.41l4.59-4.59a.996.996 0 0 0 0-1.41L10.7 6.7c-.38-.38-1.02-.38-1.41.01z" />
+		</svg>
+	)
+}
+
+interface RadioProps {
+	isSelected: boolean
+}
+
+function Radio({ isSelected }: RadioProps) {
+	return (
+		<div className={`${styles.radio} ${isSelected ? styles.radioSelected : ''}`}>
+			{isSelected && <div className={styles.radioInner} />}
 		</div>
 	)
 }

@@ -13,10 +13,7 @@
 
 .popout {
 	width: 340px;
-	background: var(--background-floating);
 	border-radius: var(--radius-lg);
-	overflow: hidden;
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 .banner {
@@ -107,7 +104,7 @@
 .botTag {
 	padding: 2px 6px;
 	background: var(--brand-500);
-	border-radius: 3px;
+	border-radius: var(--radius-xs);
 	font-size: 10px;
 	font-weight: 600;
 	color: white;

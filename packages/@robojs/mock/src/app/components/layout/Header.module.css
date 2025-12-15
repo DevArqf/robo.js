@@ -15,10 +15,10 @@
 }
 
 .headerInput {
-	border: 1px solid #454548;
+	border: 1px solid var(--background-modifier-accent);
 	padding: 5px;
-	border-radius: 5px;
-	background: #17171a;
+	border-radius: var(--radius-sm);
+	background: var(--background-tertiary);
 	position: relative;
 }
 

@@ -1,7 +1,7 @@
 .shell {
 	display: flex;
 	flex-direction: column;
-	background: #121214;
+	background: var(--background-tertiary);
 	padding-left: 20px;
 	height: 100%;
 }
@@ -12,7 +12,7 @@
 	padding-block: 5px;
 	justify-content: center;
 	align-items: center;
-	background: #121214;
+	background: var(--background-tertiary);
 }
 
 .serverList {
@@ -32,8 +32,8 @@
 .mainContent {
 	display: flex;
 	width: 100%;
-	border: 1px solid #29292e;
-	border-radius: 15px 0;
+	border: 1px solid var(--background-modifier-accent);
+	border-radius: var(--radius-lg) 0;
 }
 
 .main {

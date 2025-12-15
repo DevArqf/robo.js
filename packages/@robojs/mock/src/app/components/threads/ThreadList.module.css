@@ -41,9 +41,9 @@
 .searchInput {
 	width: 100%;
 	padding: 6px 12px;
-	border: 1px solid #454548;
-	border-radius: 5px;
-	background: #17171a;
+	border: 1px solid var(--background-modifier-accent);
+	border-radius: var(--radius-sm);
+	background: var(--background-tertiary);
 	color: var(--text-normal);
 	font-size: 14px;
 	outline: none;

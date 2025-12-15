@@ -67,7 +67,7 @@
 	font-weight: 500;
 	padding: 0 4px;
 	height: 15px;
-	border-radius: 3px;
+	border-radius: var(--radius-xs);
 	text-transform: uppercase;
 	vertical-align: top;
 }
@@ -129,11 +129,7 @@
 
 /* Ephemeral message styling */
 .ephemeral {
-	background: linear-gradient(
-		to right,
-		rgba(88, 101, 242, 0.1),
-		transparent
-	);
+	background: linear-gradient(to right, rgba(88, 101, 242, 0.1), transparent);
 	border-left: 2px solid var(--brand-500);
 	padding-left: 70px;
 }

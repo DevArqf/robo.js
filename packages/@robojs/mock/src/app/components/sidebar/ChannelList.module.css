@@ -7,7 +7,7 @@
 /* Server header */
 .header {
 	padding-top: 13px;
-	border-bottom: 1px solid #29292e;
+	border-bottom: 1px solid var(--background-modifier-accent);
 	display: flex;
 	justify-content: center;
 	align-items: center;
