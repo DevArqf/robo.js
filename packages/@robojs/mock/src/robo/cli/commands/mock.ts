@@ -4,22 +4,20 @@
  * Starts a standalone mock Discord server for testing bots.
  * Bots connect via `robo dev --mock-session <id>`.
  *
- * This command:
- * 1. Starts HTTP server on dedicated port (default: 6625)
- * 2. Registers Gateway and Stage WebSocket handlers
- * 3. Loads all Discord API routes from @robojs/mock via Portal API
- * 4. Opens Stage UI showing waiting for connections
- * 5. Writes server info for port discovery
+ * This command uses Robo's hook system:
+ * 1. executePrepareHooks() - @robojs/server creates engine, @robojs/mock registers WS handlers
+ * 2. executeStartHooks() - @robojs/server loads API routes and starts server
+ *
+ * The only manual registration is control routes (session management API)
+ * which are standalone-specific and not part of the plugin's normal routes.
  *
  * Unlike `robo dev --mock`, this does NOT:
  * - Build or start a bot
  * - Create sessions automatically (sessions created when bots connect)
  */
 import { execSync } from 'node:child_process'
-import fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { createCliCommandConfig, color, Env, Manifest, portal } from 'robo.js'
+import { createCliCommandConfig, color, Env, Manifest } from 'robo.js'
+import { loadConfig, populatePortal, executePrepareHooks, executeStartHooks, loadPluginData } from 'robo.js/unstable.js'
 import { writeServerInfo, deleteServerInfo, STANDALONE_MOCK_PORT } from '../../../utils/server-info.js'
 import { mockLogger } from '../../../core/logger.js'
 import { getGatewayServer } from '../../../core/gateway.js'
@@ -27,14 +25,12 @@ import { getStageServer } from '../../../core/stage.js'
 import { getStageBridge } from '../../../core/stage-bridge.js'
 import { startVoiceGateway, VOICE_GATEWAY_PORT } from '../../../core/voice-gateway.js'
 import { sessionManager } from '../../../core/manager.js'
-import type { CliContext, HandlerRecord } from 'robo.js'
+import { getMockPluginPrefix } from '../../../utils/server.js'
+import type { CliContext } from 'robo.js'
 import type { CreateSessionOptions, SessionConfig } from '../../../types/index.js'
 
 // Dynamic imports for @robojs/server
 type BaseEngine = import('@robojs/server/engines').BaseEngine
-type RouteHandler = import('@robojs/server').RouteHandler
-
-const PATH_REGEX = /\[(.+?)\]/g
 
 export const config = createCliCommandConfig({
 	description: 'Start standalone mock Discord server for testing',
@@ -96,6 +92,12 @@ export default async function mockCommand({ options, logger }: CliContext) {
 		process.env.NODE_ENV = 'development'
 	}
 
+	// Set environment variables for standalone mode
+	// These are read by prepare.ts and start.ts hooks
+	process.env.PORT = String(port)
+	process.env.ROBO_MOCK_MODE = 'true'
+	process.env.__ROBO_MOCK_STANDALONE = 'true'
+
 	// Load environment variables with mode support
 	const envMode = mode ?? process.env.NODE_ENV
 	await Env.load({ mode: envMode })
@@ -106,9 +108,25 @@ export default async function mockCommand({ options, logger }: CliContext) {
 		logger.log('')
 	}
 
-	// Initialize mock infrastructure
-	const gatewayServer = getGatewayServer()
-	const stageServer = getStageServer()
+	// 1. Load config (required for loadPluginData)
+	await loadConfig()
+
+	// 2. Get plugin data from config
+	const plugins = loadPluginData()
+	mockLogger.debug(`Loaded ${plugins.size} plugin(s) from config`)
+
+	// 3. Initialize manifest for portal access
+	const manifestMode = envMode === 'production' ? 'production' : 'development'
+	await Manifest.initialize(manifestMode)
+
+	// 4. Populate portal (loads commands, events, API routes from manifest)
+	await populatePortal(manifestMode)
+	mockLogger.debug('Portal populated')
+
+	// 5. Initialize mock infrastructure BEFORE hooks run
+	// This ensures gateway/stage servers exist when prepare hook registers WS handlers
+	getGatewayServer()
+	getStageServer()
 	getStageBridge()
 
 	// Start Voice Gateway on separate port
@@ -119,47 +137,46 @@ export default async function mockCommand({ options, logger }: CliContext) {
 		mockLogger.warn(`Failed to start Voice Gateway: ${(error as Error).message}`)
 	}
 
-	// Create server engine from @robojs/server
-	let engine: BaseEngine
+	// 6. Execute prepare hooks
+	// - @robojs/server's prepare: creates engine, sets globalThis.roboServer.engine
+	// - @robojs/mock's prepare: registers WebSocket handlers via callback
+	mockLogger.debug('Executing prepare hooks...')
+	await executePrepareHooks(plugins, manifestMode)
+
+	// 6b. Register mock plugin prefix in the route registry
+	// The manifest may not have this info in standalone mode (no build required),
+	// so we register it manually to ensure Stage UI static files are served correctly
 	try {
-		const { NodeEngine } = await import('@robojs/server/engines')
-		engine = new NodeEngine()
-		await engine.init({})
-		mockLogger.debug('Server engine initialized')
+		const { getPluginRouteRegistry } = await import('@robojs/server')
+		const registry = getPluginRouteRegistry()
+		const prefix = getMockPluginPrefix()
+		registry.register({ '@robojs/mock': prefix })
+		mockLogger.debug(`Registered mock plugin prefix: ${prefix}`)
 	} catch (error) {
-		logger.error(`Failed to initialize server engine: ${(error as Error).message}`)
-		logger.error('Make sure @robojs/server is installed')
+		mockLogger.warn(`Could not register plugin prefix: ${(error as Error).message}`)
+	}
+
+	// 7. Get engine from @robojs/server
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const engine = (globalThis as any).roboServer?.engine as BaseEngine | undefined
+	if (!engine) {
+		logger.error('Failed to initialize server engine - @robojs/server prepare hook may have failed')
+		logger.error('Make sure @robojs/server is installed and configured')
 		process.exit(1)
 	}
 
-	// Register WebSocket handlers with the engine
-	engine.registerWebsocket('/', (req, socket, head) => {
-		gatewayServer.handleUpgrade(req, socket, head)
-	})
-	engine.registerWebsocket('/stage/ws', (req, socket, head) => {
-		stageServer.handleUpgrade(req, socket, head)
-	})
-	engine.registerWebsocket('/mock/stage/ws', (req, socket, head) => {
-		stageServer.handleUpgrade(req, socket, head)
-	})
-
-	// Register control API routes (session management)
+	// 8. Register control API routes BEFORE start hooks
+	// These must be registered before @robojs/server's start hook which calls engine.start()
+	// They're at non-prefixed paths because Discord.js clients expect /api/v10/gateway/bot
 	registerControlRoutes(engine)
 
-	// Register static Stage UI routes
-	registerStageRoutes(engine)
+	// 9. Execute start hooks
+	// - @robojs/server's start: loads API routes from portal (with /mock prefix), starts server
+	// - @robojs/mock's start: skipped in standalone mode (via __ROBO_MOCK_STANDALONE check)
+	mockLogger.debug('Executing start hooks...')
+	await executeStartHooks(plugins, manifestMode)
 
-	// Initialize manifest for portal access (required before ensureRoute)
-	const manifestMode = envMode === 'production' ? 'production' : 'development'
-	await Manifest.initialize(manifestMode)
-
-	// Load and register Discord API routes from portal
-	await loadApiRoutes(engine)
-
-	// Start server
-	await engine.start({ port })
-
-	// Write server info for port discovery
+	// 9. Write server info for port discovery by --mock-session
 	await writeServerInfo({
 		port,
 		startedAt: new Date().toISOString(),
@@ -167,6 +184,10 @@ export default async function mockCommand({ options, logger }: CliContext) {
 		gatewayUrl: `ws://localhost:${port}/?v=10&encoding=json`,
 		restApiUrl: `http://localhost:${port}/api`
 	})
+
+	// Get plugin prefix for Stage UI URL
+	const pluginPrefix = getMockPluginPrefix()
+	const stageUrl = pluginPrefix ? `http://localhost:${port}${pluginPrefix}/stage/` : `http://localhost:${port}/stage/`
 
 	if (!silent) {
 		logger.info(`Mock server running on port ${color.cyan(String(port))}`)
@@ -177,10 +198,9 @@ export default async function mockCommand({ options, logger }: CliContext) {
 		logger.log('')
 	}
 
-	// Open Stage UI
+	// 10. Open Stage UI
 	const shouldOpenBrowser = !noBrowser
 	if (shouldOpenBrowser) {
-		const stageUrl = `http://localhost:${port}/stage/`
 		await new Promise((r) => setTimeout(r, 500))
 
 		try {
@@ -196,7 +216,7 @@ export default async function mockCommand({ options, logger }: CliContext) {
 		}
 	}
 
-	// Setup shutdown handlers
+	// 11. Setup shutdown handlers
 	const shutdown = async (signal: string) => {
 		if (!silent) {
 			logger.log('')
@@ -217,10 +237,11 @@ export default async function mockCommand({ options, logger }: CliContext) {
 }
 
 /**
- * Register control API routes for session management
+ * Register control API routes for session management.
+ * These are standalone-specific and not part of the plugin's normal routes.
  */
 function registerControlRoutes(engine: BaseEngine): void {
-	// Gateway bot endpoint
+	// Gateway bot endpoint - returns WebSocket URL for Discord.js client
 	engine.registerRoute('/api/gateway/bot', async (req) => {
 		const host = req.headers.get('host') || `localhost:${STANDALONE_MOCK_PORT}`
 		const protocol = host.includes('localhost') || host.startsWith('127.') ? 'ws' : 'wss'
@@ -307,112 +328,6 @@ function registerControlRoutes(engine: BaseEngine): void {
 }
 
 /**
- * Register Stage UI static file routes
- */
-function registerStageRoutes(engine: BaseEngine): void {
-	const stageDir = getStageUIDir()
-	if (!stageDir) {
-		mockLogger.warn('Stage UI directory not found')
-		return
-	}
-
-	// Redirect /stage to /stage/
-	engine.registerRoute('/stage', async () => {
-		return new Response(null, {
-			status: 302,
-			headers: { Location: '/stage/' }
-		})
-	})
-
-	// Serve index.html for /stage/
-	engine.registerRoute('/stage/', async () => {
-		const indexPath = path.join(stageDir, 'index.html')
-		if (!fs.existsSync(indexPath)) {
-			return new Response(JSON.stringify({ error: 'Stage UI not found' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' }
-			})
-		}
-		const content = fs.readFileSync(indexPath)
-		return new Response(content, {
-			status: 200,
-			headers: { 'Content-Type': 'text/html' }
-		})
-	})
-
-	// Serve static files from /stage/*
-	engine.registerRoute('/stage/**:path', async (req) => {
-		const reqPath = (req.params.path as string) || 'index.html'
-		const fullPath = path.join(stageDir, reqPath)
-
-		if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isFile()) {
-			return new Response(JSON.stringify({ error: 'Not found' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' }
-			})
-		}
-
-		const ext = path.extname(fullPath)
-		const contentType = getContentType(ext)
-		const content = fs.readFileSync(fullPath)
-
-		return new Response(content, {
-			status: 200,
-			headers: { 'Content-Type': contentType }
-		})
-	})
-}
-
-/**
- * Load and register Discord API routes from the portal
- */
-async function loadApiRoutes(engine: BaseEngine): Promise<void> {
-	try {
-		// Load API routes from portal (this also loads the manifest)
-		await portal.ensureRoute('server', 'api')
-		const apiRoutes = portal.getByType('server:api') as Record<string, HandlerRecord>
-
-		const routeCount = Object.keys(apiRoutes).length
-		if (routeCount === 0) {
-			mockLogger.debug('No API routes found in portal')
-			return
-		}
-
-		mockLogger.debug(`Loading ${routeCount} API routes from portal...`)
-
-		// Register each API route with the engine
-		for (const [routeKey, record] of Object.entries(apiRoutes)) {
-			// Only load routes from @robojs/mock plugin
-			if (record.plugin?.name !== '@robojs/mock') {
-				continue
-			}
-
-			// Import the handler
-			await portal.importHandler('server', 'api', routeKey)
-
-			// Convert route key to URL path (e.g., "v10/channels/[id]/messages" -> "/api/v10/channels/:id/messages")
-			const urlPath = '/api/' + routeKey.replace(PATH_REGEX, ':$1')
-
-			// Get the handler function
-			const handler = record.handler as { default?: RouteHandler } | RouteHandler | null
-			if (!handler) continue
-
-			const routeHandler = typeof handler === 'function' ? handler : handler.default
-			if (!routeHandler) continue
-
-			// Register the route
-			engine.registerRoute(urlPath, routeHandler as RouteHandler)
-			mockLogger.debug(`Registered route: ${urlPath}`)
-		}
-
-		mockLogger.debug('API routes loaded successfully')
-	} catch (error) {
-		mockLogger.warn(`Failed to load API routes from portal: ${(error as Error).message}`)
-		mockLogger.debug('Standalone mode may have limited API support')
-	}
-}
-
-/**
  * Opens a URL in the default browser.
  * Cross-platform implementation.
  */
@@ -429,50 +344,4 @@ function openBrowser(url: string): void {
 	}
 
 	execSync(command, { stdio: 'ignore', windowsHide: true })
-}
-
-/**
- * Get the Stage UI static files directory.
- * Looks for the built Stage UI in the plugin's public folder.
- */
-function getStageUIDir(): string | null {
-	// Get current file's directory (ESM-compatible)
-	const currentDir = path.dirname(fileURLToPath(import.meta.url))
-
-	// Try to find Stage UI in the plugin's package
-	const possiblePaths = [
-		// When running from source (src/robo/cli/commands/mock.ts -> public/stage)
-		path.join(currentDir, '../../../../public/stage'),
-		// When running from built .robo/build/robo/cli/commands -> public/stage (5 levels up)
-		path.join(currentDir, '../../../../../public/stage'),
-		// When installed as package in node_modules
-		path.resolve(process.cwd(), 'node_modules/@robojs/mock/public/stage')
-	]
-
-	mockLogger.debug(`Looking for Stage UI, current dir: ${currentDir}`)
-	for (const p of possiblePaths) {
-		mockLogger.debug(`Trying: ${p} - exists: ${fs.existsSync(p)}`)
-		if (fs.existsSync(p)) {
-			return p
-		}
-	}
-
-	return null
-}
-
-/**
- * Get content type for file extension.
- */
-function getContentType(ext: string): string {
-	const types: Record<string, string> = {
-		'.html': 'text/html',
-		'.css': 'text/css',
-		'.js': 'application/javascript',
-		'.json': 'application/json',
-		'.png': 'image/png',
-		'.jpg': 'image/jpeg',
-		'.svg': 'image/svg+xml',
-		'.ico': 'image/x-icon'
-	}
-	return types[ext] ?? 'application/octet-stream'
 }

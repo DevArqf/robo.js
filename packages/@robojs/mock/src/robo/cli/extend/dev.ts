@@ -142,7 +142,11 @@ async function setupExistingSessionConnection(
 	process.env.ROBO_MOCK_SESSION_ID = sessionId
 	process.env.ROBO_MOCK_REAL_TOKEN = realDiscordToken ?? ''
 	process.env.DISCORD_TOKEN = sessionToken
-	process.env.DISCORD_REST_API = `${baseUrl}/api`
+
+	// Set REST API URL with mock prefix
+	// The mock plugin registers routes at /mock/api/v10/* so Discord.js must hit the prefixed path
+	const prefix = getMockPluginPrefix()
+	process.env.DISCORD_REST_API = `${baseUrl}${prefix}/api`
 
 	// Mark as connecting to existing (don't open browser, don't create session)
 	process.env.__ROBO_MOCK_CONNECT_EXISTING = 'true'

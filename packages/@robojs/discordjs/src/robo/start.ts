@@ -16,6 +16,13 @@ import { discordLogger } from '../core/logger.js'
  * Start hook - Logs the Discord client into Discord
  */
 export default async function startHook(): Promise<void> {
+	// In standalone mock mode (robo mock), skip login entirely.
+	// The mock server runs without a bot - bots connect separately via --mock-session.
+	if (process.env.__ROBO_MOCK_STANDALONE === 'true') {
+		discordLogger.debug('Standalone mock mode - skipping Discord login')
+		return
+	}
+
 	// Get the bot token from environment
 	const token = process.env.DISCORD_TOKEN
 	if (!token) {

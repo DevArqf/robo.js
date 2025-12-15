@@ -28,8 +28,17 @@ type EngineCallbackArray = Array<(engine: BaseEngine) => void>
  * Prepare hook - Registers a callback for when the server engine is ready
  */
 export default async () => {
-	// Only register WebSocket handlers if in mock mode
+	const isStandalone = process.env.__ROBO_MOCK_STANDALONE === 'true'
 	const isMockMode = process.env.ROBO_MOCK_MODE === 'true'
+
+	// In standalone mode, always register handlers (CLI manages mock infrastructure)
+	if (isStandalone) {
+		mockLogger.debug('Standalone mode - registering WebSocket handler callback')
+		registerEngineCallback()
+		return
+	}
+
+	// For robo dev --mock: Only register WebSocket handlers if in mock mode
 	if (!isMockMode) {
 		mockLogger.debug('Not in mock mode, skipping prepare hook')
 		return
@@ -43,8 +52,15 @@ export default async () => {
 		return
 	}
 
-	// Register a callback that @robojs/server will call after creating the engine
-	// This ensures our WebSocket handlers are registered before start hooks run
+	// Register callback for robo dev --mock mode
+	registerEngineCallback()
+}
+
+/**
+ * Register a callback that @robojs/server will call after creating the engine.
+ * This ensures WebSocket handlers are registered before start hooks run.
+ */
+function registerEngineCallback(): void {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const globalAny = globalThis as any
 	if (!globalAny.__roboServerEngineCallbacks) {

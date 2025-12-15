@@ -3,16 +3,20 @@
  *
  * This hook runs during Robo.start() BEFORE start hooks to:
  * 1. Initialize the HTTP server engine (Fastify or Node.js)
- * 2. Set up plugin configuration
- * 3. Initialize plugin route registry (with defaults from manifest + user overrides)
+ * 2. Initialize engine (creates router, http server)
+ * 3. Set up Vite dev server if available
+ * 4. Set up plugin configuration
+ * 5. Initialize plugin route registry (with defaults from manifest + user overrides)
  *
- * By running in the prepare phase, the engine is available to other plugins
- * (like @robojs/mock) during their start hooks.
+ * By running in the prepare phase, the engine and router are available to other
+ * plugins (like @robojs/mock) during their prepare callbacks and start hooks.
  */
 import { logger } from '../core/logger.js'
 import { initPluginRoutes, type PluginPrefixMap } from '../core/plugin-routes.js'
 import { hasDependency } from '../core/runtime-utils.js'
 import { setConfig, setEngine } from '../core/server.js'
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 import { color, Manifest } from 'robo.js'
 import type { BaseEngine } from '../engines/base.js'
 import type { PrepareContext } from 'robo.js'
@@ -83,9 +87,51 @@ export default async (context: PrepareContext<PluginConfig>) => {
 	setEngine(pluginOptions.engine)
 	globalThis.roboServer.engine = pluginOptions.engine
 
+	// Initialize engine (creates router and http server)
+	// This must happen before Vite setup and before engine callbacks
+	// so that routes can be registered by other plugins
+	let vite: ViteDevServer | undefined = pluginOptions.vite
+	await pluginOptions.engine.init({ vite })
+
+	// Set up Vite dev server if available and not in production
+	if (vite) {
+		logger.debug('Using Vite server specified in options.')
+	} else if (process.env.NODE_ENV !== 'production' && (await hasDependency('vite', true))) {
+		try {
+			const { createServer: createViteServer } = await import('vite')
+			const viteConfigPathTs = path.join(process.cwd(), 'config', 'vite.ts')
+			const viteConfigPath = path.join(process.cwd(), 'config', 'vite.mjs')
+
+			vite = await createViteServer({
+				configFile: existsSync(viteConfigPathTs) ? viteConfigPathTs : existsSync(viteConfigPath) ? viteConfigPath : undefined,
+				server: {
+					hmr: {
+						path: '/hmr',
+						server: pluginOptions.engine.getHttpServer()
+					},
+					middlewareMode: { server: pluginOptions.engine.getHttpServer() }
+				}
+			})
+			logger.debug('Vite server created successfully.')
+		} catch (e) {
+			logger.error(`Failed to start Vite server:`, e)
+		}
+	}
+
+	// Setup Vite if available and register HMR socket bypass
+	if (vite) {
+		await pluginOptions.engine.setupVite(vite)
+
+		// Prevent other plugins from registering the HMR route
+		pluginOptions.engine.registerWebsocket('/hmr', () => {
+			logger.debug('Vite HMR connection detected. Skipping registration...')
+		})
+	}
+
 	// Call any registered engine callbacks (e.g., from @robojs/mock)
 	// This allows plugins that run before us alphabetically to register
 	// handlers that need the engine before start hooks run
+	// NOTE: Engine is now fully initialized with router, so routes can be registered
 	if (globalThis.__roboServerEngineCallbacks) {
 		logger.debug(`Calling ${globalThis.__roboServerEngineCallbacks.length} engine callback(s)`)
 		for (const callback of globalThis.__roboServerEngineCallbacks) {

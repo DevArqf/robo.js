@@ -47,6 +47,13 @@ export default async (context: StartContext<MockPluginConfig>) => {
 	const { pluginConfig } = context
 	const config = { ...DEFAULT_MOCK_PLUGIN_CONFIG, ...pluginConfig }
 
+	// In standalone mode, skip all start hook logic.
+	// The CLI command (robo mock) manages server lifecycle directly.
+	if (process.env.__ROBO_MOCK_STANDALONE === 'true') {
+		mockLogger.debug('Standalone mode - start hook deferred to CLI command')
+		return
+	}
+
 	// Check mock mode state
 	const mockModeState = getMockModeState()
 

@@ -2,23 +2,18 @@
  * Start Hook - Server Initialization
  *
  * This hook runs during Robo.start() to:
- * 1. Set up Vite dev server if available
- * 2. Register all API routes
- * 3. Start the server
- * 4. Optionally start a tunnel for external access
+ * 1. Register all API routes
+ * 2. Start the server
+ * 3. Optionally start a tunnel for external access
  *
- * Note: The server engine is initialized in the prepare hook (prepare.ts)
- * so it's available to other plugins during their start hooks.
+ * Note: The server engine, router, and Vite are initialized in the prepare hook
+ * (prepare.ts) so they're available to other plugins during their start hooks.
  */
 import { logger } from '../core/logger.js'
 import { getPluginRouteRegistry } from '../core/plugin-routes.js'
-import { hasDependency } from '../core/runtime-utils.js'
-import { existsSync } from 'node:fs'
-import path from 'node:path'
 import { portal } from 'robo.js'
 import { Nanocore } from 'robo.js/unstable.js'
 import type { StartContext, HandlerRecord } from 'robo.js'
-import type { ViteDevServer } from 'vite'
 import type { TunnelConfig, TunnelInstance, TunnelProvider } from '../core/tunnel/types.js'
 import type { ApiHandler, ApiHandlerModule, HttpMethodExport } from './routes/api.js'
 import { HTTP_METHODS } from './routes/api.js'
@@ -96,9 +91,9 @@ function createMethodDispatcher(record: HandlerRecord<ApiHandler>): RouteHandler
 }
 
 /**
- * Start hook - Starts the HTTP server and optionally starts a tunnel
+ * Start hook - Registers API routes, starts the HTTP server, and optionally starts a tunnel
  *
- * Note: Engine and config are initialized in prepare.ts
+ * Note: Engine, router, and Vite are initialized in prepare.ts
  */
 export default async (_context: StartContext<PluginConfig>) => {
 	// Get registry initialized in prepare hook
@@ -106,52 +101,15 @@ export default async (_context: StartContext<PluginConfig>) => {
 
 	// Get engine and options from prepare hook
 	const { engine, hostname = process.env.ROBO_HOSTNAME, port = parseInt(process.env.PORT ?? '3000') } = pluginOptions
-	let vite: ViteDevServer | undefined = pluginOptions.vite
 
 	// Load API routes from the portal
 	await portal.ensureRoute('server', 'api')
 	const apiRoutes = portal.getByType('server:api') as Record<string, HandlerRecord<ApiHandler>>
 	const apiRouteCount = Object.keys(apiRoutes).length
 
-	logger.debug(`Preparing server with ${apiRouteCount} API routes...`)
-	await engine.init({ vite })
+	logger.debug(`Registering ${apiRouteCount} API routes...`)
 
-	// If Vite is available, start the dev server
-	if (vite) {
-		logger.debug('Using Vite server specified in options.')
-	} else if (process.env.NODE_ENV !== 'production' && (await hasDependency('vite', true))) {
-		try {
-			const { createServer: createViteServer } = await import('vite')
-			const viteConfigPathTs = path.join(process.cwd(), 'config', 'vite.ts')
-			const viteConfigPath = path.join(process.cwd(), 'config', 'vite.mjs')
-
-			vite = await createViteServer({
-				configFile: existsSync(viteConfigPathTs) ? viteConfigPathTs : existsSync(viteConfigPath) ? viteConfigPath : undefined,
-				server: {
-					hmr: {
-						path: '/hmr',
-						server: engine.getHttpServer()
-					},
-					middlewareMode: { server: engine.getHttpServer() }
-				}
-			})
-			logger.debug('Vite server created successfully.')
-		} catch (e) {
-			logger.error(`Failed to start Vite server:`, e)
-		}
-	}
-
-	// Setup Vite if available and register socket bypass
-	if (vite) {
-		await engine.setupVite(vite)
-
-		// Prevent other plugins from registering the HMR route
-		engine.registerWebsocket('/hmr', () => {
-			logger.debug('Vite HMR connection detected. Skipping registration...')
-		})
-	}
-
-	// Add loaded API modules onto new router instance
+	// Add loaded API modules onto router
 	const prefix = pluginOptions.prefix ?? ''
 	const paths: string[] = []
 
