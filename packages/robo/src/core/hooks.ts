@@ -6,13 +6,175 @@ import { DEFAULT_CONFIG, TIMEOUT } from './constants.js'
 import { timeout } from '../cli/utils/utils.js'
 import { RoboPaths } from './paths.js'
 import type { ErrorContext, InitContext, PrepareContext, StartContext, PluginState, StopContext } from '../types/lifecycle.js'
-import type { PluginData } from '../types/common.js'
+import type { LifecycleHookType, PluginData } from '../types/common.js'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 // Cache for plugin versions to avoid repeated package.json reads
 const pluginVersionCache = new Map<string, string>()
+
+/**
+ * Default hook priority. Hooks with the same priority run in parallel.
+ */
+export const DEFAULT_HOOK_PRIORITY = 100
+
+/**
+ * Runtime priority overrides for hooks.
+ * Map of hookType -> Map of pluginName -> priority
+ */
+const _hookPriorityOverrides = new Map<string, Map<string, number>>()
+
+/**
+ * Set the execution priority for a specific plugin's hook.
+ * Lower numbers run first. Default priority is 100.
+ * Hooks with the same priority run in parallel.
+ *
+ * @param hookType - The lifecycle hook type ('init', 'prepare', 'start', 'stop', 'setup')
+ * @param pluginName - The plugin package name (e.g., '@robojs/server')
+ * @param priority - The priority value (lower runs first)
+ *
+ * @example
+ * ```typescript
+ * import { setHookPriority } from 'robo.js'
+ *
+ * // Run server before other plugins (default is 100)
+ * setHookPriority('start', '@robojs/server', 50)
+ * ```
+ */
+export function setHookPriority(hookType: LifecycleHookType, pluginName: string, priority: number): void {
+	if (!_hookPriorityOverrides.has(hookType)) {
+		_hookPriorityOverrides.set(hookType, new Map())
+	}
+	_hookPriorityOverrides.get(hookType)!.set(pluginName, priority)
+}
+
+/**
+ * Get the effective priority for a plugin's hook.
+ * Checks: 1) runtime override, 2) metaOptions.hookPriority, 3) default (100)
+ */
+export function getHookPriority(hookType: LifecycleHookType, pluginName: string, pluginData: PluginData): number {
+	// 1. Check runtime override first
+	const override = _hookPriorityOverrides.get(hookType)?.get(pluginName)
+	if (override !== undefined) return override
+
+	// 2. Check metaOptions.hookPriority
+	const metaPriority = pluginData.metaOptions?.hookPriority?.[hookType]
+	if (metaPriority !== undefined) return metaPriority
+
+	// 3. Default
+	return DEFAULT_HOOK_PRIORITY
+}
+
+/**
+ * Set a plugin's hook to run before another plugin's hook.
+ * Adjusts the priority to be 10 less than the target plugin's priority.
+ *
+ * @param hookType - The lifecycle hook type
+ * @param pluginName - The plugin to prioritize
+ * @param beforePlugin - The plugin that should run after
+ *
+ * @example
+ * ```typescript
+ * import { prioritizeHookBefore } from 'robo.js'
+ *
+ * // Ensure server starts before discordjs
+ * prioritizeHookBefore('start', '@robojs/server', '@robojs/discordjs')
+ * ```
+ */
+export function prioritizeHookBefore(hookType: LifecycleHookType, pluginName: string, beforePlugin: string): void {
+	const currentPriority = _hookPriorityOverrides.get(hookType)?.get(beforePlugin) ?? DEFAULT_HOOK_PRIORITY
+	setHookPriority(hookType, pluginName, currentPriority - 10)
+}
+
+/**
+ * Set a plugin's hook to run after another plugin's hook.
+ * Adjusts the priority to be 10 more than the target plugin's priority.
+ *
+ * @param hookType - The lifecycle hook type
+ * @param pluginName - The plugin to deprioritize
+ * @param afterPlugin - The plugin that should run before
+ *
+ * @example
+ * ```typescript
+ * import { prioritizeHookAfter } from 'robo.js'
+ *
+ * // Ensure mock runs after server
+ * prioritizeHookAfter('start', '@robojs/mock', '@robojs/server')
+ * ```
+ */
+export function prioritizeHookAfter(hookType: LifecycleHookType, pluginName: string, afterPlugin: string): void {
+	const currentPriority = _hookPriorityOverrides.get(hookType)?.get(afterPlugin) ?? DEFAULT_HOOK_PRIORITY
+	setHookPriority(hookType, pluginName, currentPriority + 10)
+}
+
+/**
+ * Clear all hook priority overrides. Useful for testing.
+ * @internal
+ */
+export function clearHookPriorityOverrides(): void {
+	_hookPriorityOverrides.clear()
+}
+
+/**
+ * Result of grouping plugins by priority.
+ * Contains the grouped plugins and sorted priority order.
+ */
+export interface PriorityGroupResult {
+	/** Map of priority -> array of [pluginName, pluginData] tuples */
+	groups: Map<number, Array<[string, PluginData]>>
+	/** Sorted priorities (lower first for start hooks, higher first for stop hooks) */
+	sortedPriorities: number[]
+}
+
+/**
+ * Group plugins by their hook priority.
+ * This is a pure function that can be tested without filesystem dependencies.
+ *
+ * @param plugins - Plugin data map
+ * @param hookType - The lifecycle hook type
+ * @param hasHook - Predicate to check if a plugin has the specified hook
+ * @param reverse - If true, sort priorities in reverse order (higher first, for stop hooks)
+ * @returns Grouped plugins and sorted priority order
+ *
+ * @example
+ * ```typescript
+ * const result = groupPluginsByPriority(
+ *   plugins,
+ *   'start',
+ *   (name) => pluginsWithStartHook.has(name),
+ *   false // lower priorities first
+ * )
+ *
+ * for (const priority of result.sortedPriorities) {
+ *   const group = result.groups.get(priority)!
+ *   // Execute hooks in this group...
+ * }
+ * ```
+ */
+export function groupPluginsByPriority(
+	plugins: Map<string, PluginData>,
+	hookType: LifecycleHookType,
+	hasHook: (pluginName: string) => boolean,
+	reverse = false
+): PriorityGroupResult {
+	const groups = new Map<number, Array<[string, PluginData]>>()
+
+	for (const [pluginName, pluginData] of plugins) {
+		if (!hasHook(pluginName)) continue
+
+		const priority = getHookPriority(hookType, pluginName, pluginData)
+		if (!groups.has(priority)) {
+			groups.set(priority, [])
+		}
+		groups.get(priority)!.push([pluginName, pluginData])
+	}
+
+	// Sort priorities: lower first normally, higher first for reverse (stop hooks)
+	const sortedPriorities = [...groups.keys()].sort((a, b) => (reverse ? b - a : a - b))
+
+	return { groups, sortedPriorities }
+}
 
 /**
  * Check if a file exists.
@@ -95,7 +257,8 @@ export function inferNamespace(packageName: string): string {
 
 /**
  * Execute init hooks for project and all registered plugins.
- * Runs sequentially: plugins FIRST (in registration order), then project LAST.
+ * Hooks are grouped by priority and executed in priority order (lower first).
+ * Hooks with the same priority run in parallel via Promise.all().
  * Respects failSafe meta option for error handling.
  *
  * @param plugins - Plugin data map
@@ -106,45 +269,46 @@ export async function executeInitHooks(
 	mode: string
 ): Promise<void> {
 	const config = getConfig()
-
-	// Get the logger instance for use in hooks
 	const loggerInstance = logger()
 
-	// 1. Execute plugin init hooks FIRST (in registration order)
+	// Group plugins by priority
+	const priorityGroups = new Map<number, Array<[string, PluginData]>>()
+
 	for (const [pluginName, pluginData] of plugins) {
 		const hookPath = await resolvePluginHookPath(pluginName, 'init')
+		if (!hookPath) continue // Plugin doesn't have an init hook
 
-		if (!hookPath) {
-			continue // Plugin doesn't have an init hook
+		const priority = getHookPriority('init', pluginName, pluginData)
+		if (!priorityGroups.has(priority)) {
+			priorityGroups.set(priority, [])
 		}
+		priorityGroups.get(priority)!.push([pluginName, pluginData])
+	}
 
-		const context: InitContext = {
-			mode,
-			projectConfig: config,
-			logger: loggerInstance.fork(inferNamespace(pluginName)),
-			env: Env
-		}
+	// Sort priority groups (lower numbers first)
+	const sortedPriorities = [...priorityGroups.keys()].sort((a, b) => a - b)
 
-		try {
-			const hookModule = await import(pathToFileURL(hookPath).href)
-			if (typeof hookModule.default === 'function') {
-				await hookModule.default(context)
-			}
-		} catch (error) {
-			// Check failSafe meta option
-			const failSafe = pluginData.metaOptions?.failSafe ?? false
+	// Execute each priority group sequentially, but hooks within a group run in parallel
+	for (const priority of sortedPriorities) {
+		const group = priorityGroups.get(priority)!
+		const hookCount = group.length
 
-			if (failSafe) {
-				loggerInstance.warn(`Init hook for ${pluginName} failed (failSafe enabled):`, error)
-				// Continue with other plugins
-			} else {
-				loggerInstance.error(`Init hook for ${pluginName} failed:`, error)
-				throw error
-			}
+		if (hookCount === 1) {
+			// Single hook - run directly
+			const [pluginName, pluginData] = group[0]
+			await executePluginInitHook(pluginName, pluginData, mode, config, loggerInstance)
+		} else {
+			// Multiple hooks at same priority - run in parallel
+			loggerInstance.debug(`Executing ${hookCount} init hooks in parallel (priority ${priority}): ${group.map(([n]) => n).join(', ')}`)
+			await Promise.all(
+				group.map(([pluginName, pluginData]) =>
+					executePluginInitHook(pluginName, pluginData, mode, config, loggerInstance)
+				)
+			)
 		}
 	}
 
-	// 2. Execute project's init hook LAST (if exists)
+	// Project hook always runs last (after all plugin hooks)
 	const projectHookPath = await resolveProjectHookPath('init', mode)
 	if (projectHookPath) {
 		const context: InitContext = {
@@ -162,6 +326,46 @@ export async function executeInitHooks(
 		} catch (error) {
 			// Project init hook failure is always fatal
 			loggerInstance.error('Project init hook failed:', error)
+			throw error
+		}
+	}
+}
+
+/**
+ * Execute a single plugin's init hook with error handling.
+ * @internal
+ */
+async function executePluginInitHook(
+	pluginName: string,
+	pluginData: PluginData,
+	mode: string,
+	config: ReturnType<typeof getConfig>,
+	loggerInstance: ReturnType<typeof logger>
+): Promise<void> {
+	const hookPath = await resolvePluginHookPath(pluginName, 'init')
+	if (!hookPath) return
+
+	const context: InitContext = {
+		mode,
+		projectConfig: config,
+		logger: loggerInstance.fork(inferNamespace(pluginName)),
+		env: Env
+	}
+
+	try {
+		const hookModule = await import(pathToFileURL(hookPath).href)
+		if (typeof hookModule.default === 'function') {
+			await hookModule.default(context)
+		}
+	} catch (error) {
+		// Check failSafe meta option
+		const failSafe = pluginData.metaOptions?.failSafe ?? false
+
+		if (failSafe) {
+			loggerInstance.warn(`Init hook for ${pluginName} failed (failSafe enabled):`, error)
+			// Continue with other plugins
+		} else {
+			loggerInstance.error(`Init hook for ${pluginName} failed:`, error)
 			throw error
 		}
 	}
@@ -230,7 +434,8 @@ async function getPluginVersion(pluginName: string): Promise<string> {
 
 /**
  * Execute start hooks for project and all registered plugins.
- * Runs sequentially: plugins FIRST (in registration order), then project LAST.
+ * Hooks are grouped by priority and executed in priority order (lower first).
+ * Hooks with the same priority run in parallel via Promise.all().
  *
  * This runs AFTER portal is populated but BEFORE plugin connections are established.
  *
@@ -245,62 +450,45 @@ export async function executeStartHooks(
 	const loggerInstance = logger()
 	const timeoutDuration = config?.timeouts?.lifecycle ?? DEFAULT_CONFIG.timeouts.lifecycle
 
-	// 1. Execute plugin start hooks FIRST (in registration order)
+	// Group plugins by priority
+	const priorityGroups = new Map<number, Array<[string, PluginData]>>()
+
 	for (const [pluginName, pluginData] of plugins) {
 		const hookPath = await resolvePluginHookPath(pluginName, 'start')
+		if (!hookPath) continue // Plugin doesn't have a start hook
 
-		if (!hookPath) {
-			continue // Plugin doesn't have a start hook
+		const priority = getHookPriority('start', pluginName, pluginData)
+		if (!priorityGroups.has(priority)) {
+			priorityGroups.set(priority, [])
 		}
+		priorityGroups.get(priority)!.push([pluginName, pluginData])
+	}
 
-		// Get plugin version from package.json (cached)
-		const pluginVersion = await getPluginVersion(pluginName)
+	// Sort priority groups (lower numbers first)
+	const sortedPriorities = [...priorityGroups.keys()].sort((a, b) => a - b)
 
-		// Create plugin-scoped context
-		const context: StartContext = {
-			mode,
-			projectConfig: config,
-			pluginConfig: pluginData.options,
-			state: createPluginState(pluginName),
-			logger: loggerInstance.fork(inferNamespace(pluginName)),
-			env: Env,
-			meta: {
-				name: pluginName,
-				version: pluginVersion
-			}
-		}
+	// Execute each priority group sequentially, but hooks within a group run in parallel
+	for (const priority of sortedPriorities) {
+		const group = priorityGroups.get(priority)!
+		const hookCount = group.length
 
-		try {
-			loggerInstance.debug(`Executing start hook for ${pluginName}...`)
-			const hookModule = await import(pathToFileURL(hookPath).href)
-
-			if (typeof hookModule.default === 'function') {
-				const hookPromise = hookModule.default(context)
-
-				if (hookPromise instanceof Promise) {
-					const timeoutPromise = timeout(() => TIMEOUT, timeoutDuration)
-					const result = await Promise.race([hookPromise, timeoutPromise])
-
-					if (result === TIMEOUT) {
-						loggerInstance.warn(`Start hook for ${pluginName} timed out`)
-					}
-				}
-			}
-		} catch (error) {
-			// Check failSafe meta option
-			const failSafe = pluginData.metaOptions?.failSafe ?? false
-
-			if (failSafe) {
-				loggerInstance.warn(`Start hook for ${pluginName} failed (failSafe enabled):`, error)
-				// Continue with other plugins
-			} else {
-				loggerInstance.error(`Start hook for ${pluginName} failed:`, error)
-				throw error
-			}
+		if (hookCount === 1) {
+			// Single hook - run directly
+			const [pluginName, pluginData] = group[0]
+			loggerInstance.debug(`Executing start hook for ${pluginName} (priority ${priority})...`)
+			await executePluginStartHook(pluginName, pluginData, mode, timeoutDuration, config, loggerInstance)
+		} else {
+			// Multiple hooks at same priority - run in parallel
+			loggerInstance.debug(`Executing ${hookCount} start hooks in parallel (priority ${priority}): ${group.map(([n]) => n).join(', ')}`)
+			await Promise.all(
+				group.map(([pluginName, pluginData]) =>
+					executePluginStartHook(pluginName, pluginData, mode, timeoutDuration, config, loggerInstance)
+				)
+			)
 		}
 	}
 
-	// 2. Execute project's start hook LAST (if exists)
+	// Project hook always runs last (after all plugin hooks)
 	const projectHookPath = await resolveProjectHookPath('start', mode)
 	if (projectHookPath) {
 		try {
@@ -339,8 +527,70 @@ export async function executeStartHooks(
 }
 
 /**
+ * Execute a single plugin's start hook with timeout and error handling.
+ * @internal
+ */
+async function executePluginStartHook(
+	pluginName: string,
+	pluginData: PluginData,
+	mode: string,
+	timeoutDuration: number,
+	config: ReturnType<typeof getConfig>,
+	loggerInstance: ReturnType<typeof logger>
+): Promise<void> {
+	const hookPath = await resolvePluginHookPath(pluginName, 'start')
+	if (!hookPath) return
+
+	// Get plugin version from package.json (cached)
+	const pluginVersion = await getPluginVersion(pluginName)
+
+	// Create plugin-scoped context
+	const context: StartContext = {
+		mode,
+		projectConfig: config,
+		pluginConfig: pluginData.options,
+		state: createPluginState(pluginName),
+		logger: loggerInstance.fork(inferNamespace(pluginName)),
+		env: Env,
+		meta: {
+			name: pluginName,
+			version: pluginVersion
+		}
+	}
+
+	try {
+		const hookModule = await import(pathToFileURL(hookPath).href)
+
+		if (typeof hookModule.default === 'function') {
+			const hookPromise = hookModule.default(context)
+
+			if (hookPromise instanceof Promise) {
+				const timeoutPromise = timeout(() => TIMEOUT, timeoutDuration)
+				const result = await Promise.race([hookPromise, timeoutPromise])
+
+				if (result === TIMEOUT) {
+					loggerInstance.warn(`Start hook for ${pluginName} timed out`)
+				}
+			}
+		}
+	} catch (error) {
+		// Check failSafe meta option
+		const failSafe = pluginData.metaOptions?.failSafe ?? false
+
+		if (failSafe) {
+			loggerInstance.warn(`Start hook for ${pluginName} failed (failSafe enabled):`, error)
+			// Continue with other plugins
+		} else {
+			loggerInstance.error(`Start hook for ${pluginName} failed:`, error)
+			throw error
+		}
+	}
+}
+
+/**
  * Execute prepare hooks for project and all registered plugins.
- * Runs sequentially: plugins FIRST (in registration order), then project LAST.
+ * Hooks are grouped by priority and executed in priority order (lower first).
+ * Hooks with the same priority run in parallel via Promise.all().
  *
  * This runs AFTER portal is populated but BEFORE start hooks.
  * Use for initializing resources like Discord client, HTTP servers.
@@ -356,62 +606,45 @@ export async function executePrepareHooks(
 	const loggerInstance = logger()
 	const timeoutDuration = config?.timeouts?.lifecycle ?? DEFAULT_CONFIG.timeouts.lifecycle
 
-	// 1. Execute plugin prepare hooks FIRST (in registration order)
+	// Group plugins by priority
+	const priorityGroups = new Map<number, Array<[string, PluginData]>>()
+
 	for (const [pluginName, pluginData] of plugins) {
 		const hookPath = await resolvePluginHookPath(pluginName, 'prepare')
+		if (!hookPath) continue // Plugin doesn't have a prepare hook
 
-		if (!hookPath) {
-			continue // Plugin doesn't have a prepare hook
+		const priority = getHookPriority('prepare', pluginName, pluginData)
+		if (!priorityGroups.has(priority)) {
+			priorityGroups.set(priority, [])
 		}
+		priorityGroups.get(priority)!.push([pluginName, pluginData])
+	}
 
-		// Get plugin version from package.json (cached)
-		const pluginVersion = await getPluginVersion(pluginName)
+	// Sort priority groups (lower numbers first)
+	const sortedPriorities = [...priorityGroups.keys()].sort((a, b) => a - b)
 
-		// Create plugin-scoped context
-		const context: PrepareContext = {
-			mode,
-			projectConfig: config,
-			pluginConfig: pluginData.options,
-			state: createPluginState(pluginName),
-			logger: loggerInstance.fork(inferNamespace(pluginName)),
-			env: Env,
-			meta: {
-				name: pluginName,
-				version: pluginVersion
-			}
-		}
+	// Execute each priority group sequentially, but hooks within a group run in parallel
+	for (const priority of sortedPriorities) {
+		const group = priorityGroups.get(priority)!
+		const hookCount = group.length
 
-		try {
-			loggerInstance.debug(`Executing prepare hook for ${pluginName}...`)
-			const hookModule = await import(pathToFileURL(hookPath).href)
-
-			if (typeof hookModule.default === 'function') {
-				const hookPromise = hookModule.default(context)
-
-				if (hookPromise instanceof Promise) {
-					const timeoutPromise = timeout(() => TIMEOUT, timeoutDuration)
-					const result = await Promise.race([hookPromise, timeoutPromise])
-
-					if (result === TIMEOUT) {
-						loggerInstance.warn(`Prepare hook for ${pluginName} timed out`)
-					}
-				}
-			}
-		} catch (error) {
-			// Check failSafe meta option
-			const failSafe = pluginData.metaOptions?.failSafe ?? false
-
-			if (failSafe) {
-				loggerInstance.warn(`Prepare hook for ${pluginName} failed (failSafe enabled):`, error)
-				// Continue with other plugins
-			} else {
-				loggerInstance.error(`Prepare hook for ${pluginName} failed:`, error)
-				throw error
-			}
+		if (hookCount === 1) {
+			// Single hook - run directly
+			const [pluginName, pluginData] = group[0]
+			loggerInstance.debug(`Executing prepare hook for ${pluginName} (priority ${priority})...`)
+			await executePluginPrepareHook(pluginName, pluginData, mode, timeoutDuration, config, loggerInstance)
+		} else {
+			// Multiple hooks at same priority - run in parallel
+			loggerInstance.debug(`Executing ${hookCount} prepare hooks in parallel (priority ${priority}): ${group.map(([n]) => n).join(', ')}`)
+			await Promise.all(
+				group.map(([pluginName, pluginData]) =>
+					executePluginPrepareHook(pluginName, pluginData, mode, timeoutDuration, config, loggerInstance)
+				)
+			)
 		}
 	}
 
-	// 2. Execute project's prepare hook LAST (if exists)
+	// Project hook always runs last (after all plugin hooks)
 	const projectHookPath = await resolveProjectHookPath('prepare', mode)
 	if (projectHookPath) {
 		try {
@@ -450,10 +683,73 @@ export async function executePrepareHooks(
 }
 
 /**
+ * Execute a single plugin's prepare hook with timeout and error handling.
+ * @internal
+ */
+async function executePluginPrepareHook(
+	pluginName: string,
+	pluginData: PluginData,
+	mode: string,
+	timeoutDuration: number,
+	config: ReturnType<typeof getConfig>,
+	loggerInstance: ReturnType<typeof logger>
+): Promise<void> {
+	const hookPath = await resolvePluginHookPath(pluginName, 'prepare')
+	if (!hookPath) return
+
+	// Get plugin version from package.json (cached)
+	const pluginVersion = await getPluginVersion(pluginName)
+
+	// Create plugin-scoped context
+	const context: PrepareContext = {
+		mode,
+		projectConfig: config,
+		pluginConfig: pluginData.options,
+		state: createPluginState(pluginName),
+		logger: loggerInstance.fork(inferNamespace(pluginName)),
+		env: Env,
+		meta: {
+			name: pluginName,
+			version: pluginVersion
+		}
+	}
+
+	try {
+		const hookModule = await import(pathToFileURL(hookPath).href)
+
+		if (typeof hookModule.default === 'function') {
+			const hookPromise = hookModule.default(context)
+
+			if (hookPromise instanceof Promise) {
+				const timeoutPromise = timeout(() => TIMEOUT, timeoutDuration)
+				const result = await Promise.race([hookPromise, timeoutPromise])
+
+				if (result === TIMEOUT) {
+					loggerInstance.warn(`Prepare hook for ${pluginName} timed out`)
+				}
+			}
+		}
+	} catch (error) {
+		// Check failSafe meta option
+		const failSafe = pluginData.metaOptions?.failSafe ?? false
+
+		if (failSafe) {
+			loggerInstance.warn(`Prepare hook for ${pluginName} failed (failSafe enabled):`, error)
+			// Continue with other plugins
+		} else {
+			loggerInstance.error(`Prepare hook for ${pluginName} failed:`, error)
+			throw error
+		}
+	}
+}
+
+/**
  * Execute stop hooks for all registered plugins and project.
- * Runs sequentially: project FIRST, then plugins in REVERSE registration order.
+ * Hooks are grouped by priority and executed in REVERSE priority order (higher first).
+ * Hooks with the same priority run in parallel via Promise.all().
+ * This ensures things that started first (lower priority) stop last.
  *
- * This runs when shutdown signal is received.
+ * Project hook runs FIRST, then plugins in reverse priority order.
  *
  * @param plugins - Plugin data map
  * @param mode - Runtime mode (supports custom modes like 'beta', 'staging', etc.)
@@ -468,7 +764,7 @@ export async function executeStopHooks(
 	const loggerInstance = logger()
 	const timeoutDuration = config?.timeouts?.lifecycle ?? DEFAULT_CONFIG.timeouts.lifecycle
 
-	// 1. Execute project's stop hook FIRST (if exists)
+	// Project hook runs FIRST (before plugin hooks)
 	const projectHookPath = await resolveProjectHookPath('stop', mode)
 	if (projectHookPath) {
 		try {
@@ -505,61 +801,104 @@ export async function executeStopHooks(
 		}
 	}
 
-	// 2. Execute plugin stop hooks in REVERSE registration order
-	const pluginEntries = Array.from(plugins.entries()).reverse()
+	// Group plugins by priority
+	const priorityGroups = new Map<number, Array<[string, PluginData]>>()
 
-	for (const [pluginName, pluginData] of pluginEntries) {
+	for (const [pluginName, pluginData] of plugins) {
 		const hookPath = await resolvePluginHookPath(pluginName, 'stop')
+		if (!hookPath) continue // Plugin doesn't have a stop hook
 
-		if (!hookPath) {
-			continue // Plugin doesn't have a stop hook
+		const priority = getHookPriority('stop', pluginName, pluginData)
+		if (!priorityGroups.has(priority)) {
+			priorityGroups.set(priority, [])
 		}
+		priorityGroups.get(priority)!.push([pluginName, pluginData])
+	}
 
-		// Get plugin version from cache
-		const pluginVersion = await getPluginVersion(pluginName)
+	// Sort priority groups in REVERSE order (higher numbers first for cleanup)
+	const sortedPriorities = [...priorityGroups.keys()].sort((a, b) => b - a)
 
-		// Create plugin-scoped context with StopContext
-		const context: StopContext = {
-			mode,
-			reason,
-			projectConfig: config,
-			pluginConfig: pluginData.options,
-			state: createPluginState(pluginName),
-			logger: loggerInstance.fork(inferNamespace(pluginName)),
-			env: Env,
-			meta: {
-				name: pluginName,
-				version: pluginVersion
-			}
+	// Execute each priority group sequentially, but hooks within a group run in parallel
+	for (const priority of sortedPriorities) {
+		const group = priorityGroups.get(priority)!
+		const hookCount = group.length
+
+		if (hookCount === 1) {
+			// Single hook - run directly
+			const [pluginName, pluginData] = group[0]
+			loggerInstance.debug(`Executing stop hook for ${pluginName} (priority ${priority})...`)
+			await executePluginStopHook(pluginName, pluginData, mode, reason, timeoutDuration, config, loggerInstance)
+		} else {
+			// Multiple hooks at same priority - run in parallel
+			loggerInstance.debug(`Executing ${hookCount} stop hooks in parallel (priority ${priority}): ${group.map(([n]) => n).join(', ')}`)
+			await Promise.all(
+				group.map(([pluginName, pluginData]) =>
+					executePluginStopHook(pluginName, pluginData, mode, reason, timeoutDuration, config, loggerInstance)
+				)
+			)
 		}
+	}
+}
 
-		try {
-			loggerInstance.debug(`Executing stop hook for ${pluginName}...`)
-			const hookModule = await import(pathToFileURL(hookPath).href)
+/**
+ * Execute a single plugin's stop hook with timeout and error handling.
+ * @internal
+ */
+async function executePluginStopHook(
+	pluginName: string,
+	pluginData: PluginData,
+	mode: string,
+	reason: 'signal' | 'error' | 'restart',
+	timeoutDuration: number,
+	config: ReturnType<typeof getConfig>,
+	loggerInstance: ReturnType<typeof logger>
+): Promise<void> {
+	const hookPath = await resolvePluginHookPath(pluginName, 'stop')
+	if (!hookPath) return
 
-			if (typeof hookModule.default === 'function') {
-				const hookPromise = hookModule.default(context)
+	// Get plugin version from cache
+	const pluginVersion = await getPluginVersion(pluginName)
 
-				if (hookPromise instanceof Promise) {
-					const timeoutPromise = timeout(() => TIMEOUT, timeoutDuration)
-					const result = await Promise.race([hookPromise, timeoutPromise])
+	// Create plugin-scoped context with StopContext
+	const context: StopContext = {
+		mode,
+		reason,
+		projectConfig: config,
+		pluginConfig: pluginData.options,
+		state: createPluginState(pluginName),
+		logger: loggerInstance.fork(inferNamespace(pluginName)),
+		env: Env,
+		meta: {
+			name: pluginName,
+			version: pluginVersion
+		}
+	}
 
-					if (result === TIMEOUT) {
-						loggerInstance.warn(`Stop hook for ${pluginName} timed out`)
-					}
+	try {
+		const hookModule = await import(pathToFileURL(hookPath).href)
+
+		if (typeof hookModule.default === 'function') {
+			const hookPromise = hookModule.default(context)
+
+			if (hookPromise instanceof Promise) {
+				const timeoutPromise = timeout(() => TIMEOUT, timeoutDuration)
+				const result = await Promise.race([hookPromise, timeoutPromise])
+
+				if (result === TIMEOUT) {
+					loggerInstance.warn(`Stop hook for ${pluginName} timed out`)
 				}
 			}
-		} catch (error) {
-			// On stop, log errors but continue to ensure cleanup happens
-			const failSafe = pluginData.metaOptions?.failSafe ?? false
-
-			if (failSafe) {
-				loggerInstance.warn(`Stop hook for ${pluginName} failed (failSafe enabled):`, error)
-			} else {
-				loggerInstance.error(`Stop hook for ${pluginName} failed:`, error)
-			}
-			// Continue with other plugins regardless - graceful shutdown should complete
 		}
+	} catch (error) {
+		// On stop, log errors but continue to ensure cleanup happens
+		const failSafe = pluginData.metaOptions?.failSafe ?? false
+
+		if (failSafe) {
+			loggerInstance.warn(`Stop hook for ${pluginName} failed (failSafe enabled):`, error)
+		} else {
+			loggerInstance.error(`Stop hook for ${pluginName} failed:`, error)
+		}
+		// Continue with other plugins regardless - graceful shutdown should complete
 	}
 }
 

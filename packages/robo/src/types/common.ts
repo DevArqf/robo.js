@@ -135,8 +135,27 @@ export interface PluginData {
 	}
 }
 
+/**
+ * Lifecycle hook types that support priority-based execution.
+ */
+export type LifecycleHookType = 'init' | 'prepare' | 'start' | 'stop' | 'setup'
+
 export interface PluginMetaOptions {
 	failSafe?: boolean
+	/**
+	 * Override hook execution priorities for this plugin.
+	 * Lower numbers run first. Default priority is 100.
+	 * Hooks with the same priority run in parallel.
+	 *
+	 * @example
+	 * ```typescript
+	 * // In robo.config.ts
+	 * plugins: [
+	 *   ['@robojs/server', { port: 3000 }, { hookPriority: { start: 50 } }]
+	 * ]
+	 * ```
+	 */
+	hookPriority?: Partial<Record<LifecycleHookType, number>>
 }
 
 export interface BaseConfig {

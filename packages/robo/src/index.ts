@@ -4,7 +4,14 @@ export { registerEnvPattern } from './cli/utils/env-manifest.js'
 export { getConfig } from './core/config.js'
 export { env, Env } from './core/env.js'
 export { Flashcore } from './core/flashcore.js'
-export { createPluginState, inferNamespace } from './core/hooks.js'
+export {
+	createPluginState,
+	DEFAULT_HOOK_PRIORITY,
+	inferNamespace,
+	prioritizeHookAfter,
+	prioritizeHookBefore,
+	setHookPriority
+} from './core/hooks.js'
 export { logger, Logger } from './core/logger.js'
 export { Manifest } from './core/manifest-api.js'
 export { Mode } from './core/mode.js'
