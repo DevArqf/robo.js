@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useSyncState, useSyncContext, useSyncBroadcast } from '@robojs/sync'
 import { useDiscordSdk } from '../hooks/useDiscordSdk'
+import { CoinGame } from './CoinGame'
 import { Cursors } from './Cursors'
 import { SyncBalls } from './SyncBalls'
 import type { Client } from '@robojs/sync'
@@ -192,6 +193,15 @@ export const Activity = () => {
 						))}
 					</div>
 				</div>
+
+				{/* Coin Game - Server-authoritative demo */}
+				<CoinGame
+					roomKey={roomKey}
+					isHost={context.isHost}
+					clientId={context.clientId}
+					clients={context.clients}
+					username={session?.user?.username ?? 'Anonymous'}
+				/>
 			</main>
 
 			{/* Notifications */}

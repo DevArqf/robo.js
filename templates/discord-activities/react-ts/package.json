@@ -33,11 +33,12 @@
 	"dependencies": {
 		"@discord/embedded-app-sdk": "^1.4.3",
 		"@robojs/patch": "^0.1.1",
-		"@robojs/server": "^0.5.7",
+		"@robojs/server": "link:/Users/pkmmte/Documents/GitHub/robo.js/packages/plugin-api",
+		"@robojs/sync": "link:/Users/pkmmte/Documents/GitHub/robo.js/packages/plugin-sync",
 		"discord.js": "14.22.1",
 		"react": "^18.3.1",
 		"react-dom": "^18.3.1",
-		"robo.js": "^0.10.15"
+		"robo.js": "link:/Users/pkmmte/Documents/GitHub/robo.js/packages/robo"
 	},
 	"devDependencies": {
 		"@swc/core": "^1.7.26",
