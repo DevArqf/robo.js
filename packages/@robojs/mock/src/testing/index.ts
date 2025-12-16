@@ -66,6 +66,7 @@ export {
 	deleteSession,
 	dispatchEvent,
 	dispatchInteraction,
+	getChannelMessages,
 	getSessionActions,
 	getSessionState,
 	getMockConfig,

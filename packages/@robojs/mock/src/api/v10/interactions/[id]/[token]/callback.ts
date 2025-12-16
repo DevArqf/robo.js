@@ -1,6 +1,7 @@
 import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../../../core/manager.js'
 import { getStageBridge } from '../../../../../core/stage-bridge.js'
+import { mockMessageToAPIMessage } from '../../../../../discord/payloads.js'
 import { generateSnowflake } from '../../../../../utils/snowflake.js'
 import { isMultipartRequest, parseMultipartMessage, MultipartError } from '../../../../../utils/multipart.js'
 import { getImageDimensions, isImageContentType } from '../../../../../utils/image.js'
@@ -330,6 +331,14 @@ export default async (request: RoboRequest) => {
 				: undefined
 		})
 		interaction.responseMessageId = message.id
+
+		// Dispatch MESSAGE_CREATE event so the message appears in Stage UI
+		const apiMessage = mockMessageToAPIMessage(message, session.state.botUser)
+		const dispatchData: Record<string, unknown> = { ...apiMessage }
+		if (interaction.guildId) {
+			dispatchData.guild_id = interaction.guildId
+		}
+		await session.dispatch('MESSAGE_CREATE', dispatchData)
 	} else if (body.type === 7 && responseData && interaction.messageId) {
 		// Type 7: Update the original component message
 		// Merge existing attachments with new ones if provided
@@ -345,6 +354,17 @@ export default async (request: RoboRequest) => {
 			components: responseData.components as unknown[]
 		})
 		interaction.responseMessageId = interaction.messageId
+
+		// Dispatch MESSAGE_UPDATE event so the updated message appears in Stage UI
+		const updatedMessage = session.state.getMessage(interaction.messageId)
+		if (updatedMessage) {
+			const apiMessage = mockMessageToAPIMessage(updatedMessage, session.state.botUser)
+			const dispatchData: Record<string, unknown> = { ...apiMessage }
+			if (interaction.guildId) {
+				dispatchData.guild_id = interaction.guildId
+			}
+			await session.dispatch('MESSAGE_UPDATE', dispatchData)
+		}
 	}
 
 	// 11. Record as 'interaction_response' action
