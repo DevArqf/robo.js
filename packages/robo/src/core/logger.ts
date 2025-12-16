@@ -1,5 +1,10 @@
 import { color } from './color.js'
 import { getModeColor } from './mode.js'
+import type { DrainHandle } from '../types/config.js'
+
+// Re-export file drain utilities
+export { createFileDrain, formatTimestamp } from './file-drain.js'
+export type { FileDrainOptions, TimestampFormat, FileOutputConfig, DrainHandle } from '../types/config.js'
 
 // Compute mode label color
 let ModeLabel: string
@@ -432,6 +437,36 @@ export function consoleDrain(_logger: Logger, level: string, ...data: unknown[])
 	}
 }
 
+/**
+ * Composes multiple drains into a single drain that calls all of them.
+ * Useful for logging to multiple outputs (e.g., console + file) simultaneously.
+ *
+ * @param drains - Array of drain functions to compose
+ * @returns A single drain function that calls all provided drains
+ *
+ * @example
+ * ```typescript
+ * import { createMultiDrain, consoleDrain, createFileDrain } from 'robo.js/logger.js'
+ *
+ * const fileDrain = createFileDrain({ path: 'logs/app.log' })
+ * const multiDrain = createMultiDrain([consoleDrain, fileDrain])
+ *
+ * logger({ drain: multiDrain })
+ * ```
+ */
+export function createMultiDrain(drains: LogDrain[]): LogDrain {
+	if (drains.length === 0) {
+		return async () => {}
+	}
+	if (drains.length === 1) {
+		return drains[0]
+	}
+
+	return async (logger: Logger, level: string, ...data: unknown[]): Promise<void> => {
+		await Promise.all(drains.map((drain) => drain(logger, level, ...data).catch(() => {})))
+	}
+}
+
 const DEFAULT_MAX_ENTRIES = 100
 
 class LogEntry {
@@ -498,6 +533,8 @@ export class Logger {
 	private _currentIndex: number
 	private _drain: LogDrain
 	private _logBuffer: LogEntry[]
+	private _drains: Map<string, LogDrain> = new Map()
+	private _primaryDrain: LogDrain = consoleDrain
 
 	constructor(options?: LoggerOptions) {
 		// Bind all public methods
@@ -508,6 +545,8 @@ export class Logger {
 		this.getLevelValues = this.getLevelValues.bind(this)
 		this.getRecentLogs = this.getRecentLogs.bind(this)
 		this.setDrain = this.setDrain.bind(this)
+		this.addDrain = this.addDrain.bind(this)
+		this.removeDrain = this.removeDrain.bind(this)
 		this.trace = this.trace.bind(this)
 		this.debug = this.debug.bind(this)
 		this.info = this.info.bind(this)
@@ -527,10 +566,13 @@ export class Logger {
 
 		// Preserve existing customLevels if new ones aren't provided
 		this._customLevels = customLevels ?? this._customLevels
-		this._drain = drain
+		this._primaryDrain = drain
 		this._enabled = enabled
 		this._parent = parent
 		this._prefix = prefix
+
+		// Update combined drain if we have additional drains
+		this._updateCombinedDrain()
 
 		if (env?.ROBOPLAY_ENV) {
 			// This allows developers to have better control over the logs when hosted
@@ -679,7 +721,74 @@ export class Logger {
 	}
 
 	public setDrain(drain: LogDrain) {
-		this._drain = drain
+		this._primaryDrain = drain
+		this._updateCombinedDrain()
+	}
+
+	/**
+	 * Adds a drain to the logger. Multiple drains can be active simultaneously.
+	 * Returns a handle that can be used to remove the drain and flush pending writes.
+	 *
+	 * @param drain - The drain function to add
+	 * @param id - Optional unique identifier for this drain. Auto-generated if not provided.
+	 * @returns A DrainHandle for managing this drain
+	 *
+	 * @example
+	 * ```typescript
+	 * import { logger, createFileDrain } from 'robo.js/logger.js'
+	 *
+	 * const drain = createFileDrain({ path: 'logs/test.log', blocking: true })
+	 * const handle = logger().addDrain(drain, 'test-logger')
+	 *
+	 * // Later, remove the drain
+	 * handle.remove()
+	 * ```
+	 */
+	public addDrain(drain: LogDrain, id?: string): DrainHandle {
+		// Delegate to parent if forked
+		if (this._parent) {
+			return this._parent.addDrain(drain, id)
+		}
+
+		const drainId = id ?? `drain_${Date.now()}_${Math.random().toString(36).slice(2)}`
+		this._drains.set(drainId, drain)
+		this._updateCombinedDrain()
+
+		return {
+			id: drainId,
+			remove: () => this.removeDrain(drainId),
+			flush: () => this.flush()
+		}
+	}
+
+	/**
+	 * Removes a drain from the logger by its ID.
+	 *
+	 * @param id - The unique identifier of the drain to remove
+	 * @returns true if the drain was found and removed, false otherwise
+	 */
+	public removeDrain(id: string): boolean {
+		// Delegate to parent if forked
+		if (this._parent) {
+			return this._parent.removeDrain(id)
+		}
+
+		const removed = this._drains.delete(id)
+		if (removed) {
+			this._updateCombinedDrain()
+		}
+		return removed
+	}
+
+	/**
+	 * Updates the combined drain based on the primary drain and additional drains.
+	 */
+	private _updateCombinedDrain(): void {
+		if (this._drains.size === 0) {
+			this._drain = this._primaryDrain
+		} else {
+			this._drain = createMultiDrain([this._primaryDrain, ...this._drains.values()])
+		}
 	}
 
 	public trace(...data: unknown[]) {
@@ -823,4 +932,12 @@ logger.error = function (...data: unknown[]): void {
 
 logger.custom = function (level: string, ...data: unknown[]): void {
 	return logger().custom(level, ...data)
+}
+
+logger.addDrain = function (drain: LogDrain, id?: string): DrainHandle {
+	return logger().addDrain(drain, id)
+}
+
+logger.removeDrain = function (id: string): boolean {
+	return logger().removeDrain(id)
 }

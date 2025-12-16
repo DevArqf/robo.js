@@ -1,0 +1,275 @@
+import { createMultiDrain, Logger, logger } from '../../src/core/logger.js'
+import { createMockDrain, createDelayedMockDrain } from '../utils/logging-test-helpers.js'
+
+describe('createMultiDrain', () => {
+	test('calls all drains with same arguments', async () => {
+		const { drain: drain1, calls: calls1 } = createMockDrain()
+		const { drain: drain2, calls: calls2 } = createMockDrain()
+		const { drain: drain3, calls: calls3 } = createMockDrain()
+
+		const multiDrain = createMultiDrain([drain1, drain2, drain3])
+		const testLogger = new Logger({ level: 'trace' })
+
+		await multiDrain(testLogger, 'info', 'test message', { key: 'value' })
+
+		expect(calls1.length).toBe(1)
+		expect(calls2.length).toBe(1)
+		expect(calls3.length).toBe(1)
+
+		// All should have received the same arguments
+		expect(calls1[0].level).toBe('info')
+		expect(calls1[0].data).toEqual(['test message', { key: 'value' }])
+		expect(calls2[0].level).toBe('info')
+		expect(calls3[0].level).toBe('info')
+	})
+
+	test('waits for all drains to complete', async () => {
+		const { drain: slowDrain, calls: slowCalls } = createDelayedMockDrain(50)
+		const { drain: fastDrain, calls: fastCalls } = createMockDrain()
+
+		const multiDrain = createMultiDrain([slowDrain, fastDrain])
+		const testLogger = new Logger({ level: 'trace' })
+
+		await multiDrain(testLogger, 'info', 'test')
+
+		// Both should have been called by the time the promise resolves
+		expect(slowCalls.length).toBe(1)
+		expect(fastCalls.length).toBe(1)
+	})
+
+	test('handles empty drain array', async () => {
+		const multiDrain = createMultiDrain([])
+		const testLogger = new Logger({ level: 'trace' })
+
+		// Should not throw
+		await expect(multiDrain(testLogger, 'info', 'test')).resolves.toBeUndefined()
+	})
+
+	test('handles single drain', async () => {
+		const { drain, calls } = createMockDrain()
+		const multiDrain = createMultiDrain([drain])
+		const testLogger = new Logger({ level: 'trace' })
+
+		await multiDrain(testLogger, 'info', 'single drain test')
+
+		expect(calls.length).toBe(1)
+		expect(calls[0].data).toEqual(['single drain test'])
+	})
+
+	test('continues calling other drains if one throws', async () => {
+		const errorDrain = async () => {
+			throw new Error('Drain error')
+		}
+		const { drain: successDrain, calls: successCalls } = createMockDrain()
+
+		const multiDrain = createMultiDrain([errorDrain, successDrain])
+		const testLogger = new Logger({ level: 'trace' })
+
+		// Should not throw even though one drain throws
+		await expect(multiDrain(testLogger, 'info', 'test')).resolves.toBeUndefined()
+
+		// The successful drain should still be called
+		expect(successCalls.length).toBe(1)
+	})
+})
+
+describe('Logger.addDrain', () => {
+	let testLogger: Logger
+
+	beforeEach(() => {
+		// Create a fresh logger with a no-op primary drain to isolate tests
+		testLogger = new Logger({
+			level: 'trace',
+			drain: async () => {} // No-op drain
+		})
+	})
+
+	test('adds drain and includes it in logging', async () => {
+		const { drain, calls } = createMockDrain()
+
+		testLogger.addDrain(drain)
+		testLogger.info('test message')
+
+		// Wait for async drain
+		await testLogger.flush()
+
+		expect(calls.length).toBe(1)
+	})
+
+	test('returns DrainHandle with id', () => {
+		const { drain } = createMockDrain()
+
+		const handle = testLogger.addDrain(drain)
+
+		expect(handle.id).toBeDefined()
+		expect(typeof handle.id).toBe('string')
+		expect(handle.id.length).toBeGreaterThan(0)
+	})
+
+	test('uses provided id if given', () => {
+		const { drain } = createMockDrain()
+
+		const handle = testLogger.addDrain(drain, 'my-custom-drain-id')
+
+		expect(handle.id).toBe('my-custom-drain-id')
+	})
+
+	test('generates unique id if not provided', () => {
+		const { drain: drain1 } = createMockDrain()
+		const { drain: drain2 } = createMockDrain()
+
+		const handle1 = testLogger.addDrain(drain1)
+		const handle2 = testLogger.addDrain(drain2)
+
+		expect(handle1.id).not.toBe(handle2.id)
+	})
+
+	test('multiple drains receive same log entries', async () => {
+		const { drain: drain1, calls: calls1 } = createMockDrain()
+		const { drain: drain2, calls: calls2 } = createMockDrain()
+
+		testLogger.addDrain(drain1)
+		testLogger.addDrain(drain2)
+
+		testLogger.info('shared message')
+		await testLogger.flush()
+
+		expect(calls1.length).toBe(1)
+		expect(calls2.length).toBe(1)
+	})
+})
+
+describe('Logger.removeDrain', () => {
+	let testLogger: Logger
+
+	beforeEach(() => {
+		testLogger = new Logger({
+			level: 'trace',
+			drain: async () => {}
+		})
+	})
+
+	test('removes drain by id', async () => {
+		const { drain, calls } = createMockDrain()
+		testLogger.addDrain(drain, 'test-drain')
+
+		testLogger.info('before removal')
+		await testLogger.flush()
+		expect(calls.length).toBe(1)
+
+		testLogger.removeDrain('test-drain')
+
+		testLogger.info('after removal')
+		await testLogger.flush()
+		expect(calls.length).toBe(1) // Should not increase
+	})
+
+	test('returns true if drain was removed', () => {
+		const { drain } = createMockDrain()
+		testLogger.addDrain(drain, 'test-drain')
+
+		const result = testLogger.removeDrain('test-drain')
+
+		expect(result).toBe(true)
+	})
+
+	test('returns false if drain not found', () => {
+		const result = testLogger.removeDrain('nonexistent-drain')
+
+		expect(result).toBe(false)
+	})
+
+	test('removed drain no longer receives logs', async () => {
+		const { drain, calls } = createMockDrain()
+		const handle = testLogger.addDrain(drain)
+
+		handle.remove()
+
+		testLogger.info('after removal')
+		await testLogger.flush()
+
+		expect(calls.length).toBe(0)
+	})
+})
+
+describe('DrainHandle', () => {
+	let testLogger: Logger
+
+	beforeEach(() => {
+		testLogger = new Logger({
+			level: 'trace',
+			drain: async () => {}
+		})
+	})
+
+	test('remove() removes the drain', async () => {
+		const { drain, calls } = createMockDrain()
+		const handle = testLogger.addDrain(drain)
+
+		testLogger.info('before')
+		await testLogger.flush()
+		expect(calls.length).toBe(1)
+
+		handle.remove()
+
+		testLogger.info('after')
+		await testLogger.flush()
+		expect(calls.length).toBe(1) // Should not increase
+	})
+
+	test('flush() waits for pending writes', async () => {
+		const { drain: slowDrain, calls } = createDelayedMockDrain(50)
+		const handle = testLogger.addDrain(slowDrain)
+
+		testLogger.info('test')
+		await handle.flush()
+
+		expect(calls.length).toBe(1)
+	})
+
+	test('id matches the drain identifier', () => {
+		const { drain } = createMockDrain()
+		const handle = testLogger.addDrain(drain, 'specific-id')
+
+		expect(handle.id).toBe('specific-id')
+	})
+})
+
+describe('logger.addDrain (singleton)', () => {
+	beforeEach(() => {
+		// Initialize the singleton with a no-op drain
+		logger({
+			level: 'trace',
+			drain: async () => {}
+		})
+	})
+
+	test('delegates to singleton instance', async () => {
+		const { drain, calls } = createMockDrain()
+
+		const handle = logger.addDrain(drain, 'singleton-test')
+
+		logger.info('test from singleton')
+		await logger.flush()
+
+		expect(calls.length).toBeGreaterThanOrEqual(1)
+
+		// Cleanup
+		handle.remove()
+	})
+
+	test('works with forked loggers', async () => {
+		const { drain, calls } = createMockDrain()
+		const handle = logger.addDrain(drain, 'fork-test')
+
+		const forkedLogger = logger.fork('test-prefix')
+		forkedLogger.info('forked message')
+		await logger.flush()
+
+		// Forked logger should delegate to parent which has the drain
+		expect(calls.length).toBeGreaterThanOrEqual(1)
+
+		// Cleanup
+		handle.remove()
+	})
+})

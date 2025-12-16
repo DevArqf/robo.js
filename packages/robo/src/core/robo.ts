@@ -1,7 +1,7 @@
 import { registerProcessEvents } from './process.js'
 import { getConfig, loadConfig } from './config.js'
 import { FLASHCORE_KEYS } from './constants.js'
-import { logger, LogLevel } from './logger.js'
+import { consoleDrain, createFileDrain, createMultiDrain, logger, LogLevel } from './logger.js'
 import { Env } from './env.js'
 import { executeEventHandler } from './handlers.js'
 import { Nanocore } from '../internal/nanocore.js'
@@ -71,6 +71,16 @@ async function start(options?: StartOptions) {
 	const pid = process.pid
 	const id = String(process.env.ROBO_INSTANCE_ID ?? pid)
 
+	// In mock test mode (without verbose), suppress console output immediately
+	// This must happen before any other code that might use the logger
+	const isMockTestMode = process.env.ROBO_MOCK_TEST_MODE === 'true'
+	const isMockVerbose = process.env.ROBO_MOCK_VERBOSE === 'true'
+	const noOpDrain = async () => {}
+
+	if (isMockTestMode && !isMockVerbose) {
+		logger({ drain: noOpDrain })
+	}
+
 	try {
 		const { logLevel, stateLoad } = options ?? {}
 
@@ -80,14 +90,50 @@ async function start(options?: StartOptions) {
 
 		// 1. Load config first (needed for plugin list and logger config)
 		const config = await loadConfig()
+
+		// 2. Get mode early (needed for logger setup and init hooks)
+		const mode = Mode.get()
+
+		// Set up file drains based on config
+		const fileDrains: ReturnType<typeof createFileDrain>[] = []
+
+		if (config?.logger?.files?.length) {
+			// Create file drains from config
+			for (const fileConfig of config.logger.files) {
+				fileDrains.push(
+					createFileDrain({
+						path: fileConfig.path,
+						level: fileConfig.level,
+						timestamp: fileConfig.timestamp ?? config.logger.timestamp,
+						maxSize: fileConfig.maxSize,
+						maxFiles: fileConfig.maxFiles,
+						format: fileConfig.format
+					})
+				)
+			}
+		} else if (mode === 'development' && config?.logger?.files === undefined) {
+			// Dev mode default: auto-create logs/dev.log if files is undefined (not explicitly empty)
+			fileDrains.push(
+				createFileDrain({
+					path: 'logs/dev.log',
+					level: 'debug',
+					timestamp: 'short'
+				})
+			)
+		}
+
+		// Combine console + file drains
+		// In mock test mode (without verbose), use no-op drain - tests set up their own file drain
+		const baseDrain = isMockTestMode && !isMockVerbose ? noOpDrain : (config?.logger?.drain ?? consoleDrain)
+		const combinedDrain = fileDrains.length > 0 ? createMultiDrain([baseDrain, ...fileDrains]) : baseDrain
+
 		logger({
-			drain: config?.logger?.drain,
+			drain: combinedDrain,
 			enabled: config?.logger?.enabled,
 			level: logLevel ?? config?.logger?.level
 		}).debug('Starting Robo...')
 
-		// 2. Get mode and load environment early (needed for init hooks)
-		const mode = Mode.get()
+		// Load environment (needed for init hooks)
 		await Env.load({ mode })
 
 		// 3. Load plugin data early (needed for init hooks)

@@ -2,6 +2,69 @@ import type { LogDrain, LogLevel } from '../core/logger.js'
 import type { Plugin } from './index.js'
 import type { BuildDirectoryOption } from '../core/paths.js'
 
+/**
+ * Timestamp format for log entries.
+ * - 'iso': ISO 8601 format (2025-01-15T10:30:00.123Z)
+ * - 'unix': Unix timestamp in milliseconds (1736937000123)
+ * - 'short': Time only (10:30:00.123)
+ * - 'long': Date and time with space (2025-01-15 10:30:00.123)
+ * - false: No timestamp
+ */
+export type TimestampFormat = 'iso' | 'unix' | 'short' | 'long' | false
+
+/**
+ * Configuration for a file-based log output.
+ */
+export interface FileOutputConfig {
+	/** File path for log output. Relative paths resolved from project root. */
+	path: string
+	/** Minimum log level to write to this file. Inherits from logger.level if not set. */
+	level?: LogLevel
+	/** Timestamp format for this file. Overrides global logger.timestamp if set. */
+	timestamp?: TimestampFormat
+	/** Maximum file size in bytes before rotation. Default: 10MB (10485760) */
+	maxSize?: number
+	/** Maximum number of rotated files to keep. Default: 5 */
+	maxFiles?: number
+	/** Output format: 'text' for human-readable, 'json' for structured. Default: 'text' */
+	format?: 'text' | 'json'
+}
+
+/**
+ * Options for creating a file drain imperatively.
+ */
+export interface FileDrainOptions {
+	/** Absolute or relative file path for log output. */
+	path: string
+	/** Minimum log level to write. */
+	level?: LogLevel
+	/** Timestamp format to prepend to log entries. Default: false (no timestamp) */
+	timestamp?: TimestampFormat
+	/** If true, awaits each write before returning (sync-like). Default: false */
+	blocking?: boolean
+	/** Output format. Default: 'text' */
+	format?: 'text' | 'json'
+	/** Strip ANSI color codes from output. Default: true */
+	stripAnsi?: boolean
+	/** Maximum file size in bytes before rotation. Default: 10MB */
+	maxSize?: number
+	/** Maximum number of rotated files to keep. Default: 5 */
+	maxFiles?: number
+}
+
+/**
+ * Handle returned when adding a drain to the logger.
+ * Provides methods to remove the drain and flush pending writes.
+ */
+export interface DrainHandle {
+	/** Unique identifier for this drain. */
+	id: string
+	/** Remove this drain from the logger. */
+	remove: () => boolean
+	/** Flush pending writes for this drain. */
+	flush: () => Promise<void>
+}
+
 export interface SeedHookGenerators {
 	randomBase64: (bytes?: number) => string
 	randomHex: (bytes?: number) => string
@@ -72,6 +135,10 @@ export interface Config {
 		drain?: LogDrain
 		enabled?: boolean
 		level?: LogLevel
+		/** Global timestamp format for all log outputs. Default: false (no timestamps) */
+		timestamp?: TimestampFormat
+		/** File-based log outputs. In development mode, defaults to logs/dev.log if undefined. */
+		files?: FileOutputConfig[]
 	}
 	plugins?: Plugin[]
 	portal?: {
