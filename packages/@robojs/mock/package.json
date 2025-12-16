@@ -14,6 +14,16 @@
 			"import": "./.robo/build/session/index.js",
 			"types": "./.robo/build/session/index.d.ts"
 		},
+		"./testing": {
+			"import": "./.robo/build/testing/index.js",
+			"types": "./.robo/build/testing/index.d.ts"
+		},
+		"./testing/jest-reporter": {
+			"types": "./.robo/build/testing/jest-reporter.d.ts",
+			"require": "./src/testing/jest-reporter.cjs",
+			"import": "./.robo/build/testing/jest-reporter.js",
+			"default": "./src/testing/jest-reporter.cjs"
+		},
 		"./types": {
 			"import": "./.robo/build/types/index.js",
 			"types": "./.robo/build/types/index.d.ts"

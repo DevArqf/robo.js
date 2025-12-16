@@ -26,8 +26,13 @@ import { getStageBridge } from '../../../core/stage-bridge.js'
 import { startVoiceGateway, VOICE_GATEWAY_PORT } from '../../../core/voice-gateway.js'
 import { sessionManager } from '../../../core/manager.js'
 import { getMockPluginPrefix } from '../../../utils/server.js'
+import {
+	dispatchInteractionToSession,
+	type DispatchInteractionInput
+} from '../../../session/interaction-dispatch.js'
 import type { CliContext } from 'robo.js'
-import type { CreateSessionOptions, SessionConfig } from '../../../types/index.js'
+import type { ActionType, CreateSessionOptions, MockAttachment, SessionConfig } from '../../../types/index.js'
+import { serializeSessionState } from '../../../session/state.js'
 
 // Dynamic imports for @robojs/server
 type BaseEngine = import('@robojs/server/engines').BaseEngine
@@ -116,7 +121,9 @@ export default async function mockCommand({ options, logger }: CliContext) {
 	mockLogger.debug(`Loaded ${plugins.size} plugin(s) from config`)
 
 	// 3. Initialize manifest for portal access
-	const manifestMode = envMode === 'production' ? 'production' : 'development'
+	// Always use 'production' mode since plugins only have production builds
+	// (there's no .robo/manifest/development/ in plugin packages)
+	const manifestMode = 'production'
 	await Manifest.initialize(manifestMode)
 
 	// 4. Populate portal (loads commands, events, API routes from manifest)
@@ -295,7 +302,8 @@ function registerControlRoutes(engine: BaseEngine): void {
 			return {
 				session_id: session.id,
 				token: session.token,
-				expires_at: session.expiresAt
+				expires_at: session.expiresAt,
+				state: serializeSessionState(session.state)
 			}
 		}
 
@@ -324,6 +332,382 @@ function registerControlRoutes(engine: BaseEngine): void {
 			expires_at: session.expiresAt,
 			connections: session.connections.size
 		}
+	})
+
+	// Actions endpoint - get recorded actions for a session
+	engine.registerRoute('/api/control/sessions/:id/actions', async (req) => {
+		if (req.method !== 'GET') {
+			return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+				status: 405,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		const sessionId = req.params.id as string
+		const session = sessionManager.get(sessionId)
+
+		if (!session) {
+			return new Response(JSON.stringify({ error: 'Session not found' }), {
+				status: 404,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		const url = new URL(req.url, 'http://localhost')
+		const type = url.searchParams.get('type') as ActionType | null
+		const since = url.searchParams.get('since')
+		const limit = parseInt(url.searchParams.get('limit') ?? '100', 10)
+		const offset = parseInt(url.searchParams.get('offset') ?? '0', 10)
+
+		let actions = session.getActions()
+
+		// Apply filters
+		if (type) {
+			actions = actions.filter((a) => a.type === type)
+		}
+		if (since) {
+			const sinceTs = parseInt(since, 10)
+			actions = actions.filter((a) => a.timestamp >= sinceTs)
+		}
+
+		// Get total before pagination
+		const total = actions.length
+
+		// Apply pagination
+		actions = actions.slice(offset, offset + limit)
+
+		return {
+			actions,
+			total,
+			limit,
+			offset
+		}
+	})
+
+	// Dispatch endpoint - dispatch events to session connections
+	engine.registerRoute('/api/control/sessions/:id/dispatch', async (req) => {
+		if (req.method !== 'POST') {
+			return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+				status: 405,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		const sessionId = req.params.id as string
+		const session = sessionManager.get(sessionId)
+
+		if (!session) {
+			return new Response(JSON.stringify({ error: 'Session not found' }), {
+				status: 404,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// Parse request body
+		let body: {
+			event: string
+			data: Record<string, unknown>
+		}
+
+		try {
+			body = await req.json()
+		} catch {
+			return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// Validate required fields
+		if (!body.event || typeof body.event !== 'string') {
+			return new Response(JSON.stringify({ error: 'Missing or invalid "event" field' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		if (!body.data || typeof body.data !== 'object') {
+			return new Response(JSON.stringify({ error: 'Missing or invalid "data" field' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// Handle MESSAGE_CREATE specially
+		if (body.event === 'MESSAGE_CREATE') {
+			const data = body.data as {
+				id?: string
+				channel_id?: string
+				content?: string
+				author?: {
+					id?: string
+					username?: string
+					bot?: boolean
+				}
+				embeds?: unknown[]
+				attachments?: unknown[]
+				components?: unknown[]
+				mentions?: Array<{ id?: string; username?: string }>
+				type?: number
+			}
+
+			if (!data.channel_id) {
+				return new Response(JSON.stringify({ error: 'MESSAGE_CREATE requires "channel_id" in data' }), {
+					status: 400,
+					headers: { 'Content-Type': 'application/json' }
+				})
+			}
+
+			// Check if this is a raw dispatch with full mention data
+			const hasFullMentionData = data.mentions?.some((m) => m.username !== undefined)
+
+			if (hasFullMentionData) {
+				// Dispatch raw MESSAGE_CREATE payload
+				await session.dispatch(body.event, body.data)
+				return {
+					success: true,
+					dispatched: session.connections.size,
+					message_id: data.id ?? 'unknown'
+				}
+			}
+
+			// Extract mention user IDs from the mentions array
+			const mentionIds = data.mentions?.map((m) => m.id).filter((id): id is string => !!id) ?? []
+
+			try {
+				const message = await session.dispatchMessage({
+					id: data.id,
+					channelId: data.channel_id,
+					content: data.content,
+					author: data.author,
+					embeds: data.embeds,
+					attachments: data.attachments as MockAttachment[] | undefined,
+					components: data.components,
+					mentions: mentionIds,
+					type: data.type
+				})
+
+				return {
+					success: true,
+					dispatched: session.connections.size,
+					message_id: message.id
+				}
+			} catch (error) {
+				return new Response(JSON.stringify({ error: (error as Error).message }), {
+					status: 400,
+					headers: { 'Content-Type': 'application/json' }
+				})
+			}
+		}
+
+		// Handle INTERACTION_CREATE specially for slash commands
+		if (body.event === 'INTERACTION_CREATE') {
+			const data = body.data as {
+				id?: string
+				type?: number
+				application_id?: string
+				token?: string
+				data?: unknown
+				command_name?: string
+				options?: Record<string, string | number | boolean>
+				custom_id?: string
+				message_id?: string
+				values?: string[]
+				user?: {
+					id?: string
+					username?: string
+					bot?: boolean
+				}
+				channel_id?: string
+				guild_id?: string
+			}
+
+			// Raw INTERACTION_CREATE payload (from integration tests)
+			if (data.id && data.type !== undefined && data.application_id && data.token) {
+				const interactionData = data.data as { name?: string; custom_id?: string; values?: string[] } | undefined
+				const userId = data.user?.id || session.state.botUser.id
+
+				// Create interaction in state
+				session.state.addInteraction({
+					id: data.id,
+					applicationId: data.application_id,
+					type: data.type,
+					token: data.token,
+					channelId: data.channel_id || session.state.channels.values().next().value?.id || '',
+					guildId: data.guild_id,
+					userId,
+					commandName: interactionData?.name,
+					customId: interactionData?.custom_id,
+					values: interactionData?.values,
+					createdAt: Date.now(),
+					expiresAt: Date.now() + 15 * 60 * 1000
+				})
+
+				// Ensure required fields are present for discord.js compatibility
+				const enrichedPayload = {
+					...body.data,
+					entitlements: (body.data as Record<string, unknown>).entitlements ?? [],
+					app_permissions: (body.data as Record<string, unknown>).app_permissions ?? '0',
+					locale: (body.data as Record<string, unknown>).locale ?? 'en-US',
+					guild_locale: (body.data as Record<string, unknown>).guild_locale ?? 'en-US'
+				}
+
+				await session.dispatch(body.event, enrichedPayload)
+
+				return {
+					success: true,
+					dispatched: session.connections.size,
+					interaction_id: data.id,
+					interaction_token: data.token
+				}
+			}
+
+			// Select menu interaction
+			if (data.custom_id && data.values !== undefined) {
+				if (!data.message_id) {
+					return new Response(JSON.stringify({ error: 'Select menu interaction requires "message_id" in data' }), {
+						status: 400,
+						headers: { 'Content-Type': 'application/json' }
+					})
+				}
+
+				try {
+					const interaction = await session.dispatchSelectMenu({
+						customId: data.custom_id,
+						messageId: data.message_id,
+						values: data.values,
+						user: data.user,
+						channelId: data.channel_id,
+						guildId: data.guild_id
+					})
+
+					return {
+						success: true,
+						dispatched: session.connections.size,
+						interaction_id: interaction.id,
+						interaction_token: interaction.token
+					}
+				} catch (error) {
+					return new Response(JSON.stringify({ error: (error as Error).message }), {
+						status: 400,
+						headers: { 'Content-Type': 'application/json' }
+					})
+				}
+			}
+
+			// Button click interaction
+			if (data.custom_id) {
+				if (!data.message_id) {
+					return new Response(JSON.stringify({ error: 'Button click requires "message_id" in data' }), {
+						status: 400,
+						headers: { 'Content-Type': 'application/json' }
+					})
+				}
+
+				try {
+					const interaction = await session.dispatchButtonClick({
+						customId: data.custom_id,
+						messageId: data.message_id,
+						user: data.user,
+						channelId: data.channel_id,
+						guildId: data.guild_id
+					})
+
+					return {
+						success: true,
+						dispatched: session.connections.size,
+						interaction_id: interaction.id,
+						interaction_token: interaction.token
+					}
+				} catch (error) {
+					return new Response(JSON.stringify({ error: (error as Error).message }), {
+						status: 400,
+						headers: { 'Content-Type': 'application/json' }
+					})
+				}
+			}
+
+			// Slash command interaction
+			if (data.command_name) {
+				try {
+					const interaction = await session.dispatchSlashCommand({
+						commandName: data.command_name,
+						options: data.options,
+						user: data.user,
+						channelId: data.channel_id,
+						guildId: data.guild_id
+					})
+
+					return {
+						success: true,
+						dispatched: session.connections.size,
+						interaction_id: interaction.id,
+						interaction_token: interaction.token
+					}
+				} catch (error) {
+					return new Response(JSON.stringify({ error: (error as Error).message }), {
+						status: 400,
+						headers: { 'Content-Type': 'application/json' }
+					})
+				}
+			}
+
+			return new Response(JSON.stringify({ error: 'INTERACTION_CREATE requires "command_name", "custom_id", or raw payload' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// For other events, dispatch raw data
+		await session.dispatch(body.event, body.data)
+
+		return {
+			success: true,
+			dispatched: session.connections.size
+		}
+	})
+
+	// Interaction endpoint - convenience API for dispatching interactions
+	engine.registerRoute('/api/control/sessions/:id/interaction', async (req) => {
+		if (req.method !== 'POST') {
+			return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+				status: 405,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		const sessionId = req.params.id as string
+		const session = sessionManager.get(sessionId)
+
+		if (!session) {
+			return new Response(JSON.stringify({ error: 'Session not found' }), {
+				status: 404,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// Parse request body
+		let body: DispatchInteractionInput
+
+		try {
+			body = await req.json()
+		} catch {
+			return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// Validate required fields
+		if (body.type === undefined || typeof body.type !== 'number') {
+			return new Response(JSON.stringify({ error: 'Missing or invalid "type" field (must be a number)' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		}
+
+		// Use shared handler
+		return dispatchInteractionToSession(session, body)
 	})
 }
 

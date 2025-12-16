@@ -20,20 +20,25 @@
 		"invite": "robo invite",
 		"lint:style": "prettier --write .",
 		"start": "robo start",
+		"test": "robo mock test",
+		"test:unit": "NODE_OPTIONS=\"--experimental-vm-modules --disable-warning=ExperimentalWarning\" jest --selectProjects unit",
+		"test:integration": "NODE_OPTIONS=\"--experimental-vm-modules --disable-warning=ExperimentalWarning\" jest --selectProjects integration --runInBand",
 		"upgrade": "sage upgrade"
 	},
 	"dependencies": {
-		"@robojs/discordjs": "link:/Users/sushi/Documents/GitHub/robo.js/packages/@robojs/discordjs",
-		"@robojs/mock": "link:/Users/sushi/Documents/GitHub/robo.js/packages/@robojs/mock",
-		"@robojs/server": "link:/Users/sushi/Documents/GitHub/robo.js/packages/plugin-api",
+		"@robojs/discordjs": "link:/Users/pkmmte/Documents/GitHub/robo.js/packages/@robojs/discordjs",
+		"@robojs/mock": "link:/Users/pkmmte/Documents/GitHub/robo.js/packages/@robojs/mock",
+		"@robojs/server": "link:/Users/pkmmte/Documents/GitHub/robo.js/packages/plugin-api",
 		"discord.js": "^14.25.1",
-		"mockbot-ts": "link:",
-		"robo.js": "link:/Users/sushi/Documents/GitHub/robo.js/packages/robo"
+		"robo.js": "link:/Users/pkmmte/Documents/GitHub/robo.js/packages/robo"
 	},
 	"devDependencies": {
 		"@swc/core": "^1.15.4",
+		"@types/jest": "^29.5.14",
 		"@types/node": "^25.0.2",
+		"jest": "^29.7.0",
 		"prettier": "^3.7.4",
+		"ts-jest": "^29.2.5",
 		"typescript": "^5.9.3",
 		"vite": "^7.2.7"
 	}

@@ -1,0 +1,143 @@
+/**
+ * Shared interaction dispatch handler
+ *
+ * This module provides a reusable function for dispatching interactions to sessions.
+ * Used by both the plugin route and standalone server to avoid code duplication.
+ */
+import { generateSnowflake } from '../utils/snowflake.js'
+import type { Session } from '../types/index.js'
+
+/**
+ * Input for dispatching an interaction
+ */
+export interface DispatchInteractionInput {
+	type: number
+	data?: {
+		name?: string
+		type?: number
+		custom_id?: string
+		values?: string[]
+		options?: Array<{ name: string; type: number; value: unknown }>
+	}
+	guild_id?: string
+	channel_id?: string
+	user?: {
+		id?: string
+		username?: string
+	}
+}
+
+/**
+ * Result of dispatching an interaction
+ */
+export interface DispatchInteractionResult {
+	success: true
+	interaction_id: string
+	interaction_token: string
+}
+
+/**
+ * Dispatch an interaction to a session
+ *
+ * This is the core logic for the /api/control/sessions/:id/interaction endpoint.
+ * It generates IDs, creates the interaction in state, and dispatches INTERACTION_CREATE.
+ */
+export async function dispatchInteractionToSession(
+	session: Session,
+	input: DispatchInteractionInput
+): Promise<DispatchInteractionResult> {
+	// Generate interaction ID and token
+	const interactionId = generateSnowflake()
+	const interactionToken = `mock-interaction-${generateSnowflake()}`
+
+	// Get default guild and channel
+	const defaultGuildId = input.guild_id || session.state.guilds.values().next().value?.id || ''
+	const defaultChannelId = input.channel_id || session.state.channels.values().next().value?.id || ''
+
+	// Get or create user
+	const userId = input.user?.id || session.state.botUser.id
+	const username = input.user?.username || 'TestUser'
+
+	// Ensure user exists in state
+	if (!session.state.users.has(userId)) {
+		session.state.users.set(userId, {
+			id: userId,
+			username,
+			discriminator: '0',
+			globalName: username,
+			avatar: null,
+			bot: false
+		})
+	}
+
+	// Create interaction in state
+	session.state.addInteraction({
+		id: interactionId,
+		applicationId: session.state.applicationId,
+		type: input.type,
+		token: interactionToken,
+		channelId: defaultChannelId,
+		guildId: defaultGuildId,
+		userId,
+		commandName: input.data?.name,
+		customId: input.data?.custom_id,
+		values: input.data?.values,
+		createdAt: Date.now(),
+		expiresAt: Date.now() + 15 * 60 * 1000 // 15 minutes
+	})
+
+	// Build full interaction payload
+	const interactionPayload = {
+		id: interactionId,
+		application_id: session.state.applicationId,
+		type: input.type,
+		token: interactionToken,
+		version: 1,
+		data: input.data || {},
+		guild_id: defaultGuildId,
+		channel_id: defaultChannelId,
+		channel: {
+			id: defaultChannelId,
+			type: 0
+		},
+		member: defaultGuildId
+			? {
+					user: {
+						id: userId,
+						username,
+						discriminator: '0',
+						global_name: username,
+						avatar: null,
+						bot: false
+					},
+					roles: [],
+					joined_at: new Date().toISOString(),
+					deaf: false,
+					mute: false
+				}
+			: undefined,
+		user: !defaultGuildId
+			? {
+					id: userId,
+					username,
+					discriminator: '0',
+					global_name: username,
+					avatar: null,
+					bot: false
+				}
+			: undefined,
+		entitlements: [],
+		app_permissions: '0',
+		locale: 'en-US',
+		guild_locale: 'en-US'
+	}
+
+	// Dispatch the interaction
+	await session.dispatch('INTERACTION_CREATE', interactionPayload)
+
+	return {
+		success: true,
+		interaction_id: interactionId,
+		interaction_token: interactionToken
+	}
+}

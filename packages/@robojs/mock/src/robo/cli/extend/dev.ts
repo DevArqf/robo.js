@@ -138,9 +138,10 @@ async function setupExternalConnection(
 	ctx: { logger: { debug: (msg: string) => void; info: (msg: string) => void; error: (msg: string) => void } },
 	sessionInput: string
 ) {
-	// Try to read server info file for port discovery
+	// Try to read server info file or env var for port discovery
+	const envPort = process.env.ROBO_MOCK_PORT
 	const serverInfo = await readServerInfo()
-	const port = serverInfo?.port ?? STANDALONE_MOCK_PORT
+	const port = envPort ? parseInt(envPort, 10) : serverInfo?.port ?? STANDALONE_MOCK_PORT
 	const baseUrl = `http://localhost:${port}`
 
 	let sessionId: string

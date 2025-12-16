@@ -1,0 +1,236 @@
+/**
+ * Testing Module Types
+ *
+ * Types for the @robojs/mock/testing module.
+ */
+import type { Snowflake } from 'discord-api-types/v10'
+
+// Re-export registry types
+export type { AssertionResult, TestResult, TestFileEntry, TestSessionRegistry } from '../session/registry.js'
+
+/**
+ * Test session wrapper with convenience methods
+ */
+export interface TestSession {
+	/** Session ID */
+	id: string
+	/** Bot token for this session */
+	token: string
+	/** Session name */
+	name?: string
+	/** Bot user info */
+	botUser: {
+		id: Snowflake
+		username: string
+	}
+	/** Pre-configured guilds */
+	guilds: Array<{
+		id: Snowflake
+		name: string
+	}>
+	/** Pre-configured channels */
+	channels: Array<{
+		id: Snowflake
+		name: string
+		guildId?: Snowflake
+		type: number
+	}>
+	/** Convenience: first guild ID */
+	guildId: Snowflake
+	/** Test file path this session is associated with */
+	testFilePath?: string
+
+	/**
+	 * Destroy the session and clean up
+	 */
+	destroy(): Promise<void>
+}
+
+/**
+ * Configuration for creating a test session
+ */
+export interface CreateTestSessionConfig {
+	/** Optional session name */
+	name?: string
+	/** Session TTL in milliseconds */
+	ttl?: number
+	/** Session configuration */
+	config?: {
+		/** Bot user configuration */
+		botUser?: {
+			username?: string
+			id?: string
+		}
+		/** Pre-configured guilds */
+		guilds?: Array<{
+			id?: string
+			name?: string
+			channels?: Array<{
+				name?: string
+				type?: number
+			}>
+		}>
+		/** Enforce intents */
+		enforceIntents?: boolean
+		/** Approved privileged intents as bigint */
+		approvedPrivilegedIntents?: bigint
+	}
+}
+
+/**
+ * Options for expectAction helper
+ */
+export interface ExpectActionOptions {
+	/** Human-readable description of what's being asserted */
+	description: string
+	/** Action type to wait for */
+	type: string
+	/** Expected data to match */
+	expected: unknown
+	/** Timeout in milliseconds (default: 5000) */
+	timeout?: number
+}
+
+/**
+ * Options for waiting for an action
+ */
+export interface WaitForActionOptions {
+	/** Action type to wait for */
+	type: string
+	/** Timeout in milliseconds (default: 5000) */
+	timeout?: number
+	/** Filter function to match specific actions */
+	filter?: (action: RecordedAction) => boolean
+}
+
+/**
+ * Recorded action from the mock server
+ */
+export interface RecordedAction {
+	/** Action ID */
+	id: string
+	/** Action type (e.g., REST_CREATE_MESSAGE, INTERACTION_RESPONSE) */
+	type: string
+	/** Action data */
+	data: unknown
+	/** Timestamp when action was recorded */
+	timestamp: number
+	/** Optional sequence number */
+	sequence?: number
+}
+
+/**
+ * Session state snapshot
+ */
+export interface SessionState {
+	botUser: {
+		id: string
+		username: string
+		discriminator: string
+		bot: boolean
+	}
+	guilds: Array<{
+		id: string
+		name: string
+		ownerId: string
+		channels: string[]
+		members: string[]
+		roles: string[]
+	}>
+	channels: Array<{
+		id: string
+		guildId?: string
+		name: string
+		type: number
+	}>
+}
+
+/**
+ * Response from creating a session via Control API
+ */
+export interface SessionResponse {
+	session_id: string
+	token: string
+	expires_at: number
+	state: SessionState
+}
+
+/**
+ * Discord event data for dispatch
+ */
+export interface DispatchEventData {
+	/** Event name (e.g., MESSAGE_CREATE) */
+	t: string
+	/** Event data */
+	d: Record<string, unknown>
+}
+
+/**
+ * Interaction dispatch data
+ */
+export interface InteractionData {
+	/** Interaction type (2 = APPLICATION_COMMAND, 3 = MESSAGE_COMPONENT, 5 = MODAL_SUBMIT) */
+	type: number
+	/** Interaction data */
+	data: {
+		/** Command name for APPLICATION_COMMAND */
+		name?: string
+		/** Command type (1 = CHAT_INPUT, 2 = USER, 3 = MESSAGE) */
+		type?: number
+		/** Command options */
+		options?: Array<{
+			name: string
+			type: number
+			value?: unknown
+			options?: Array<{ name: string; type: number; value?: unknown }>
+		}>
+		/** Component custom_id for MESSAGE_COMPONENT */
+		custom_id?: string
+		/** Component type for MESSAGE_COMPONENT */
+		component_type?: number
+		/** Values for SELECT_MENU */
+		values?: string[]
+		/** Components for MODAL_SUBMIT */
+		components?: Array<{
+			type: number
+			components: Array<{
+				type: number
+				custom_id: string
+				value: string
+			}>
+		}>
+	}
+	/** Guild ID (optional, for guild interactions) */
+	guild_id?: string
+	/** Channel ID (optional) */
+	channel_id?: string
+	/** User ID (optional, defaults to test user) */
+	user_id?: string
+}
+
+/**
+ * Mock server configuration
+ */
+export interface MockConfig {
+	/** Base URL for the mock server */
+	baseUrl: string
+	/** Control API URL */
+	controlUrl: string
+	/** REST API URL */
+	restUrl: string
+	/** Gateway WebSocket URL */
+	gatewayUrl: string
+	/** Default timeout for operations in ms */
+	defaultTimeout: number
+}
+
+/**
+ * Default mock server configuration
+ */
+export const DEFAULT_MOCK_CONFIG: MockConfig = {
+	baseUrl: 'http://localhost:3001',
+	controlUrl: 'http://localhost:3001/api/control',
+	restUrl: 'http://localhost:3001/api',
+	gatewayUrl: 'ws://localhost:3001',
+	defaultTimeout: 5000
+}

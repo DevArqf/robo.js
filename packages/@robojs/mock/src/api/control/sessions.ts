@@ -2,6 +2,7 @@ import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../core/manager.js'
 import type { CreateSessionOptions, SessionConfig } from '../../types/index.js'
 import { validateMethod, badRequest } from './utils.js'
+import { serializeSessionState } from '../../session/state.js'
 
 /**
  * POST /api/control/sessions - Create a new session
@@ -22,7 +23,8 @@ import { validateMethod, badRequest } from './utils.js'
  * {
  *   session_id: string,
  *   token: string,      // Format: "mock:<session_id>"
- *   expires_at: number  // Unix timestamp
+ *   expires_at: number, // Unix timestamp
+ *   state: SerializedSessionState  // Full session state
  * }
  */
 
@@ -71,6 +73,7 @@ export default async (request: RoboRequest) => {
 	return {
 		session_id: session.id,
 		token: session.token,
-		expires_at: session.expiresAt
+		expires_at: session.expiresAt,
+		state: serializeSessionState(session.state)
 	}
 }
