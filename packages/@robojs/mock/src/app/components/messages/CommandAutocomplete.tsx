@@ -138,7 +138,7 @@ export function CommandAutocomplete({ search, commands, onSelect, onClose: _onCl
 	// Render option form for selected command
 	if (selectedCommand) {
 		return (
-			<DropdownContainer className={styles.container} role="dialog">
+			<DropdownContainer className={styles.container} role="dialog" placement="top-start">
 				<div className={styles.commandHeader}>
 					<button className={styles.backButton} onClick={handleBack} type="button">
 						<BackIcon />
@@ -180,7 +180,7 @@ export function CommandAutocomplete({ search, commands, onSelect, onClose: _onCl
 
 	// Render command list
 	return (
-		<DropdownContainer className={styles.container} maxHeight={400} role="listbox">
+		<DropdownContainer className={styles.container} maxHeight={400} role="listbox" placement="top-start">
 			<ListItemHeader className={styles.header}>Commands</ListItemHeader>
 
 			<div className={styles.commandList}>
