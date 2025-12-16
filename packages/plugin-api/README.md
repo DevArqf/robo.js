@@ -319,12 +319,13 @@ import type { RoboRequest, RoboReply } from '@robojs/server'
 
 Customize your API plugin using these config fields:
 
-| **Config Field** | **Type**       | **Description**                             |
-| ---------------- | -------------- | ------------------------------------------- |
-| `hostname`       | `string`       | The hostname on which the server will run.  |
-| `port`           | `number`       | The port on which the server will listen.   |
-| `prefix`         | `string/false` | Custom URL prefix for routes or disable it. |
-| `engine`         | `BaseServer`   | Custom server engine implementation.        |
+| **Config Field**    | **Type**       | **Description**                                            |
+| ------------------- | -------------- | ---------------------------------------------------------- |
+| `hostname`          | `string`       | The hostname on which the server will run.                 |
+| `port`              | `number`       | The port on which the server will listen.                  |
+| `maxPortAttempts`   | `number`       | Max ports to try when configured port is in use. Default: 10. |
+| `prefix`            | `string/false` | Custom URL prefix for routes or disable it.                |
+| `engine`            | `BaseServer`   | Custom server engine implementation.                       |
 
 Example:
 
@@ -341,6 +342,32 @@ export default {
 In this configuration, `port` is set to `5000`, `prefix` is disabled (routes will not have the `/api` prefix), and a custom server engine is specified.
 
 Alternatively, use the `PORT` environment variable.
+
+### Automatic Port Increment
+
+By default, if the configured port is already in use, the server will automatically try the next port (up to 10 attempts). A warning will be logged when this happens:
+
+```
+[server] Port 3000 is in use. Using port 3001 instead.
+```
+
+To disable this behavior, set `maxPortAttempts` to `1`:
+
+```typescript title="config/plugins/robojs/server.mjs"
+export default {
+	port: 3000,
+	maxPortAttempts: 1 // Disable auto-increment, fail if port is in use
+}
+```
+
+To allow more or fewer attempts:
+
+```typescript title="config/plugins/robojs/server.mjs"
+export default {
+	port: 3000,
+	maxPortAttempts: 5 // Try up to 5 ports (3000-3004)
+}
+```
 
 ## Server Engine
 

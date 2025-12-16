@@ -38,6 +38,12 @@ export interface PluginConfig {
 	engine?: BaseEngine
 	hostname?: string
 	/**
+	 * Maximum number of ports to try when configured port is in use.
+	 * Set to 1 to disable auto-increment (fail if port is in use).
+	 * @default 10
+	 */
+	maxPortAttempts?: number
+	/**
 	 * Plugin URL prefixes - centralized configuration for plugin route prefixing.
 	 *
 	 * By default, routes are **exclusive** (only accessible via the prefix).

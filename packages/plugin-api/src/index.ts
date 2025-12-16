@@ -14,3 +14,7 @@ export type { PluginPrefixConfig, PluginPrefixMap, ResolvedPluginRoute } from '.
 // HTTP method exports for named route handlers
 export { HTTP_METHODS } from './robo/routes/api.js'
 export type { HttpMethodExport, ApiHandler, ApiHandlerModule } from './robo/routes/api.js'
+
+// Port utilities for checking availability and finding available ports
+export { isPortAvailable, findAvailablePort, DEFAULT_MAX_PORT_ATTEMPTS } from './core/port-utils.js'
+export type { FindAvailablePortOptions, FindAvailablePortResult } from './core/port-utils.js'

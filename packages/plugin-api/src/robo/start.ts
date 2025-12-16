@@ -11,6 +11,7 @@
  */
 import { logger } from '../core/logger.js'
 import { getPluginRouteRegistry } from '../core/plugin-routes.js'
+import { findAvailablePort, DEFAULT_MAX_PORT_ATTEMPTS } from '../core/port-utils.js'
 import { portal } from 'robo.js'
 import { Nanocore } from 'robo.js/unstable.js'
 import type { StartContext, HandlerRecord } from 'robo.js'
@@ -100,7 +101,23 @@ export default async (_context: StartContext<PluginConfig>) => {
 	const registry = getPluginRouteRegistry()
 
 	// Get engine and options from prepare hook
-	const { engine, hostname = process.env.ROBO_HOSTNAME, port = parseInt(process.env.PORT ?? '3000') } = pluginOptions
+	const {
+		engine,
+		hostname = process.env.ROBO_HOSTNAME,
+		port: configuredPort = parseInt(process.env.PORT ?? '3000'),
+		maxPortAttempts = DEFAULT_MAX_PORT_ATTEMPTS
+	} = pluginOptions
+
+	// Find available port (auto-increment if enabled and port is in use)
+	let port = configuredPort
+	if (maxPortAttempts > 1) {
+		const result = await findAvailablePort({
+			port: configuredPort,
+			hostname: hostname ?? 'localhost',
+			maxAttempts: maxPortAttempts
+		})
+		port = result.port
+	}
 
 	// Load API routes from the portal
 	await portal.ensureRoute('server', 'api')
