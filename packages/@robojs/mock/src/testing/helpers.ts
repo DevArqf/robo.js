@@ -3,12 +3,23 @@
  *
  * Helper functions for writing integration tests with the mock server.
  */
+import { basename, join } from 'node:path'
 import type { ExpectActionOptions, RecordedAction, WaitForActionOptions, CreateTestSessionConfig } from './types.js'
 import type { AssertionResult } from '../session/registry.js'
 import { getSessionActions, getMockConfig, createSession, deleteSession } from './control-api.js'
 import { recordAssertion as registryRecordAssertion, registerTestFile } from '../session/registry.js'
 import { getMockPluginPrefix } from '../utils/server.js'
 import { readServerInfo, STANDALONE_MOCK_PORT } from '../utils/server-info.js'
+
+/**
+ * Handle for managing a log drain added to the logger.
+ * Allows flushing pending writes and removing the drain.
+ */
+interface DrainHandle {
+	id: string
+	remove: () => boolean
+	flush: () => Promise<void>
+}
 
 // ============================================================================
 // Wait Helpers
@@ -415,10 +426,23 @@ export interface StartMockBotOptions {
 	port?: number
 	/** Timeout for bot to connect in ms (default: 30000) */
 	timeout?: number
-	/** Enable verbose output */
+	/** Enable verbose output (shows logs in console alongside file) */
 	verbose?: boolean
-	/** Test file path for registry tracking (use __filename) */
+	/** Test file path for registry tracking and log file naming (use __filename) */
 	testFilePath?: string
+	/**
+	 * Enable file logging for this test.
+	 * - true: Auto-name from testFilePath (e.g., "ping.test.log")
+	 * - string: Custom log file path
+	 * - false: Disable file logging
+	 * - undefined: Auto-enable when running under `robo mock test` with testFilePath
+	 */
+	logFile?: boolean | string
+	/**
+	 * Log level for file output.
+	 * @default 'debug'
+	 */
+	logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error'
 }
 
 /**
@@ -450,6 +474,7 @@ async function discoverMockPort(explicitPort?: number): Promise<number> {
 	// 4. Fallback to standalone mock port
 	return STANDALONE_MOCK_PORT
 }
+
 
 /**
  * Start a bot connected to the mock server
@@ -496,6 +521,11 @@ export async function startMockBot(options: StartMockBotOptions = {}): Promise<M
 	// Set up environment for mock mode BEFORE importing Robo
 	// Mark as connecting to existing mock server so the plugin doesn't start its own
 	const prefix = getMockPluginPrefix()
+
+	// Set NODE_ENV to production to ensure the manifest is loaded from the correct directory
+	// The manifest is only built for 'development' and 'production' modes, not 'test'
+	// Note: ROBO_MOCK_MODE=true forces lazy loading in portal-loader.ts to avoid Jest ESM issues
+	process.env.NODE_ENV = 'production'
 	process.env.ROBO_MOCK_MODE = 'true'
 	process.env.ROBO_MOCK_PORT = String(port)
 	process.env.ROBO_MOCK_SESSION_ID = sessionId
@@ -503,6 +533,52 @@ export async function startMockBot(options: StartMockBotOptions = {}): Promise<M
 	process.env.DISCORD_REST_API = `http://localhost:${port}${prefix}/api`
 	process.env.__ROBO_MOCK_CONNECT_EXISTING = 'true'
 	process.env.__ROBO_MOCK_SERVER_PORT = String(port)
+
+	// Set verbose flag for robo.js to know whether to show console logs
+	if (options.verbose) {
+		process.env.ROBO_MOCK_VERBOSE = 'true'
+	}
+
+	// Determine if file logging should be enabled:
+	// - Explicit logFile option takes priority
+	// - Auto-enable when running under `robo mock test` with testFilePath provided
+	const isTestMode = process.env.ROBO_MOCK_TEST_MODE === 'true'
+	const shouldLogToFile = options.logFile !== false && (options.logFile || (isTestMode && !!options.testFilePath))
+
+	// Set up file logging BEFORE Robo.start() to capture startup logs
+	// We use addDrain() which persists across setup() calls (Robo.start() calls setup())
+	// Note: Console output suppression is handled automatically by robo.js when
+	// ROBO_MOCK_TEST_MODE=true and ROBO_MOCK_VERBOSE is not set
+	let fileDrainHandle: DrainHandle | null = null
+
+	if (shouldLogToFile && options.testFilePath) {
+		const { createFileDrain, logger } = await import('robo.js')
+
+		// Determine log file path
+		let logPath: string
+		if (typeof options.logFile === 'string') {
+			logPath = options.logFile
+		} else {
+			// Auto-name: extract test file name, put in .robo/logs/tests/
+			const testFileName = basename(options.testFilePath)
+				.replace(/\.(test|spec)\.(ts|js|tsx|jsx|mts|mjs)$/, '.log')
+			logPath = join('.robo', 'logs', 'tests', testFileName)
+		}
+
+		// Create file drain with blocking mode for immediate writes
+		const fileDrain = createFileDrain({
+			path: logPath,
+			level: options.logLevel ?? 'debug',
+			timestamp: 'iso',
+			blocking: true, // Ensure logs are written before test ends
+			stripAnsi: true
+		})
+
+		// Add file drain to the logger BEFORE Robo.start()
+		// addDrain() adds to the _drains Map which persists across setup() calls
+		const loggerInstance = logger()
+		fileDrainHandle = loggerInstance.addDrain(fileDrain, `test-file-${sessionId}`)
+	}
 
 	// Import and start Robo directly
 	const { Robo } = await import('robo.js')
@@ -531,25 +607,37 @@ export async function startMockBot(options: StartMockBotOptions = {}): Promise<M
 		guildId: session.guildId,
 		client,
 		stop: async () => {
-			// Delete the session first to stop new events from being dispatched
-			try {
-				await deleteSession(sessionId)
-			} catch {
-				// Session may already be deleted
-			}
-
-			// Brief delay to let any in-flight events complete processing
-			// This prevents "Jest environment torn down" errors
-			await new Promise((resolve) => setTimeout(resolve, 100))
-
-			// In test mode, we can't call Robo.stop() because it calls process.exit()
-			// Instead, disconnect the Discord client directly if available
+			// IMPORTANT: Destroy client FIRST to stop log generation
 			if (client && typeof (client as { destroy?: () => void }).destroy === 'function') {
 				try {
 					;(client as { destroy: () => void }).destroy()
 				} catch {
 					// Client may already be destroyed
 				}
+			}
+
+			// Brief delay to let any in-flight events complete processing
+			await new Promise((resolve) => setTimeout(resolve, 100))
+
+			// Clean up drains:
+			// 1. Remove the file drain from secondary drains
+			// 2. Restore console drain as primary drain (in case other code runs after tests)
+			// NOTE: We skip flush() because consoleDrain uses stream.write() callbacks
+			// which can hang if stdout has backpressure during shutdown.
+			// Since file drain uses blocking: true (synchronous writes), all logs are already on disk.
+			if (fileDrainHandle) {
+				fileDrainHandle.remove()
+			}
+
+			// Restore console drain for any subsequent logging
+			const { consoleDrain, logger } = await import('robo.js')
+			logger().setDrain(consoleDrain)
+
+			// Delete the session to clean up server-side state
+			try {
+				await deleteSession(sessionId)
+			} catch {
+				// Session may already be deleted
 			}
 		}
 	}

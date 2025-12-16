@@ -964,6 +964,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 		ws.onclose = (event) => {
 			console.log('[Stage] WebSocket closed:', { code: event.code, reason: event.reason, sessionId: state.sessionId })
 			setIsConnected(false)
+			setIsConnecting(false) // Ensure we exit connecting state if closed before onopen
 			wsRef.current = null
 			dispatch({ type: 'SET_CONNECTED', payload: false })
 

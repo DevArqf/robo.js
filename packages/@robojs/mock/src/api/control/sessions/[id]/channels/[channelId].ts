@@ -105,7 +105,21 @@ export default async (request: RoboRequest) => {
 	// Include messages if requested
 	if (includeMessages) {
 		const messages = channelMessages.slice(0, messageLimit)
-		result.messages = messages.map(serializeMockMessage)
+		result.messages = messages.map((msg) => {
+			const serialized = serializeMockMessage(msg)
+			// Include author info for convenience (especially for tests)
+			const author = session.state.getUser(msg.authorId)
+			return {
+				...serialized,
+				author: author
+					? {
+							id: author.id,
+							username: author.username,
+							bot: author.bot ?? false
+						}
+					: { id: msg.authorId, bot: msg.authorId === session.state.botUser.id }
+			}
+		})
 	}
 
 	return result

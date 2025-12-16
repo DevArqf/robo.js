@@ -184,25 +184,25 @@ export default async function mockCommand({ options, logger }: CliContext) {
 	await executeStartHooks(plugins, manifestMode)
 
 	// 9. Write server info for port discovery by --mock-session
-	// In standalone mode, control routes are registered without prefix (see registerControlRoutes)
+	// Control routes from the plugin are registered WITH the prefix (e.g., /mock/api/control/...)
+	const pluginPrefix = getMockPluginPrefix()
 	await writeServerInfo({
 		port,
 		startedAt: new Date().toISOString(),
 		pid: process.pid,
 		gatewayUrl: `ws://localhost:${port}/?v=10&encoding=json`,
-		restApiUrl: `http://localhost:${port}/api`,
-		controlUrl: `http://localhost:${port}/api/control`
+		restApiUrl: `http://localhost:${port}${pluginPrefix}/api`,
+		controlUrl: `http://localhost:${port}${pluginPrefix}/api/control`
 	})
 
-	// Get plugin prefix for Stage UI URL
-	const pluginPrefix = getMockPluginPrefix()
+	// Get Stage UI URL
 	const stageUrl = pluginPrefix ? `http://localhost:${port}${pluginPrefix}/stage/` : `http://localhost:${port}/stage/`
 
 	if (!silent) {
 		logger.info(`Mock server running on port ${color.cyan(String(port))}`)
 		logger.log('')
 		logger.info('To connect a bot:')
-		logger.log(`  ${color.dim('1.')} Create a session: ${color.cyan(`curl -X POST http://localhost:${port}/api/control/sessions`)}`)
+		logger.log(`  ${color.dim('1.')} Create a session: ${color.cyan(`curl -X POST http://localhost:${port}${pluginPrefix}/api/control/sessions`)}`)
 		logger.log(`  ${color.dim('2.')} Start bot with:   ${color.cyan(`robo dev --mock-session <session_id>`)}`)
 		logger.log('')
 	}

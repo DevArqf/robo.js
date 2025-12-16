@@ -8,7 +8,8 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals'
 import {
 	startMockBot,
 	dispatchInteraction,
-	expectAction
+	expectAction,
+	getChannelMessages
 } from '@robojs/mock/testing'
 import type { MockBotHandle } from '@robojs/mock/testing'
 
@@ -54,5 +55,38 @@ describe('ping command', () => {
 			},
 			timeout: 5000
 		})
+	})
+
+	it('should have response message appear in channel', async () => {
+		const channelId = bot.channels[0].id
+
+		// Trigger slash command interaction
+		await dispatchInteraction(bot.sessionId, {
+			type: 2, // APPLICATION_COMMAND
+			data: {
+				name: 'ping',
+				type: 1 // CHAT_INPUT
+			},
+			guild_id: bot.guildId,
+			channel_id: channelId
+		})
+
+		// Wait for the interaction response
+		await expectAction(bot.sessionId, {
+			description: 'Bot should reply with Pong!',
+			type: 'interaction_response',
+			expected: {
+				response_data: {
+					content: 'Pong!'
+				}
+			},
+			timeout: 5000
+		})
+
+		// Verify the message appears in the channel's message list
+		const messages = await getChannelMessages(bot.sessionId, channelId)
+		const pongMessage = messages.find((m) => m.content === 'Pong!' && m.author?.bot === true)
+		expect(pongMessage).toBeDefined()
+		expect(pongMessage?.content).toBe('Pong!')
 	})
 })
