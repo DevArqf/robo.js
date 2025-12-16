@@ -1604,7 +1604,7 @@ export interface InteractionCreatePayloadOptions {
  * For slash commands (type 2 APPLICATION_COMMAND)
  */
 export function buildInteractionCreatePayload(options: InteractionCreatePayloadOptions): GatewayPayload {
-	const { interaction, user, sessionState: _sessionState, sequence } = options
+	const { interaction, user, sessionState, sequence } = options
 
 	// Build command data
 	const commandData: Record<string, unknown> = {
@@ -1624,12 +1624,22 @@ export function buildInteractionCreatePayload(options: InteractionCreatePayloadO
 		}))
 	}
 
+	// Get channel info from state for the channel object (Discord API spec)
+	const channel = sessionState.channels.get(interaction.channelId)
+
 	const data: Record<string, unknown> = {
 		id: interaction.id,
 		application_id: interaction.applicationId,
 		type: InteractionType.ApplicationCommand,
 		data: commandData,
-		channel_id: interaction.channelId,
+		channel_id: interaction.channelId, // Deprecated but kept for backwards compatibility
+		channel: {
+			id: interaction.channelId,
+			type: channel?.type ?? 0, // Default to GUILD_TEXT
+			name: channel?.name,
+			guild_id: interaction.guildId,
+			permissions: '562949953421311' // Match app_permissions
+		},
 		token: interaction.token,
 		version: 1,
 		entitlements: options.entitlements ?? [],
@@ -1694,12 +1704,22 @@ export function buildButtonInteractionPayload(options: ButtonInteractionPayloadO
 	// Get the message author for the API message
 	const messageAuthor = sessionState.users.get(message.authorId)
 
+	// Get channel info from state for the channel object (Discord API spec)
+	const channel = sessionState.channels.get(interaction.channelId)
+
 	const data: Record<string, unknown> = {
 		id: interaction.id,
 		application_id: interaction.applicationId,
 		type: InteractionType.MessageComponent, // 3
 		data: componentData,
-		channel_id: interaction.channelId,
+		channel_id: interaction.channelId, // Deprecated but kept for backwards compatibility
+		channel: {
+			id: interaction.channelId,
+			type: channel?.type ?? 0, // Default to GUILD_TEXT
+			name: channel?.name,
+			guild_id: interaction.guildId,
+			permissions: '562949953421311' // Match app_permissions
+		},
 		token: interaction.token,
 		version: 1,
 		entitlements: options.entitlements ?? [],
@@ -1879,12 +1899,22 @@ export function buildSelectMenuInteractionPayload(options: SelectMenuInteraction
 	// Get the message author for the API message
 	const messageAuthor = sessionState.users.get(message.authorId)
 
+	// Get channel info from state for the channel object (Discord API spec)
+	const channel = sessionState.channels.get(interaction.channelId)
+
 	const data: Record<string, unknown> = {
 		id: interaction.id,
 		application_id: interaction.applicationId,
 		type: InteractionType.MessageComponent, // 3
 		data: componentData,
-		channel_id: interaction.channelId,
+		channel_id: interaction.channelId, // Deprecated but kept for backwards compatibility
+		channel: {
+			id: interaction.channelId,
+			type: channel?.type ?? 0, // Default to GUILD_TEXT
+			name: channel?.name,
+			guild_id: interaction.guildId,
+			permissions: '562949953421311' // Match app_permissions
+		},
 		token: interaction.token,
 		version: 1,
 		entitlements: options.entitlements ?? [],
@@ -1970,12 +2000,22 @@ export function buildModalSubmitInteractionPayload(options: ModalSubmitInteracti
 		components: fieldsToComponents(interaction.modalFields ?? {})
 	}
 
+	// Get channel info from state for the channel object (Discord API spec)
+	const channel = sessionState.channels.get(interaction.channelId)
+
 	const data: Record<string, unknown> = {
 		id: interaction.id,
 		application_id: interaction.applicationId,
 		type: InteractionType.ModalSubmit, // 5
 		data: modalData,
-		channel_id: interaction.channelId,
+		channel_id: interaction.channelId, // Deprecated but kept for backwards compatibility
+		channel: {
+			id: interaction.channelId,
+			type: channel?.type ?? 0, // Default to GUILD_TEXT
+			name: channel?.name,
+			guild_id: interaction.guildId,
+			permissions: '562949953421311' // Match app_permissions
+		},
 		token: interaction.token,
 		version: 1,
 		entitlements: options.entitlements ?? [],
@@ -2039,7 +2079,7 @@ export interface AutocompleteInteractionPayloadOptions {
  * For APPLICATION_COMMAND_AUTOCOMPLETE (type 4)
  */
 export function buildAutocompleteInteractionPayload(options: AutocompleteInteractionPayloadOptions): GatewayPayload {
-	const { interaction, user, sequence } = options
+	const { interaction, user, sessionState, sequence } = options
 
 	// Build command data - similar to slash command but type 4
 	const commandData: Record<string, unknown> = {
@@ -2058,12 +2098,22 @@ export function buildAutocompleteInteractionPayload(options: AutocompleteInterac
 		}))
 	}
 
+	// Get channel info from state for the channel object (Discord API spec)
+	const channel = sessionState.channels.get(interaction.channelId)
+
 	const data: Record<string, unknown> = {
 		id: interaction.id,
 		application_id: interaction.applicationId,
 		type: InteractionType.ApplicationCommandAutocomplete, // 4
 		data: commandData,
-		channel_id: interaction.channelId,
+		channel_id: interaction.channelId, // Deprecated but kept for backwards compatibility
+		channel: {
+			id: interaction.channelId,
+			type: channel?.type ?? 0, // Default to GUILD_TEXT
+			name: channel?.name,
+			guild_id: interaction.guildId,
+			permissions: '562949953421311' // Match app_permissions
+		},
 		token: interaction.token,
 		version: 1,
 		entitlements: options.entitlements ?? [],
@@ -2165,13 +2215,23 @@ export function buildContextMenuInteractionPayload(options: ContextMenuInteracti
 		commandData.resolved = resolved
 	}
 
+	// Get channel info from state for the channel object (Discord API spec)
+	const channel = sessionState.channels.get(interaction.channelId)
+
 	// Build main interaction data
 	const data: Record<string, unknown> = {
 		id: interaction.id,
 		application_id: interaction.applicationId,
 		type: InteractionType.ApplicationCommand, // Always 2 for context menus
 		data: commandData,
-		channel_id: interaction.channelId,
+		channel_id: interaction.channelId, // Deprecated but kept for backwards compatibility
+		channel: {
+			id: interaction.channelId,
+			type: channel?.type ?? 0, // Default to GUILD_TEXT
+			name: channel?.name,
+			guild_id: interaction.guildId,
+			permissions: '562949953421311' // Match app_permissions
+		},
 		token: interaction.token,
 		version: 1,
 		entitlements: options.entitlements ?? [],

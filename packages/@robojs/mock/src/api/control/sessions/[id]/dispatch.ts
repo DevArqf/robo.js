@@ -266,6 +266,7 @@ export default async (request: RoboRequest) => {
 			const interactionData = data.data as { name?: string; custom_id?: string; values?: string[] } | undefined
 			const member = data.member as { user?: { id?: string } } | undefined
 			const userId = member?.user?.id || data.user?.id || session.state.botUser.id
+			const channelId = data.channel_id || session.state.channels.values().next().value?.id || ''
 
 			// Create interaction in state
 			session.state.addInteraction({
@@ -273,7 +274,7 @@ export default async (request: RoboRequest) => {
 				applicationId: data.application_id,
 				type: data.type,
 				token: data.token,
-				channelId: data.channel_id || session.state.channels.values().next().value?.id || '',
+				channelId,
 				guildId: data.guild_id,
 				userId,
 				commandName: interactionData?.name,
@@ -284,16 +285,28 @@ export default async (request: RoboRequest) => {
 				expiresAt: Date.now() + 15 * 60 * 1000 // 15 minutes
 			})
 
+			// Get channel info from state for the channel object (Discord API spec)
+			const channel = session.state.channels.get(channelId)
+
 			// Ensure required fields are present for discord.js compatibility
+			const rawPayload = body.data as Record<string, unknown>
 			const enrichedPayload = {
-				...body.data,
+				...rawPayload,
 				// Discord.js requires entitlements array (even if empty)
-				entitlements: (body.data as Record<string, unknown>).entitlements ?? [],
+				entitlements: rawPayload.entitlements ?? [],
 				// Ensure app_permissions is present
-				app_permissions: (body.data as Record<string, unknown>).app_permissions ?? '0',
+				app_permissions: rawPayload.app_permissions ?? '562949953421311',
 				// Ensure locale fields are present
-				locale: (body.data as Record<string, unknown>).locale ?? 'en-US',
-				guild_locale: (body.data as Record<string, unknown>).guild_locale ?? 'en-US'
+				locale: rawPayload.locale ?? 'en-US',
+				guild_locale: rawPayload.guild_locale ?? 'en-US',
+				// Add channel object if not present (Discord API spec)
+				channel: rawPayload.channel ?? {
+					id: channelId,
+					type: channel?.type ?? 0,
+					name: channel?.name,
+					guild_id: data.guild_id,
+					permissions: '562949953421311'
+				}
 			}
 
 			// Dispatch the enriched payload to gateway

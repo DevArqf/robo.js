@@ -8,6 +8,7 @@ import type { AssertionResult } from '../session/registry.js'
 import { getSessionActions, getMockConfig, createSession, deleteSession } from './control-api.js'
 import { recordAssertion as registryRecordAssertion, registerTestFile } from '../session/registry.js'
 import { getMockPluginPrefix } from '../utils/server.js'
+import { readServerInfo, STANDALONE_MOCK_PORT } from '../utils/server-info.js'
 
 // ============================================================================
 // Wait Helpers
@@ -410,7 +411,7 @@ export interface MockBotHandle {
 export interface StartMockBotOptions {
 	/** Session name */
 	name?: string
-	/** Mock server port (default: from ROBO_MOCK_PORT or 3001) */
+	/** Mock server port (auto-discovered if not specified) */
 	port?: number
 	/** Timeout for bot to connect in ms (default: 30000) */
 	timeout?: number
@@ -418,6 +419,36 @@ export interface StartMockBotOptions {
 	verbose?: boolean
 	/** Test file path for registry tracking (use __filename) */
 	testFilePath?: string
+}
+
+/**
+ * Discover the mock server port dynamically.
+ *
+ * Resolution order:
+ * 1. Explicit port passed as parameter
+ * 2. ROBO_MOCK_PORT environment variable
+ * 3. Server info file (.robo/mock/server.json) - for standalone mock server
+ * 4. STANDALONE_MOCK_PORT (6625) as final fallback
+ */
+async function discoverMockPort(explicitPort?: number): Promise<number> {
+	// 1. Explicit port takes priority
+	if (explicitPort !== undefined) {
+		return explicitPort
+	}
+
+	// 2. Environment variable
+	if (process.env.ROBO_MOCK_PORT) {
+		return parseInt(process.env.ROBO_MOCK_PORT, 10)
+	}
+
+	// 3. Server info file (standalone mock server)
+	const serverInfo = await readServerInfo()
+	if (serverInfo) {
+		return serverInfo.port
+	}
+
+	// 4. Fallback to standalone mock port
+	return STANDALONE_MOCK_PORT
 }
 
 /**
@@ -445,7 +476,7 @@ export interface StartMockBotOptions {
  * ```
  */
 export async function startMockBot(options: StartMockBotOptions = {}): Promise<MockBotHandle> {
-	const port = options.port ?? parseInt(process.env.ROBO_MOCK_PORT ?? '3001', 10)
+	const port = await discoverMockPort(options.port)
 	const timeout = options.timeout ?? 30000
 
 	// Create a session on the mock server
@@ -463,12 +494,15 @@ export async function startMockBot(options: StartMockBotOptions = {}): Promise<M
 	}
 
 	// Set up environment for mock mode BEFORE importing Robo
+	// Mark as connecting to existing mock server so the plugin doesn't start its own
 	const prefix = getMockPluginPrefix()
 	process.env.ROBO_MOCK_MODE = 'true'
 	process.env.ROBO_MOCK_PORT = String(port)
 	process.env.ROBO_MOCK_SESSION_ID = sessionId
 	process.env.DISCORD_TOKEN = session.token
 	process.env.DISCORD_REST_API = `http://localhost:${port}${prefix}/api`
+	process.env.__ROBO_MOCK_CONNECT_EXISTING = 'true'
+	process.env.__ROBO_MOCK_SERVER_PORT = String(port)
 
 	// Import and start Robo directly
 	const { Robo } = await import('robo.js')

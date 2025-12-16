@@ -19,7 +19,8 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { createCliCommandConfig, color } from 'robo.js'
-import { createRegistry, finalizeRegistry, getRegistrySummary, readRegistry } from '../../../../session/registry.js'
+import { createRegistry, finalizeRegistry, readRegistry } from '../../../../session/registry.js'
+import { STANDALONE_MOCK_PORT } from '../../../../utils/server-info.js'
 import { mockLogger } from '../../../../core/logger.js'
 import type { CliContext } from 'robo.js'
 
@@ -69,7 +70,7 @@ export const config = createCliCommandConfig({
 } as const)
 
 export default async function mockTestCommand({ options, logger }: CliContext) {
-	const port = (options.port as number | undefined) ?? 3001
+	const port = (options.port as number | undefined) ?? STANDALONE_MOCK_PORT
 	const runner = options.runner as string | undefined
 	const timeout = (options.timeout as number | undefined) ?? 120
 	const noBrowser = options['no-browser'] as boolean | undefined
@@ -98,10 +99,11 @@ export default async function mockTestCommand({ options, logger }: CliContext) {
 	logger.debug(`Created test registry: ${runId}`)
 
 	// Set environment variables for mock server and tests
+	// Note: We only set ROBO_MOCK_PORT, NOT PORT. This allows @robojs/server to use
+	// its own port (default 3000) while the mock server runs on STANDALONE_MOCK_PORT (6625)
 	process.env.ROBO_MOCK_TEST_MODE = 'true'
 	process.env.ROBO_MOCK_TEST_RUN_ID = runId
 	process.env.ROBO_MOCK_PORT = String(port)
-	process.env.PORT = String(port)
 
 	// Start mock server
 	logger.info(`Starting mock server on port ${color.cyan(String(port))}...`)
@@ -370,63 +372,30 @@ function displayResults(logger: { log: (msg: string) => void; info: (msg: string
 		return
 	}
 
-	const summary = getRegistrySummary(registry)
-
+	// Session details with pass/fail counts
 	logger.log('')
-	logger.log(color.dim('  ──────────────────────────────'))
-	logger.log(color.bold('  Test Summary'))
-	logger.log(color.dim('  ──────────────────────────────'))
-	logger.log('')
-
-	// Test counts
-	const passedColor = summary.passed > 0 ? color.green : color.dim
-	const failedColor = summary.failed > 0 ? color.red : color.dim
-	const skippedColor = summary.skipped > 0 ? color.yellow : color.dim
-
-	logger.log(
-		`  Tests:     ${passedColor(`${summary.passed} passed`)}, ${failedColor(`${summary.failed} failed`)}, ${skippedColor(`${summary.skipped} skipped`)}, ${summary.totalTests} total`
-	)
-
-	// Session counts
-	const sessionCount = registry.testFiles.length
-	const failedSessions = registry.testFiles.filter((f) => f.status === 'failed').length
-	logger.log(
-		`  Sessions:  ${sessionCount} total, ${failedSessions > 0 ? color.red(`${failedSessions} failed`) : color.green('0 failed')}`
-	)
-
-	// Duration
-	const duration = summary.duration / 1000
-	logger.log(`  Duration:  ${duration.toFixed(1)}s`)
-
-	// Show failed tests
-	if (summary.failed > 0) {
-		logger.log('')
-		logger.log(color.red('  Failed Tests:'))
-
-		for (const file of registry.testFiles) {
-			for (const test of file.tests) {
-				if (test.status === 'failed') {
-					logger.log(`    ${color.red('✗')} ${file.path}: ${test.name}`)
-					if (test.error?.message) {
-						logger.log(color.dim(`      └─ ${test.error.message}`))
-					}
-				}
-			}
-		}
-	}
-
-	// Session details
-	logger.log('')
-	logger.log(color.dim('  Session Details:'))
-	logger.log(color.dim('  ──────────────────────────────'))
+	logger.log(color.dim('  ──────────────────────────────────────────────────────────────'))
+	logger.log(color.bold('  Sessions'))
+	logger.log(color.dim('  ──────────────────────────────────────────────────────────────'))
 
 	for (const file of registry.testFiles) {
+		const passed = file.tests.filter((t) => t.status === 'passed').length
+		const failed = file.tests.filter((t) => t.status === 'failed').length
+		const total = file.tests.length
+		const assertionCount = file.tests.reduce((sum, t) => sum + t.assertions.length, 0)
+
 		const statusIcon = file.status === 'passed' ? color.green('✓') : color.red('✗')
-		const actionCount = file.tests.reduce((sum, t) => sum + t.assertions.length, 0)
 		const shortPath = file.path.split('/').slice(-2).join('/')
 
+		// Format: ✓ sess_abc123  │ commands/ping.test.ts  │ 3/3 passed, 5 assertions
+		const passText = failed > 0
+			? `${color.green(`${passed}`)}/${total} passed`
+			: color.green(`${passed}/${total} passed`)
+
 		logger.log(
-			`  ${file.sessionId.slice(0, 12)}  │ ${shortPath.padEnd(25)} │ ${statusIcon} ${actionCount} assertions`
+			`  ${statusIcon} ${file.sessionId.slice(0, 12)}  │ ${shortPath.padEnd(28)} │ ${passText}, ${assertionCount} assertions`
 		)
 	}
+
+	logger.log(color.dim('  ──────────────────────────────────────────────────────────────'))
 }

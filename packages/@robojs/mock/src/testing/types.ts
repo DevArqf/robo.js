@@ -226,11 +226,13 @@ export interface MockConfig {
 
 /**
  * Default mock server configuration
+ * Note: These are fallback values. The actual URLs are built dynamically
+ * in getMockConfig() using ROBO_MOCK_PORT env var or server-info file.
  */
 export const DEFAULT_MOCK_CONFIG: MockConfig = {
-	baseUrl: 'http://localhost:3001',
-	controlUrl: 'http://localhost:3001/api/control',
-	restUrl: 'http://localhost:3001/api',
-	gatewayUrl: 'ws://localhost:3001',
+	baseUrl: 'http://localhost:3000',
+	controlUrl: 'http://localhost:3000/api/control',
+	restUrl: 'http://localhost:3000/api',
+	gatewayUrl: 'ws://localhost:3000',
 	defaultTimeout: 5000
 }

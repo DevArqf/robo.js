@@ -5,7 +5,7 @@
  * Persists to `.robo/mock-test-sessions.json` for UI consumption.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative, isAbsolute } from 'node:path'
 import { mockLogger } from '../core/logger.js'
 
 // ============================================================================
@@ -44,6 +44,8 @@ export interface TestFileEntry {
 	completedAt?: number
 	/** Individual test results */
 	tests: TestResult[]
+	/** Assertions recorded before test entries were created (will be merged) */
+	pendingAssertions?: AssertionResult[]
 }
 
 /**
@@ -181,9 +183,13 @@ export function updateRegistry(
  * Register a test file with its session
  */
 export function registerTestFile(sessionId: string, testFilePath: string, projectRoot?: string): void {
+	// Normalize path to relative (jest-reporter uses relative paths)
+	const root = projectRoot ?? process.cwd()
+	const normalizedPath = isAbsolute(testFilePath) ? relative(root, testFilePath) : testFilePath
+
 	updateRegistry((registry) => {
 		// Check if file already registered
-		const existing = registry.testFiles.find((f) => f.path === testFilePath)
+		const existing = registry.testFiles.find((f) => f.path === normalizedPath)
 		if (existing) {
 			existing.sessionId = sessionId
 			existing.status = 'running'
@@ -192,7 +198,7 @@ export function registerTestFile(sessionId: string, testFilePath: string, projec
 			existing.tests = []
 		} else {
 			registry.testFiles.push({
-				path: testFilePath,
+				path: normalizedPath,
 				sessionId,
 				status: 'running',
 				startedAt: Date.now(),
@@ -202,7 +208,7 @@ export function registerTestFile(sessionId: string, testFilePath: string, projec
 		return registry
 	}, projectRoot)
 
-	mockLogger.debug(`Registered test file: ${testFilePath} -> ${sessionId}`)
+	mockLogger.debug(`Registered test file: ${normalizedPath} -> ${sessionId}`)
 }
 
 /**
@@ -224,10 +230,18 @@ export function recordTestResult(testFilePath: string, result: TestResult, proje
 export function recordAssertion(sessionId: string, assertion: AssertionResult, projectRoot?: string): void {
 	updateRegistry((registry) => {
 		const file = registry.testFiles.find((f) => f.sessionId === sessionId)
-		if (file && file.tests.length > 0) {
-			// Add to the most recent test
-			const currentTest = file.tests[file.tests.length - 1]
-			currentTest.assertions.push(assertion)
+		if (file) {
+			if (file.tests.length > 0) {
+				// Add to the most recent test
+				const currentTest = file.tests[file.tests.length - 1]
+				currentTest.assertions.push(assertion)
+			} else {
+				// No tests yet - store in pending assertions for later merging
+				if (!file.pendingAssertions) {
+					file.pendingAssertions = []
+				}
+				file.pendingAssertions.push(assertion)
+			}
 		}
 		return registry
 	}, projectRoot)

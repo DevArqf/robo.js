@@ -54,6 +54,9 @@ export async function dispatchInteractionToSession(
 	const defaultGuildId = input.guild_id || session.state.guilds.values().next().value?.id || ''
 	const defaultChannelId = input.channel_id || session.state.channels.values().next().value?.id || ''
 
+	// Get channel info from state for the channel object (Discord API spec)
+	const channel = session.state.channels.get(defaultChannelId)
+
 	// Get or create user
 	const userId = input.user?.id || session.state.botUser.id
 	const username = input.user?.username || 'TestUser'
@@ -95,10 +98,13 @@ export async function dispatchInteractionToSession(
 		version: 1,
 		data: input.data || {},
 		guild_id: defaultGuildId,
-		channel_id: defaultChannelId,
+		channel_id: defaultChannelId, // Deprecated but kept for backwards compatibility
 		channel: {
 			id: defaultChannelId,
-			type: 0
+			type: channel?.type ?? 0, // Default to GUILD_TEXT
+			name: channel?.name,
+			guild_id: defaultGuildId,
+			permissions: '562949953421311' // Full permissions
 		},
 		member: defaultGuildId
 			? {

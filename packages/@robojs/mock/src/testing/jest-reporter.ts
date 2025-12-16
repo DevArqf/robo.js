@@ -126,8 +126,12 @@ class MockTestReporter {
 		updateRegistry((registry) => {
 			const file = registry.testFiles.find((f) => f.path === testPath)
 			if (file) {
+				// Get pending assertions (recorded before test entries were created)
+				const pendingAssertions = file.pendingAssertions ?? []
+
 				// Merge results - keep assertions recorded during test
-				for (const result of results) {
+				for (let i = 0; i < results.length; i++) {
+					const result = results[i]
 					const existingTest = file.tests.find((t) => t.name === result.name)
 					if (existingTest) {
 						// Keep existing assertions, update status and error
@@ -135,9 +139,16 @@ class MockTestReporter {
 						existingTest.duration = result.duration
 						existingTest.error = result.error
 					} else {
+						// For the first test, include any pending assertions
+						if (i === 0 && pendingAssertions.length > 0) {
+							result.assertions = [...pendingAssertions, ...result.assertions]
+						}
 						file.tests.push(result)
 					}
 				}
+
+				// Clear pending assertions after merging
+				file.pendingAssertions = []
 			}
 			return registry
 		})
@@ -150,18 +161,8 @@ class MockTestReporter {
 	/**
 	 * Called when all tests complete
 	 */
-	onRunComplete(_testContexts: unknown, results: JestAggregatedResult): void {
-		if (!process.env.ROBO_MOCK_TEST_MODE) {
-			return
-		}
-
-		// Log summary
-		const passed = results.numPassedTests
-		const failed = results.numFailedTests
-		const total = results.numTotalTests
-
-		console.log('')
-		console.log(`[MockTestReporter] Tests: ${passed} passed, ${failed} failed, ${total} total`)
+	onRunComplete(_testContexts: unknown, _results: JestAggregatedResult): void {
+		// Results are displayed by the mock test command, not here
 	}
 
 	/**
