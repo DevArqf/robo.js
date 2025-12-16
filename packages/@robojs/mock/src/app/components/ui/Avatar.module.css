@@ -1,0 +1,36 @@
+.wrap {
+	position: relative;
+	flex-shrink: 0;
+	width: var(--avatar-size);
+	height: var(--avatar-size);
+}
+
+.avatar {
+	width: var(--avatar-size);
+	height: var(--avatar-size);
+	border-radius: 50%;
+	background: var(--background-tertiary);
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.avatar img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.statusDot {
+	position: absolute;
+	right: -2px;
+	bottom: -2px;
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	border: 3px solid var(--avatar-status-border, var(--background-primary));
+	background: var(--avatar-status-color, var(--status-online));
+}
+
+

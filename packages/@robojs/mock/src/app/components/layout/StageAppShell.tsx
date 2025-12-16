@@ -1,7 +1,6 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useSession } from '../../hooks/useSession'
 import { useIsPlaybackMode, usePlaybackChannels, usePlaybackMembers } from '../../stores/playbackStore'
-import { FriendsAppShell } from '../friends'
 import { ServerList } from '../sidebar/ServerList'
 import { ChannelList } from '../sidebar/ChannelList'
 import { Header } from './Header'
@@ -13,7 +12,7 @@ import { PlaybackControls } from '../playback/PlaybackControls'
 import { DevToolsPanel } from '../devtools/DevToolsPanel'
 import styles from './AppShell.module.css'
 
-export function AppShell() {
+export function StageAppShell() {
 	const {
 		guilds,
 		guildChannels,
@@ -34,9 +33,6 @@ export function AppShell() {
 		joinVoice,
 		leaveVoice
 	} = useSession()
-
-	// Home view toggle (Friends UI) via the top-left Home button in the server list.
-	const [showHome, setShowHome] = useState(false)
 
 	// Mobile sidebar state
 	const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
@@ -62,6 +58,7 @@ export function AppShell() {
 	// Combine users with botUser for voice channel display (Phase 5P)
 	const allUsers = useMemo(() => {
 		if (!botUser) return users
+		// Check if botUser is already in users
 		const botInUsers = users.some((u) => u.id === botUser.id)
 		return botInUsers ? users : [...users, botUser]
 	}, [users, botUser])
@@ -69,15 +66,6 @@ export function AppShell() {
 	const handleMobileMenuToggle = useCallback(() => {
 		setMobileSidebarOpen((prev) => !prev)
 	}, [])
-
-	// Wrap guild selection to exit Home view
-	const handleGuildSelect = useCallback(
-		(guildId: string | null) => {
-			setShowHome(false)
-			selectGuild(guildId)
-		},
-		[selectGuild]
-	)
 
 	// Wrap channel selection to close mobile sidebar
 	const handleChannelSelect = useCallback(
@@ -120,25 +108,14 @@ export function AppShell() {
 		})
 	}, [])
 
-	const handleHomeClick = useCallback(() => {
-		// Home button should always take you to Friends/Home (no toggle-off).
-		// Users go back to the server UI by clicking a server.
-		setShowHome(true)
-		selectGuild(null)
-		selectChannel(null)
-		// Close any open mobile sidebars/dropdowns when switching
-		setMobileSidebarOpen(false)
-		setShowThreads(false)
-		setShowNotifications(false)
-		setShowPinnedMessages(false)
-	}, [selectGuild, selectChannel])
-
 	const guildName = () => {
 		const filterGuilds = guilds.filter((guild) => guild.id === selectedGuildId)
+
 		if (filterGuilds.length > 0) {
 			return `${filterGuilds[0].icon ? filterGuilds[0].icon + ' | ' : ''}  ${filterGuilds[0].name}`
+		} else {
+			return 'unknown guild name'
 		}
-		return 'unknown guild name'
 	}
 
 	const shellClassName = `${styles.shell}${mobileSidebarOpen ? ` ${styles.sidebarOpen}` : ''}`
@@ -148,58 +125,44 @@ export function AppShell() {
 			<div className={styles.topShell}>
 				<span>{guildName()}</span>
 			</div>
-
 			<div className={styles.contentWrapper}>
 				<div className={styles.serverList}>
-					<ServerList
-						guilds={guilds}
-						selectedId={selectedGuildId}
-						onSelect={handleGuildSelect}
-						sessionId={sessionId}
-						onHomeClick={handleHomeClick}
-						homeSelected={showHome}
-					/>
+					<ServerList guilds={guilds} selectedId={selectedGuildId} onSelect={selectGuild} sessionId={sessionId} />
 				</div>
-
 				<div className={styles.mainContent}>
-					{showHome ? (
-						<FriendsAppShell />
-					) : (
-						<>
-							<ChannelList
-								guild={selectedGuild ?? undefined}
-								channels={displayChannels}
-								selectedId={selectedChannelId}
-								onSelect={handleChannelSelect}
-								voiceStates={guildVoiceStates}
-								users={allUsers}
-								onJoinVoice={joinVoice}
-								onLeaveVoice={leaveVoice}
-								currentUserId={botUser?.id}
-							/>
-							<div className={styles.main}>
-								<Header
-									channel={selectedChannel}
-									onToggleMembers={toggleMembers}
-									showMembers={showMembers}
-									onToggleThreads={handleToggleThreads}
-									showThreads={showThreads}
-									onToggleNotifications={handleToggleNotifications}
-									showNotifications={showNotifications}
-									onTogglePinnedMessages={handleTogglePinnedMessages}
-									showPinnedMessages={showPinnedMessages}
-									onMobileMenuToggle={handleMobileMenuToggle}
-									isMobileSidebarOpen={mobileSidebarOpen}
-								/>
+					<ChannelList
+						guild={selectedGuild ?? undefined}
+						channels={displayChannels}
+						selectedId={selectedChannelId}
+						onSelect={handleChannelSelect}
+						voiceStates={guildVoiceStates}
+						users={allUsers}
+						onJoinVoice={joinVoice}
+						onLeaveVoice={leaveVoice}
+						currentUserId={botUser?.id}
+					/>
+					<div className={styles.main}>
+						<Header
+							channel={selectedChannel}
+							onToggleMembers={toggleMembers}
+							showMembers={showMembers}
+							onToggleThreads={handleToggleThreads}
+							showThreads={showThreads}
+							onToggleNotifications={handleToggleNotifications}
+							showNotifications={showNotifications}
+							onTogglePinnedMessages={handleTogglePinnedMessages}
+							showPinnedMessages={showPinnedMessages}
+							onMobileMenuToggle={handleMobileMenuToggle}
+							isMobileSidebarOpen={mobileSidebarOpen}
+						/>
 
-								<div className={styles.content}>
-									<MessageArea channelId={selectedChannelId} />
-									{showThreads && <ThreadList />}
-									{showMembers && <MemberList members={displayMembers} roles={guildRoles} />}
-								</div>
-							</div>
-						</>
-					)}
+						<div className={styles.content}>
+							<MessageArea channelId={selectedChannelId} />
+
+							{showThreads && <ThreadList />}
+							{showMembers && <MemberList members={displayMembers} roles={guildRoles} />}
+						</div>
+					</div>
 				</div>
 			</div>
 
@@ -214,3 +177,5 @@ export function AppShell() {
 		</div>
 	)
 }
+
+

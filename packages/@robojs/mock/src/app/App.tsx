@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSession } from './hooks/useSession'
 import { AppShell } from './components/layout/AppShell'
 import { ConnectionScreen } from './components/layout/ConnectionScreen'
@@ -10,6 +10,19 @@ import './styles/discord-theme.css'
 import './styles/globals.css'
 
 export default function App() {
+	// UI-only mode: render the mock Discord Friends layout without requiring a Stage session.
+	// (This is intentionally static – no routing/logic for tabs, just the UI elements.)
+	const UI_ONLY = false
+
+	if (UI_ONLY) {
+		return (
+			<ErrorBoundary>
+				<KeyboardShortcuts />
+				<AppShell />
+			</ErrorBoundary>
+		)
+	}
+
 	const { isConnected, sessionId, activeModal, submitModal, closeModal } = useSession()
 	const [hasEverConnected, setHasEverConnected] = useState(false)
 	const [showConnectionScreen, setShowConnectionScreen] = useState(false)

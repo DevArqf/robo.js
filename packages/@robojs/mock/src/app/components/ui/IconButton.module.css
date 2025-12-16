@@ -1,0 +1,23 @@
+.button {
+	width: 32px;
+	height: 32px;
+	border-radius: var(--radius-sm);
+}
+
+.buttonSmall {
+	width: 28px;
+	height: 28px;
+	border-radius: var(--radius-sm);
+}
+
+.button svg {
+	width: 18px;
+	height: 18px;
+}
+
+.buttonSmall svg {
+	width: 16px;
+	height: 16px;
+}
+
+

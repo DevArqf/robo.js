@@ -10,9 +10,11 @@ interface ServerListProps {
 	onSelect: (id: string | null) => void
 	unreadGuildIds?: Set<string>
 	sessionId: string | null
+	onHomeClick?: () => void
+	homeSelected?: boolean
 }
 
-export function ServerList({ guilds, selectedId, onSelect, unreadGuildIds, sessionId }: ServerListProps) {
+export function ServerList({ guilds, selectedId, onSelect, unreadGuildIds, sessionId, onHomeClick, homeSelected }: ServerListProps) {
 	const { sendCommand } = useSession()
 	const [isSeeding, setIsSeeding] = useState(false)
 	const [seedError, setSeedError] = useState<string | null>(null)
@@ -448,9 +450,16 @@ export function ServerList({ guilds, selectedId, onSelect, unreadGuildIds, sessi
 	return (
 		<nav className={styles.container} aria-label="Server list">
 			{/* Home/DM button */}
-			<div className={styles.serverWrapper}>
+			<div className={`${styles.serverWrapper} ${homeSelected ? styles.selected : ''}`}>
 				<div className={styles.pill} />
-				<button className={styles.homeButton} title="Direct Messages" aria-label="Direct Messages">
+				<button
+					className={styles.homeButton}
+					title="Direct Messages"
+					aria-label="Direct Messages"
+					aria-current={homeSelected ? 'page' : undefined}
+					onClick={onHomeClick}
+					type="button"
+				>
 					<DiscordLogo />
 				</button>
 			</div>
