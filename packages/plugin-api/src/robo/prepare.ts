@@ -117,6 +117,10 @@ export default async (context: PrepareContext<PluginConfig>) => {
 						server: pluginOptions.engine.getHttpServer()
 					},
 					middlewareMode: { server: pluginOptions.engine.getHttpServer() }
+				},
+				// Suppress "Could not auto-determine entry point" warning for projects without HTML files
+				optimizeDeps: {
+					entries: []
 				}
 			})
 			logger.debug('Vite server created successfully.')
