@@ -23,6 +23,10 @@
 			"import": "./dist/index.js",
 			"types": "./dist/index.d.ts"
 		},
+		"./unstable": {
+			"import": "./dist/unstable.js",
+			"types": "./dist/unstable.d.ts"
+		},
 		"./*": {
 			"types": "./*",
 			"import": "./*"

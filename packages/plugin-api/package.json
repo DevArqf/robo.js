@@ -10,6 +10,10 @@
 			"import": "./.robo/build/index.js",
 			"types": "./src/index.ts"
 		},
+		"./client": {
+			"import": "./.robo/build/client/dev-reload.js",
+			"types": "./src/client/dev-reload.ts"
+		},
 		"./engines": {
 			"import": "./engines.js",
 			"types": "./engines.d.ts"
@@ -52,9 +56,13 @@
 		"lint:style": "prettier --write .",
 		"test": "NODE_OPTIONS=\"--experimental-vm-modules --disable-warning=ExperimentalWarning\" jest"
 	},
+	"dependencies": {
+		"ws": "^8.18.0"
+	},
 	"devDependencies": {
 		"@swc/core": "^1.11.29",
 		"@types/node": "^20.16.5",
+		"@types/ws": "^8.18.1",
 		"@typescript-eslint/eslint-plugin": "^5.56.0",
 		"@typescript-eslint/parser": "^5.56.0",
 		"discord.js": "14.22.1",

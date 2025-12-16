@@ -5,6 +5,10 @@ import { SessionProvider, WebSocketProvider } from './stores/sessionStore'
 import { PlaybackProvider } from './stores/playbackStore'
 import { ToasterProvider } from './components/common/Toaster'
 import { DevToolsProvider } from './components/devtools/DevToolsPanel'
+import { initDevReload } from '@robojs/server/client'
+
+// Initialize dev reload for hot reloading during development
+initDevReload()
 
 // Get initial session ID from URL query params or localStorage
 function getInitialSessionId(): string | null {

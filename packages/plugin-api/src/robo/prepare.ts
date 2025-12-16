@@ -11,6 +11,7 @@
  * By running in the prepare phase, the engine and router are available to other
  * plugins (like @robojs/mock) during their prepare callbacks and start hooks.
  */
+import { initDevReload } from '../core/dev-reload.js'
 import { logger } from '../core/logger.js'
 import { initPluginRoutes, type PluginPrefixMap } from '../core/plugin-routes.js'
 import { hasDependency } from '../core/runtime-utils.js'
@@ -154,6 +155,9 @@ export default async (context: PrepareContext<PluginConfig>) => {
 	if (prefixCount > 0) {
 		logger.debug(`Initialized plugin route registry with ${prefixCount} plugin prefix(es)`)
 	}
+
+	// Initialize dev reload for plugin frontend hot reload (dev mode only)
+	await initDevReload(pluginOptions.engine)
 
 	logger.debug('Server engine prepared and available for other plugins')
 }

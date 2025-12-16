@@ -68,6 +68,10 @@ export function createServerHandler(router: Router, vite?: ViteDevServer, onNotF
 					const fileCallback = async (filePath: string, mimeType: string) => {
 						res.setHeader('Content-Type', mimeType)
 						res.setHeader('X-Content-Type-Options', 'nosniff')
+						// Prevent caching in development for hot reload
+						if (process.env.NODE_ENV !== 'production') {
+							res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+						}
 						res.writeHead(200)
 						await pipeline(createReadStream(filePath), res)
 					}
@@ -177,6 +181,10 @@ export function createServerHandler(router: Router, vite?: ViteDevServer, onNotF
 			const fileCallback = async (filePath: string, mimeType: string) => {
 				res.setHeader('Content-Type', mimeType)
 				res.setHeader('X-Content-Type-Options', 'nosniff')
+				// Prevent caching in development for hot reload
+				if (process.env.NODE_ENV !== 'production') {
+					res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+				}
 				res.writeHead(200)
 				await pipeline(createReadStream(filePath), res)
 			}

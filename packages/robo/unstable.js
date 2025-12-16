@@ -8,3 +8,6 @@ export { loadConfig } from './dist/core/config.js'
 export { populatePortal } from './dist/core/portal.js'
 export { executePrepareHooks, executeStartHooks } from './dist/core/hooks.js'
 export { loadPluginData } from './dist/core/robo.js'
+
+// File watching utilities
+export { default as Watcher } from './dist/cli/utils/watcher.js'
