@@ -4,11 +4,13 @@
  * This hook runs during Robo.start() BEFORE prepare hooks to:
  * 1. Detect if running in mock mode (via ROBO_MOCK_MODE env var)
  * 2. Store the pre-generated session ID for the start hook
+ * 3. Set hook priorities so mock server is ready before Discord.js connects
  *
  * The mock CLI command sets ROBO_MOCK_MODE=true and ROBO_MOCK_SESSION_ID
  * before calling Robo.start(). This init hook picks up those values
  * and prepares for session creation in the start hook.
  */
+import { prioritizeHookBefore } from 'robo.js'
 import type { InitContext } from 'robo.js'
 
 /**
@@ -100,6 +102,15 @@ export default async function initHook(context: InitContext): Promise<void> {
 		connectingToExisting,
 		externalServerPort,
 		shouldOpenBrowser
+	}
+
+	// In embedded mock mode (not connecting to external), ensure the mock server
+	// infrastructure is ready before Discord.js tries to connect.
+	// Order must be: @robojs/server (listen) -> @robojs/mock (gateway) -> @robojs/discordjs (connect)
+	if (!connectingToExisting) {
+		prioritizeHookBefore('start', '@robojs/server', '@robojs/discordjs')
+		prioritizeHookBefore('start', '@robojs/mock', '@robojs/discordjs')
+		logger.debug('Set hook priorities: server -> mock -> discordjs')
 	}
 
 	logger.debug(

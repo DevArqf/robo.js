@@ -170,8 +170,15 @@ export function AppShell() {
 					</div>
 				</div>
 			</div>
+
+			{/* Bottom bar with playback controls and status */}
+			<div className={styles.bottomBar}>
+				<PlaybackControls />
+				<StatusBar />
+			</div>
+
+			{/* Developer Tools Panel */}
+			<DevToolsPanel />
 		</div>
 	)
 }
-
-/** */

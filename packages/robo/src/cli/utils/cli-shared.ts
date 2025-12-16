@@ -398,6 +398,12 @@ export interface ParseCliOptionsConfig {
 	 * Default: false
 	 */
 	allowSpacesInOptions?: boolean
+	/**
+	 * When true, suppress warnings for unknown options.
+	 * Useful for initial parsing when extensions may add additional options.
+	 * Default: false
+	 */
+	suppressUnknownWarnings?: boolean
 }
 
 /**
@@ -414,7 +420,7 @@ export function parseCliOptions(
 	options: CliOptionConfig[],
 	config: ParseCliOptionsConfig = {}
 ): { parsedOptions: Record<string, unknown>; positionalArgs: string[]; errors: string[] } {
-	const { allowSpacesInOptions = false } = config
+	const { allowSpacesInOptions = false, suppressUnknownWarnings = false } = config
 	const parsedOptions: Record<string, unknown> = {}
 	const positionalArgs: string[] = []
 	const errors: string[] = []
@@ -501,7 +507,9 @@ export function parseCliOptions(
 				}
 			} else {
 				// Unknown option - warn and skip both option and its potential value
-				logger.warn(`Unknown option: ${optionName}`)
+				if (!suppressUnknownWarnings) {
+					logger.warn(`Unknown option: ${optionName}`)
+				}
 				i++
 				// If there's a value that looks like a value (not another option), skip it too
 				if (inlineValue === undefined && i < args.length && !args[i].startsWith('-')) {
@@ -564,7 +572,9 @@ export function parseCliOptions(
 				}
 			} else {
 				// Unknown short option - warn and skip both option and its potential value
-				logger.warn(`Unknown option: ${optionAlias}`)
+				if (!suppressUnknownWarnings) {
+					logger.warn(`Unknown option: ${optionAlias}`)
+				}
 				i++
 				// If there's a value that looks like a value (not another option), skip it too
 				if (inlineValue === undefined && i < args.length && !args[i].startsWith('-')) {

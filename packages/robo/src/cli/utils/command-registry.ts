@@ -183,6 +183,10 @@ export function createLazyCommand(meta: CommandMetadata): Command {
 		cmd.positionalArgs(true)
 	}
 
+	// Suppress unknown option warnings for initial parse since extensions may add more options
+	// The lazy handler will re-parse with extension options
+	cmd.suppressUnknownWarnings(true)
+
 	// For commands with subcommands, we need to load the full module
 	// and re-parse arguments through it so subcommands are properly routed
 	if (meta.hasSubcommands) {

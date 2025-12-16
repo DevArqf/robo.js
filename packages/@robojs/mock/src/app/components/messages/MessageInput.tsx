@@ -137,7 +137,7 @@ export function MessageInput({ channelId, channelName }: MessageInputProps) {
 			<div>
 				<div className={styles.container}>
 					{/* Slash command autocomplete popover */}
-					{showCommandAutocomplete && slashCommands.length > 0 && (
+					{showCommandAutocomplete && (
 						<CommandAutocomplete
 							search={commandSearch}
 							commands={slashCommands}

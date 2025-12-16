@@ -1,9 +1,11 @@
 /**
  * CLI Extension for `robo dev` command
  *
- * Adds mock mode options:
- * - --mock (-M): Enable mock mode (starts new session)
- * - --mock-session: Connect to existing mock server session
+ * Adds mock mode option:
+ * - --mock (-M): Enable mock mode
+ *   - No value: Auto-detect - connect to existing server if running, else start embedded
+ *   - Session ID: Connect to specific session on external server
+ *   - "new": Create new session on external server
  */
 import path from 'node:path'
 import type { CliExtendConfig, CliBeforeHook } from 'robo.js'
@@ -16,13 +18,7 @@ export const config: CliExtendConfig = {
 		{
 			alias: '-M',
 			name: '--mock',
-			description: 'Enable mock mode (creates new session)',
-			type: 'boolean'
-		},
-		{
-			alias: '-S',
-			name: '--mock-session',
-			description: 'Connect to mock server session (use "new" to create, or session ID to join)',
+			description: 'Enable mock mode (optional: session ID to connect to external server)',
 			type: 'string'
 		}
 	],
@@ -30,35 +26,85 @@ export const config: CliExtendConfig = {
 }
 
 export const before: CliBeforeHook = async (ctx) => {
-	const { mock, 'mock-session': mockSession } = ctx.options as {
-		mock?: boolean
-		'mock-session'?: string
-	}
+	const { mock } = ctx.options as { mock?: string | boolean }
 
-	// Neither option specified - continue normally
-	if (!mock && !mockSession) {
+	// Not specified - continue normally (no mock mode)
+	if (mock === undefined) {
 		return
-	}
-
-	// Cannot use both options
-	if (mock && mockSession) {
-		ctx.logger.error('Cannot use both --mock and --mock-session together')
-		process.exit(1)
 	}
 
 	// Set mock mode flag
 	process.env.ROBO_MOCK_MODE = 'true'
 
-	if (mockSession) {
-		// Connect to existing session
-		await setupExistingSessionConnection(ctx, mockSession)
+	// Determine mode based on value:
+	// - true or '' (empty string) = auto-detect mode
+	// - 'new' = external mode, create new session
+	// - 'sess_xxx' or token = external mode, connect to existing session
+	const isAutoDetect = mock === true || mock === ''
+
+	if (isAutoDetect) {
+		// Auto-detect: check if a mock server is already running
+		const isServerRunning = await checkMockServerRunning(ctx)
+
+		if (isServerRunning) {
+			// Connect to existing server and auto-create session
+			ctx.logger.info('Detected running mock server, connecting...')
+			await setupExternalConnection(ctx, 'new')
+		} else {
+			// Start embedded server + bot
+			await setupEmbeddedMode(ctx)
+		}
 	} else {
-		// Start new session (--mock flag)
-		await setupNewSession(ctx)
+		// Explicit session ID or "new" - connect to external server
+		await setupExternalConnection(ctx, mock as string)
 	}
 }
 
-async function setupNewSession(ctx: { logger: { debug: (msg: string) => void } }) {
+/**
+ * Check if a mock server is already running.
+ * First checks server-info file, then does a health check.
+ */
+async function checkMockServerRunning(ctx: { logger: { debug: (msg: string) => void } }): Promise<boolean> {
+	// Check server-info file first
+	const serverInfo = await readServerInfo()
+
+	if (!serverInfo) {
+		ctx.logger.debug('No server-info file found')
+		return false
+	}
+
+	// Verify the server is actually responding
+	const port = serverInfo.port
+	const prefix = getMockPluginPrefix()
+	const healthUrl = `http://localhost:${port}${prefix}/api/v10/gateway/bot`
+
+	try {
+		const controller = new AbortController()
+		const timeoutId = setTimeout(() => controller.abort(), 1000)
+
+		const response = await fetch(healthUrl, {
+			method: 'GET',
+			signal: controller.signal
+		})
+
+		clearTimeout(timeoutId)
+
+		if (response.ok) {
+			ctx.logger.debug(`Mock server responding on port ${port}`)
+			return true
+		}
+	} catch {
+		ctx.logger.debug(`Mock server not responding on port ${port}`)
+	}
+
+	return false
+}
+
+/**
+ * Setup embedded mock mode - server and bot run in the same process.
+ * Used when no external server is running.
+ */
+async function setupEmbeddedMode(ctx: { logger: { debug: (msg: string) => void } }) {
 	const sessionId = generateSessionId()
 	const sessionToken = createMockToken(sessionId)
 	const projectName = path.basename(process.cwd())
@@ -81,10 +127,14 @@ async function setupNewSession(ctx: { logger: { debug: (msg: string) => void } }
 	// Signal to open browser after start
 	process.env.__ROBO_MOCK_OPEN_BROWSER = 'true'
 
-	ctx.logger.debug(`Mock mode enabled (new session: ${sessionId})`)
+	ctx.logger.debug(`Mock mode enabled (embedded, session: ${sessionId})`)
 }
 
-async function setupExistingSessionConnection(
+/**
+ * Setup external connection mode - connect bot to an existing mock server.
+ * Used when a standalone mock server is already running.
+ */
+async function setupExternalConnection(
 	ctx: { logger: { debug: (msg: string) => void; info: (msg: string) => void; error: (msg: string) => void } },
 	sessionInput: string
 ) {

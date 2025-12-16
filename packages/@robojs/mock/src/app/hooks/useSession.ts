@@ -19,7 +19,8 @@ export function useSession() {
 	const guildRoles = state.roles.filter((r) => r.guild_id === state.selectedGuildId)
 	const channelMessages = state.selectedChannelId ? state.messages[state.selectedChannelId] || [] : []
 	// Filter to only slash commands (type 1 = ChatInput) for autocomplete
-	const slashCommands = state.commands.filter((c) => c.type === 1)
+	// Default to type 1 if not specified for backwards compatibility
+	const slashCommands = state.commands.filter((c) => (c.type ?? 1) === 1)
 	// Filter to context menu commands (type 2 = USER, type 3 = MESSAGE)
 	const userCommands = state.commands.filter((c) => c.type === 2)
 	const messageCommands = state.commands.filter((c) => c.type === 3)

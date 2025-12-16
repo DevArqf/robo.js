@@ -27,6 +27,7 @@ export class Command {
 	private _version?: string
 	private _positionalArgs?: boolean
 	private _allowSpacesInOptions: boolean = true
+	private _suppressUnknownWarnings: boolean = false
 	protected _parent?: Command
 	private _unknownCommandHandler?: UnknownCommandHandler
 
@@ -57,6 +58,18 @@ export class Command {
 	 */
 	public allowSpacesInOptions(allow: boolean): this {
 		this._allowSpacesInOptions = allow
+		return this
+	}
+
+	/**
+	 * Suppress warnings for unknown options during initial parsing.
+	 * Useful for lazy commands where extensions may add additional options.
+	 *
+	 * @param {boolean} suppress - Boolean to suppress or show unknown option warnings.
+	 * @returns {Command} - Returns the current Command object for chaining.
+	 */
+	public suppressUnknownWarnings(suppress: boolean): this {
+		this._suppressUnknownWarnings = suppress
 		return this
 	}
 
@@ -224,7 +237,8 @@ export class Command {
 		errors: string[]
 	} {
 		return parseCliOptions(args, this._options, {
-			allowSpacesInOptions: this._allowSpacesInOptions
+			allowSpacesInOptions: this._allowSpacesInOptions,
+			suppressUnknownWarnings: this._suppressUnknownWarnings
 		})
 	}
 

@@ -311,7 +311,7 @@ export class StageServer {
 			id: cmd.id,
 			name: cmd.name,
 			description: cmd.description,
-			type: cmd.type,
+			type: cmd.type ?? 1, // Default to ChatInput if not specified
 			options: cmd.options?.map(opt => this.toStageCommandOption(opt))
 		}
 	}

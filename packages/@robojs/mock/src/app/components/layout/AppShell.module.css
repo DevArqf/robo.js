@@ -2,7 +2,6 @@
 	display: flex;
 	flex-direction: column;
 	background: var(--background-tertiary);
-	padding-left: 20px;
 	height: 100%;
 }
 
@@ -27,7 +26,8 @@
 .contentWrapper {
 	display: flex;
 	flex-direction: row;
-	height: 100%;
+	flex: 1;
+	min-height: 0;
 }
 .mainContent {
 	display: flex;
@@ -54,7 +54,7 @@
 }
 
 .bottomBar {
-	grid-area: bottom;
+	flex-shrink: 0;
 	display: flex;
 	flex-direction: column;
 	background: var(--background-tertiary);
