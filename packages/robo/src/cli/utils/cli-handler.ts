@@ -200,19 +200,49 @@ export class Command {
 		return this
 	}
 
-	private showHelp(): void {
+	private async showHelp(): Promise<void> {
 		console.log(color.blue(`\n Command: ${this._name}`))
 		console.log(` Description: ${this._description}`)
 
-		if (this._options.length > 0) {
+		// Load extension options
+		let allOptions = [...this._options]
+		let extensionSources: Map<string, string> = new Map()
+
+		try {
+			const { loadCliManifest, getExtensions, mergeOptions } = await import('./cli-loader.js')
+			const manifest = await loadCliManifest()
+			if (manifest) {
+				const extensions = getExtensions(manifest, this._name)
+				if (extensions.length > 0) {
+					// Track which options come from which plugins
+					for (const ext of extensions) {
+						if (ext.options) {
+							for (const opt of ext.options) {
+								extensionSources.set(opt.name, ext.plugin ?? 'plugin')
+							}
+						}
+					}
+					allOptions = mergeOptions(this._options, extensions)
+				}
+			}
+		} catch {
+			// Silently ignore manifest loading errors
+		}
+
+		if (allOptions.length > 0) {
 			logger.log(color.green(` Options:`))
-			this._options.forEach((opt) => {
+			const coreOptionNames = new Set(this._options.map((o) => o.name))
+
+			for (const opt of allOptions) {
+				const isExtension = !coreOptionNames.has(opt.name) && opt.name !== '--help'
+				const source = extensionSources.get(opt.name)
+				const suffix = isExtension && source ? color.dim(` (from ${source})`) : ''
 				logger.log(
 					`${color.white(
 						`   ${color.green(`${opt.alias}`)}${color.white(',')} ${color.green(`${opt.name}`)}: ${opt.description}`
-					)}`
+					)}${suffix}`
 				)
-			})
+			}
 			logger.log(`\n`)
 		}
 
@@ -303,7 +333,7 @@ export class Command {
 		const allPositionalArgs = [...positionalArgs, ...additionalArgs]
 
 		if (parsedOptions.help) {
-			command.showHelp()
+			await command.showHelp()
 			return
 		}
 

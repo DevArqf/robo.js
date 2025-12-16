@@ -42,13 +42,35 @@ export async function helpCommandHandler(_context: CliContext) {
 		color.bold(`\n ${color.blue('Robo.js')} - Where bot creation meets endless possibilities!`),
 		color.dim('(v' + packageJson.version + ')\n\n')
 	)
+
+	// Load extensions for all core commands
+	let extensionMap: Record<string, string[]> = {}
+	try {
+		const { loadCliManifest, getExtensions } = await import('../utils/cli-loader.js')
+		const manifest = await loadCliManifest()
+		if (manifest) {
+			for (const cmd of rootCommand.getChildCommands()) {
+				const exts = getExtensions(manifest, cmd.getName())
+				if (exts.length > 0) {
+					// Extract extension aliases
+					const extAliases = exts.flatMap((e) => e.options?.map((o) => o.alias) || [])
+					if (extAliases.length > 0) {
+						extensionMap[cmd.getName()] = extAliases
+					}
+				}
+			}
+		}
+	} catch {
+		// Silently ignore manifest loading errors
+	}
+
 	const groups = splitCommandsIntoGroups([
 		['dev', 'start', 'build'],
 		['add', 'remove', 'upgrade'],
 		['deploy'],
 		['help']
 	])
-	prettyPrint(formatCommand(groups))
+	prettyPrint(formatCommand(groups, extensionMap))
 
 	// Show plugin commands if available
 	await showPluginCommands()
@@ -197,18 +219,23 @@ function breakLine(desc: string, lineBreakSpaces: number, charactersToDivideInto
  * Formats the command into a structured Object.
  *
  * @param {commandGroup[]} commandGroup - Array of CommandGroup.
+ * @param {Record<string, string[]>} extensionMap - Map of command names to extension aliases.
  * @returns {FormattedCommand[]} - Returns the commandGroup array in the shape of FormattedCommand array.
  */
-function formatCommand(commandGroup: CommandGroup[]): FormattedCommand[] {
+function formatCommand(
+	commandGroup: CommandGroup[],
+	extensionMap: Record<string, string[]> = {}
+): FormattedCommand[] {
 	const formattedCommands: FormattedCommand[] = []
 
 	commandGroup.forEach((commandObject: CommandGroup, idx: number) => {
 		if (!commandObject?.command) return
 		const childCommands = commandObject.command.getChildCommands()
-		const alias = commandObject.command
-			.getOptions()
-			.map((flags: Option) => `${flags.alias}`)
-			.join(' ')
+		const cmdName = commandObject.command.getName()
+		const coreAliases = commandObject.command.getOptions().map((flags: Option) => `${flags.alias}`)
+		const extAliases = extensionMap[cmdName] || []
+		const allAliases = [...coreAliases, ...extAliases]
+		const alias = allAliases.join(' ')
 
 		const lastCommandInTheGroup = () => {
 			if (commandGroup[idx + 1] !== undefined && commandGroup[idx + 1].groupId !== commandObject.groupId) {
