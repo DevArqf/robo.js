@@ -184,12 +184,14 @@ export default async function mockCommand({ options, logger }: CliContext) {
 	await executeStartHooks(plugins, manifestMode)
 
 	// 9. Write server info for port discovery by --mock-session
+	// In standalone mode, control routes are registered without prefix (see registerControlRoutes)
 	await writeServerInfo({
 		port,
 		startedAt: new Date().toISOString(),
 		pid: process.pid,
 		gatewayUrl: `ws://localhost:${port}/?v=10&encoding=json`,
-		restApiUrl: `http://localhost:${port}/api`
+		restApiUrl: `http://localhost:${port}/api`,
+		controlUrl: `http://localhost:${port}/api/control`
 	})
 
 	// Get plugin prefix for Stage UI URL

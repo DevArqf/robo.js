@@ -24,6 +24,8 @@ export interface MockServerInfo {
 	gatewayUrl: string
 	/** REST API URL */
 	restApiUrl: string
+	/** Control API URL (for session management, dispatching events, etc.) */
+	controlUrl?: string
 }
 
 /**

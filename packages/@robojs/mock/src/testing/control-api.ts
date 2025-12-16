@@ -3,6 +3,8 @@
  *
  * Utilities for interacting with the mock server's control API during tests.
  */
+import fs from 'node:fs'
+import path from 'node:path'
 import type {
 	CreateTestSessionConfig,
 	InteractionData,
@@ -15,12 +17,35 @@ import type {
 import { DEFAULT_MOCK_CONFIG } from './types.js'
 import { registerTestFile } from '../session/registry.js'
 import { getMockPluginPrefix } from '../utils/server.js'
+import type { MockServerInfo } from '../utils/server-info.js'
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
 let mockConfig: MockConfig = { ...DEFAULT_MOCK_CONFIG }
+
+/** Cached server info to avoid repeated file reads */
+let cachedServerInfo: MockServerInfo | null | undefined = undefined
+
+/**
+ * Read server info synchronously for use in getMockConfig()
+ */
+function readServerInfoSync(): MockServerInfo | null {
+	if (cachedServerInfo !== undefined) {
+		return cachedServerInfo
+	}
+
+	try {
+		const serverInfoPath = path.join(process.cwd(), '.robo', 'mock', 'server.json')
+		const content = fs.readFileSync(serverInfoPath, 'utf-8')
+		cachedServerInfo = JSON.parse(content) as MockServerInfo
+		return cachedServerInfo
+	} catch {
+		cachedServerInfo = null
+		return null
+	}
+}
 
 /**
  * Configure the mock server URLs
@@ -32,7 +57,7 @@ export function configureMock(config: Partial<MockConfig>): void {
 /**
  * Get current mock configuration
  * Automatically uses ROBO_MOCK_PORT environment variable if set
- * and includes the plugin prefix for routes
+ * and reads server info for correct URLs (standalone vs embedded mode)
  */
 export function getMockConfig(): MockConfig {
 	const port = process.env.ROBO_MOCK_PORT
@@ -40,16 +65,23 @@ export function getMockConfig(): MockConfig {
 
 	if (port) {
 		const baseUrl = `http://localhost:${port}`
+
+		// Try to read server info for the correct control URL
+		// In standalone mode, control routes are at /api/control (no prefix)
+		// In embedded mode, they would be at /mock/api/control (with prefix)
+		const serverInfo = readServerInfoSync()
+		const controlUrl = serverInfo?.controlUrl ?? `${baseUrl}${prefix}/api/control`
+
 		return {
 			...mockConfig,
 			baseUrl,
-			controlUrl: `${baseUrl}${prefix}/api/control`,
+			controlUrl,
 			restUrl: `${baseUrl}${prefix}/api`,
 			gatewayUrl: `ws://localhost:${port}${prefix}/gateway`
 		}
 	}
 
-	// When no port specified, still apply prefix to default config
+	// When no port specified, use prefix (embedded mode)
 	return {
 		...mockConfig,
 		controlUrl: `${mockConfig.baseUrl}${prefix}/api/control`,

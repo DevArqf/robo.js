@@ -531,6 +531,17 @@ export async function startMockBot(options: StartMockBotOptions = {}): Promise<M
 		guildId: session.guildId,
 		client,
 		stop: async () => {
+			// Delete the session first to stop new events from being dispatched
+			try {
+				await deleteSession(sessionId)
+			} catch {
+				// Session may already be deleted
+			}
+
+			// Brief delay to let any in-flight events complete processing
+			// This prevents "Jest environment torn down" errors
+			await new Promise((resolve) => setTimeout(resolve, 100))
+
 			// In test mode, we can't call Robo.stop() because it calls process.exit()
 			// Instead, disconnect the Discord client directly if available
 			if (client && typeof (client as { destroy?: () => void }).destroy === 'function') {
@@ -539,13 +550,6 @@ export async function startMockBot(options: StartMockBotOptions = {}): Promise<M
 				} catch {
 					// Client may already be destroyed
 				}
-			}
-
-			// Delete the session from the mock server
-			try {
-				await deleteSession(sessionId)
-			} catch {
-				// Session may already be deleted
 			}
 		}
 	}
