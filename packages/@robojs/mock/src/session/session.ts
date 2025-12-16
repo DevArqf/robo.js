@@ -34,6 +34,7 @@ import { generateSessionId, createMockToken, generateInteractionToken } from '..
 import { generateSnowflake } from '../utils/snowflake.js'
 import { MockServerState, createMockUser, createMockGuild, createMockChannel } from './state.js'
 import { ActionRecorder } from './recorder.js'
+import { saveRecording } from './recording-storage.js'
 import { mockLogger } from '../core/logger.js'
 import { getGatewayServer } from '../core/gateway.js'
 import { getStageBridge } from '../core/stage-bridge.js'
@@ -2395,6 +2396,17 @@ export class Session implements ISession {
 
 		// Clear state using the reset method
 		this.state.reset()
+
+		// Auto-save recording if in test mode and has actions
+		if (process.env.ROBO_MOCK_TEST_MODE === 'true' && this.recorder.length > 0) {
+			try {
+				const recording = this.exportRecording()
+				saveRecording(this.id, recording)
+				mockLogger.debug(`Auto-saved recording for session ${this.id}`)
+			} catch (error) {
+				mockLogger.warn(`Failed to auto-save recording for session ${this.id}: ${(error as Error).message}`)
+			}
+		}
 
 		// Clear recorded actions
 		this.recorder.clear()

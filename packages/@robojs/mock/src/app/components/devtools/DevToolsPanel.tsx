@@ -4,9 +4,10 @@ import { StateViewer } from './StateViewer'
 import { NetworkLog } from './NetworkLog'
 import { PerformanceMetrics } from './PerformanceMetrics'
 import { ToolsPanel } from './ToolsPanel'
+import { TestResults } from './TestResults'
 import styles from './DevToolsPanel.module.css'
 
-type Tab = 'events' | 'state' | 'network' | 'performance' | 'tools'
+export type Tab = 'events' | 'state' | 'network' | 'performance' | 'tools' | 'tests'
 
 const STORAGE_KEY = 'stage_devtools_open'
 
@@ -14,8 +15,13 @@ const STORAGE_KEY = 'stage_devtools_open'
 interface DevToolsContextValue {
 	isOpen: boolean
 	toggle: () => void
-	open: () => void
+	open: (tab?: Tab) => void
 	close: () => void
+	initialTab?: Tab
+	/** Currently requested tab - set when open(tab) is called */
+	requestedTab?: Tab
+	/** Clear the requested tab after it's been applied */
+	clearRequestedTab: () => void
 }
 
 const DevToolsContext = createContext<DevToolsContextValue | null>(null)
@@ -30,32 +36,52 @@ export function useDevTools(): DevToolsContextValue {
 
 interface DevToolsProviderProps {
 	children: ReactNode
+	/** Initial tab to show when opening DevTools */
+	initialTab?: Tab
+	/** Auto-open DevTools on mount */
+	autoOpen?: boolean
 }
 
-export function DevToolsProvider({ children }: DevToolsProviderProps) {
+export function DevToolsProvider({ children, initialTab, autoOpen }: DevToolsProviderProps) {
 	const [isOpen, setIsOpen] = useState(() => {
+		if (autoOpen) return true
 		const stored = localStorage.getItem(STORAGE_KEY)
 		return stored === 'true'
 	})
+	const [requestedTab, setRequestedTab] = useState<Tab | undefined>(undefined)
 
 	useEffect(() => {
 		localStorage.setItem(STORAGE_KEY, String(isOpen))
 	}, [isOpen])
 
 	const toggle = useCallback(() => setIsOpen((o) => !o), [])
-	const open = useCallback(() => setIsOpen(true), [])
+	const open = useCallback((tab?: Tab) => {
+		if (tab) {
+			setRequestedTab(tab)
+		}
+		setIsOpen(true)
+	}, [])
 	const close = useCallback(() => setIsOpen(false), [])
+	const clearRequestedTab = useCallback(() => setRequestedTab(undefined), [])
 
 	return (
-		<DevToolsContext.Provider value={{ isOpen, toggle, open, close }}>
+		<DevToolsContext.Provider value={{ isOpen, toggle, open, close, initialTab, requestedTab, clearRequestedTab }}>
 			{children}
 		</DevToolsContext.Provider>
 	)
 }
 
 export function DevToolsPanel() {
-	const { isOpen, toggle } = useDevTools()
-	const [activeTab, setActiveTab] = useState<Tab>('events')
+	const { isOpen, toggle, initialTab, requestedTab, clearRequestedTab } = useDevTools()
+	const [activeTab, setActiveTab] = useState<Tab>(initialTab || 'events')
+
+	// Handle requested tab changes from context
+	useEffect(() => {
+		if (requestedTab) {
+			setActiveTab(requestedTab)
+			clearRequestedTab()
+		}
+	}, [requestedTab, clearRequestedTab])
 
 	// Keyboard shortcut: Ctrl/Cmd + Shift + D
 	useEffect(() => {
@@ -114,6 +140,13 @@ export function DevToolsPanel() {
 						<ToolsIcon />
 						Tools
 					</button>
+					<button
+						className={`${styles.tab} ${activeTab === 'tests' ? styles.active : ''}`}
+						onClick={() => setActiveTab('tests')}
+					>
+						<TestsIcon />
+						Tests
+					</button>
 				</div>
 
 				<button className={styles.closeButton} onClick={toggle} title="Close Dev Tools">
@@ -128,6 +161,7 @@ export function DevToolsPanel() {
 				{activeTab === 'network' && <NetworkLog />}
 				{activeTab === 'performance' && <PerformanceMetrics />}
 				{activeTab === 'tools' && <ToolsPanel />}
+				{activeTab === 'tests' && <TestResults />}
 			</div>
 		</div>
 	)
@@ -163,6 +197,15 @@ function ToolsIcon() {
 	return (
 		<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
 			<path d="M5 0v1h1v5.2L2 14v1h12v-1l-4-7.8V1h1V0H5zm2 1h2v5.4l3.5 6.6h-9L7 6.4V1z" />
+		</svg>
+	)
+}
+
+function TestsIcon() {
+	return (
+		<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+			<path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z" />
+			<path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z" />
 		</svg>
 	)
 }

@@ -10,6 +10,12 @@ import { initDevReload } from '@robojs/server/client'
 // Initialize dev reload for hot reloading during development
 initDevReload()
 
+// Check for test results viewing mode via URL params
+function isTestResultsMode(): boolean {
+	const urlParams = new URLSearchParams(window.location.search)
+	return urlParams.get('tests') === 'true' || urlParams.get('testResults') === 'true'
+}
+
 // Get initial session ID from URL query params or localStorage
 function getInitialSessionId(): string | null {
 	// Check URL query params first
@@ -30,16 +36,20 @@ function getInitialSessionId(): string | null {
 }
 
 const initialSessionId = getInitialSessionId()
+const testResultsMode = isTestResultsMode()
 console.log('[Stage] Initial session ID from URL/localStorage:', initialSessionId)
+if (testResultsMode) {
+	console.log('[Stage] Test results viewing mode enabled')
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
 	<React.StrictMode>
 		<ToasterProvider>
-			<DevToolsProvider>
+			<DevToolsProvider initialTab={testResultsMode ? 'tests' : undefined} autoOpen={testResultsMode}>
 				<PlaybackProvider>
 					<SessionProvider initialSessionId={initialSessionId}>
 						<WebSocketProvider>
-							<App />
+							<App testResultsMode={testResultsMode} />
 						</WebSocketProvider>
 					</SessionProvider>
 				</PlaybackProvider>

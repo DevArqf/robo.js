@@ -6,10 +6,16 @@ import { ConnectionStatusOverlay } from './components/layout/ConnectionStatusOve
 import { ErrorBoundary } from './components/common/ErrorBoundary'
 import { KeyboardShortcuts } from './components/common/KeyboardShortcuts'
 import { Modal } from './components/modals/Modal'
+import { DevToolsPanel } from './components/devtools/DevToolsPanel'
 import './styles/discord-theme.css'
 import './styles/globals.css'
 
-export default function App() {
+interface AppProps {
+	/** Test results viewing mode - bypasses session requirement */
+	testResultsMode?: boolean
+}
+
+export default function App({ testResultsMode = false }: AppProps) {
 	// UI-only mode: render the mock Discord Friends layout without requiring a Stage session.
 	// (This is intentionally static – no routing/logic for tabs, just the UI elements.)
 	const UI_ONLY = false
@@ -19,6 +25,38 @@ export default function App() {
 			<ErrorBoundary>
 				<KeyboardShortcuts />
 				<AppShell />
+			</ErrorBoundary>
+		)
+	}
+
+	// Test results mode - show DevTools with Tests tab without requiring session
+	if (testResultsMode) {
+		return (
+			<ErrorBoundary>
+				<KeyboardShortcuts />
+				<div style={{
+					display: 'flex',
+					flexDirection: 'column',
+					height: '100vh',
+					background: 'var(--background-primary)'
+				}}>
+					<div style={{
+						flex: 1,
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'center',
+						color: 'var(--text-muted)',
+						flexDirection: 'column',
+						gap: '16px'
+					}}>
+						<h2 style={{ margin: 0, color: 'var(--text-normal)' }}>Test Results Viewer</h2>
+						<p style={{ margin: 0 }}>View test results in the DevTools panel below</p>
+						<p style={{ margin: 0, fontSize: '12px' }}>
+							Press <kbd style={{ background: 'var(--background-secondary)', padding: '2px 6px', borderRadius: '4px' }}>Ctrl+Shift+D</kbd> to toggle DevTools
+						</p>
+					</div>
+					<DevToolsPanel />
+				</div>
 			</ErrorBoundary>
 		)
 	}

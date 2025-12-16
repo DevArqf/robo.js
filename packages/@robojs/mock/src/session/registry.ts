@@ -7,6 +7,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, relative, isAbsolute } from 'node:path'
 import { mockLogger } from '../core/logger.js'
+import { recordingExists } from './recording-storage.js'
 
 // ============================================================================
 // Types
@@ -46,6 +47,8 @@ export interface TestFileEntry {
 	tests: TestResult[]
 	/** Assertions recorded before test entries were created (will be merged) */
 	pendingAssertions?: AssertionResult[]
+	/** Path to saved recording file (relative to .robo/mock/recordings/) */
+	recordingPath?: string
 }
 
 /**
@@ -260,6 +263,11 @@ export function finalizeTestFile(
 		if (file) {
 			file.status = status
 			file.completedAt = Date.now()
+
+			// Set recording path if recording exists for this session
+			if (recordingExists(file.sessionId, projectRoot)) {
+				file.recordingPath = `${file.sessionId}.json`
+			}
 		}
 		return registry
 	}, projectRoot)
