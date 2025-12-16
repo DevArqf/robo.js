@@ -29,12 +29,12 @@ export class NodeEngine extends BaseEngine {
 			// Remove query parameters prior to matching WebSocket handlers
 			let wsPath = (req.url ?? '').split('?')[0]
 
-			// Check for plugin API prefix and strip it for transparent routing
+			// Check for plugin prefix (API or static) and strip it for transparent routing
 			const registry = getPluginRouteRegistry()
-			const apiMatch = registry.matchApiPrefix(wsPath)
-			if (apiMatch) {
-				wsPath = registry.stripPrefix(wsPath, apiMatch.prefix)
-				logger.debug(`Stripped plugin prefix ${apiMatch.prefix} from WebSocket path → ${wsPath}`)
+			const prefixMatch = registry.matchApiPrefix(wsPath) ?? registry.matchStaticPrefix(wsPath)
+			if (prefixMatch) {
+				wsPath = registry.stripPrefix(wsPath, prefixMatch.prefix)
+				logger.debug(`Stripped plugin prefix ${prefixMatch.prefix} from WebSocket path → ${wsPath}`)
 			}
 
 			const handler = this._websocketHandlers[wsPath]
@@ -64,7 +64,7 @@ export class NodeEngine extends BaseEngine {
 
 	public registerRoute(path: string, handler: RouteHandler) {
 		this._router?.addRoute({ handler, path })
-}
+	}
 
 	public registerWebsocket(path: string, handler: WebSocketHandler) {
 		logger.debug('Registering WebSocket handler for path:', path)
@@ -80,7 +80,7 @@ export class NodeEngine extends BaseEngine {
 	public setupVite(vite: ViteDevServer) {
 		this._vite = vite
 		this._rebuildServerHandler()
-}
+	}
 
 	public async start(options: StartOptions): Promise<void> {
 		const { hostname = 'localhost', port } = options

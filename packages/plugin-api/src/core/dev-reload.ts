@@ -91,9 +91,7 @@ export async function initDevReload(engine: BaseEngine): Promise<void> {
 
 		// Only react to .build-signal file being added or modified (not deleted)
 		// When Vite builds with emptyOutDir, it deletes the signal file first - ignore that
-		const signalChanges = changes.filter(
-			(c) => c.filePath.endsWith(BUILD_SIGNAL_FILE) && c.changeType !== 'removed'
-		)
+		const signalChanges = changes.filter((c) => c.filePath.endsWith(BUILD_SIGNAL_FILE) && c.changeType !== 'removed')
 		if (signalChanges.length === 0) return
 
 		// Find which plugin(s) had signal changes
@@ -157,11 +155,16 @@ function broadcast(message: ReloadMessage): void {
 
 /**
  * Find plugins that are in dev mode and have public directories.
- * A plugin is in dev mode if it has a .robo/watch.json file.
+ * A plugin is in dev mode if:
+ * - It has a .robo/watch.json file (standard dev mode), OR
+ * - Mock mode is active (ROBO_MOCK_MODE or __ROBO_MOCK_STANDALONE)
  */
 async function findDevPluginPublicDirs(): Promise<Array<{ name: string; path: string }>> {
 	const result: Array<{ name: string; path: string }> = []
 	const registry = getPluginRouteRegistry()
+
+	// Check if we're in mock mode (robo mock or robox dev)
+	const isMockMode = process.env.ROBO_MOCK_MODE === 'true' || process.env.__ROBO_MOCK_STANDALONE === 'true'
 
 	for (const [pluginName, config] of registry.getPlugins()) {
 		// Check if plugin has a public directory
@@ -175,7 +178,10 @@ async function findDevPluginPublicDirs(): Promise<Array<{ name: string; path: st
 		if (!pluginRoot) continue
 
 		const watchFile = path.join(pluginRoot, '.robo', 'watch.json')
-		if (existsSync(watchFile)) {
+		const hasWatchFile = existsSync(watchFile)
+
+		// Plugin is in dev mode if it has watch.json OR we're in mock mode
+		if (hasWatchFile || isMockMode) {
 			result.push({ name: pluginName, path: publicDir })
 			logger.debug(`Found dev plugin with public dir: ${pluginName} -> ${publicDir}`)
 		}
