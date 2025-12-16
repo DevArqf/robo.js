@@ -10,7 +10,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { logger as createLogger } from '../../core/logger.js'
 import { color } from '../../core/color.js'
-import { loadConfig, getConfig } from '../../core/config.js'
+// Note: config loading removed - using filesystem-based plugin discovery instead
 import {
 	pathExists,
 	getPluginCliDir,
@@ -23,7 +23,6 @@ import {
 	DEFAULT_HELP_OPTION,
 	parseCliOptions
 } from './cli-shared.js'
-import type { Plugin } from '../../types/index.js'
 import type {
 	CliAfterHook,
 	CliBeforeHook,
@@ -73,15 +72,57 @@ export async function loadCliManifest(): Promise<CliManifest | null> {
 }
 
 /**
- * Extract plugin names from config.plugins array.
+ * Valid file extensions for plugin config files.
  */
-function extractPluginNames(plugins: Plugin[]): string[] {
-	return plugins.map((p) => (typeof p === 'string' ? p : p[0]))
+const PLUGIN_FILE_EXTENSIONS = /\.(ts|tsx|mjs|js|cjs)$/
+
+/**
+ * Discover plugin names by scanning config/plugins/ directory structure.
+ * No config loading required - plugin names are implied by file paths.
+ *
+ * Directory structure maps to plugin names:
+ * - config/plugins/robojs/mock.ts → @robojs/mock
+ * - config/plugins/myorg/custom.ts → @myorg/custom
+ * - config/plugins/plugin-ai.ts → plugin-ai
+ */
+export async function discoverPluginsFromFilesystem(): Promise<string[]> {
+	const pluginNames: string[] = []
+	const pluginsDir = path.join(process.cwd(), 'config', 'plugins')
+
+	try {
+		const entries = await fs.readdir(pluginsDir, { withFileTypes: true })
+
+		for (const entry of entries) {
+			if (entry.isDirectory()) {
+				// Scoped package: config/plugins/robojs/ → @robojs/*
+				const scopeDir = path.join(pluginsDir, entry.name)
+				try {
+					const scopeEntries = await fs.readdir(scopeDir)
+					for (const scopeEntry of scopeEntries) {
+						if (!scopeEntry.match(PLUGIN_FILE_EXTENSIONS)) continue
+						const baseName = scopeEntry.replace(PLUGIN_FILE_EXTENSIONS, '')
+						pluginNames.push(`@${entry.name}/${baseName}`)
+					}
+				} catch {
+					// Failed to read scope directory - skip
+				}
+			} else if (entry.name.match(PLUGIN_FILE_EXTENSIONS)) {
+				// Non-scoped: config/plugins/plugin-ai.ts → plugin-ai
+				const baseName = entry.name.replace(PLUGIN_FILE_EXTENSIONS, '')
+				pluginNames.push(baseName)
+			}
+		}
+	} catch {
+		// No plugins directory - that's fine
+	}
+
+	logger.debug(`Filesystem plugin discovery: found ${pluginNames.length} plugins`)
+	return pluginNames
 }
 
 /**
  * Discover CLI commands at runtime by scanning plugins and project.
- * Uses config-based plugin discovery (same as build-time) for full compatibility.
+ * Uses filesystem-based plugin discovery - no config loading required.
  */
 async function discoverCliAtRuntime(): Promise<CliManifest | null> {
 	const commands: Record<string, CliCommandEntry> = {}
@@ -89,18 +130,10 @@ async function discoverCliAtRuntime(): Promise<CliManifest | null> {
 	const allSubcommandMaps: Map<string, string[]>[] = []
 
 	try {
-		// 1. Get plugins from config (same source as build-time)
-		let config = getConfig()
-		if (!config) {
-			try {
-				config = await loadConfig()
-			} catch (error) {
-				logger.debug('Config loading failed during CLI discovery:', error)
-			}
-		}
-
-		const pluginNames = extractPluginNames(config?.plugins ?? [])
-		logger.debug(`Runtime CLI discovery: Found ${pluginNames.length} plugins in config`)
+		// 1. Discover plugins from config/plugins/ directory structure
+		// No config loading needed - just scan file names
+		const pluginNames = await discoverPluginsFromFilesystem()
+		logger.debug(`Runtime CLI discovery: Found ${pluginNames.length} plugins from filesystem`)
 
 		// 2. Scan each plugin's CLI directory (in parallel)
 		const pluginResults = await Promise.all(
