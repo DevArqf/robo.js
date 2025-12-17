@@ -167,6 +167,7 @@
 	overflow: hidden;
 	display: flex;
 	flex-direction: column;
+	min-width: 0;
 }
 
 .noSelection {
@@ -304,6 +305,22 @@
 	font-size: 11px;
 	color: var(--text-muted);
 	font-family: monospace;
+}
+
+.compactDetailSessionId {
+	font-size: 10px;
+	color: var(--text-muted);
+	font-family: monospace;
+	background: var(--background-tertiary);
+	padding: 2px 6px;
+	border-radius: 3px;
+	cursor: pointer;
+	transition: all 0.1s ease;
+}
+
+.compactDetailSessionId:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
 }
 
 .compactReplayButton {

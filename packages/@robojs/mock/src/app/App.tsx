@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from './hooks/useSession'
+import { usePlayback } from './stores/playbackStore'
 import { AppShell } from './components/layout/AppShell'
 import { ConnectionScreen } from './components/layout/ConnectionScreen'
 import { ConnectionStatusOverlay } from './components/layout/ConnectionStatusOverlay'
@@ -62,16 +63,19 @@ export default function App({ testResultsMode = false }: AppProps) {
 	}
 
 	const { isConnected, sessionId, activeModal, submitModal, closeModal } = useSession()
+	const playbackState = usePlayback()
+	// Playback mode is active when mode is 'playback' - events may still be loading
+	const isInPlaybackMode = playbackState.mode === 'playback'
 	const [hasEverConnected, setHasEverConnected] = useState(false)
 	const [showConnectionScreen, setShowConnectionScreen] = useState(false)
 
-	// Track when we first connect successfully
+	// Track when we first connect successfully (or enter playback mode)
 	useEffect(() => {
-		if (isConnected && !hasEverConnected) {
+		if ((isConnected || isInPlaybackMode) && !hasEverConnected) {
 			setHasEverConnected(true)
 			setShowConnectionScreen(false)
 		}
-	}, [isConnected, hasEverConnected])
+	}, [isConnected, isInPlaybackMode, hasEverConnected])
 
 	// Handle "Change Session" - show connection screen overlay
 	const handleChangeSession = useCallback(() => {
@@ -84,8 +88,8 @@ export default function App({ testResultsMode = false }: AppProps) {
 		closeModal()
 	}
 
-	// Show connection screen if never connected, or if user explicitly requested it
-	if ((!hasEverConnected && (!isConnected || !sessionId)) || showConnectionScreen) {
+	// Show connection screen if never connected (and not in playback mode), or if user explicitly requested it
+	if ((!hasEverConnected && !isInPlaybackMode && (!isConnected || !sessionId)) || showConnectionScreen) {
 		return (
 			<ErrorBoundary>
 				{hasEverConnected ? (
@@ -98,7 +102,10 @@ export default function App({ testResultsMode = false }: AppProps) {
 						</div>
 					</>
 				) : (
-					<ConnectionScreen />
+					<>
+						<ConnectionScreen />
+						<DevToolsPanel />
+					</>
 				)}
 			</ErrorBoundary>
 		)

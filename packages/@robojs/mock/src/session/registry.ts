@@ -359,3 +359,17 @@ export function getTestFileBySessionId(
 ): TestFileEntry | undefined {
 	return registry.testFiles.find((f) => f.sessionId === sessionId)
 }
+
+/**
+ * Set the recording path for a test file by session ID
+ * Called from stop() after recording is saved to ensure it's available for replay
+ */
+export function setTestFileRecordingPath(sessionId: string, recordingPath: string, projectRoot?: string): void {
+	updateRegistry((registry) => {
+		const file = registry.testFiles.find((f) => f.sessionId === sessionId)
+		if (file) {
+			file.recordingPath = recordingPath
+		}
+		return registry
+	}, projectRoot)
+}

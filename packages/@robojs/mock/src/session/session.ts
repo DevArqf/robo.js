@@ -2394,10 +2394,8 @@ export class Session implements ISession {
 		// Clear voice server state
 		this.voiceServers.clear()
 
-		// Clear state using the reset method
-		this.state.reset()
-
 		// Auto-save recording if in test mode and has actions
+		// IMPORTANT: Must happen BEFORE state.reset() so captureInitialConfig() has data
 		if (process.env.ROBO_MOCK_TEST_MODE === 'true' && this.recorder.length > 0) {
 			try {
 				const recording = this.exportRecording()
@@ -2407,6 +2405,9 @@ export class Session implements ISession {
 				mockLogger.warn(`Failed to auto-save recording for session ${this.id}: ${(error as Error).message}`)
 			}
 		}
+
+		// Clear state using the reset method
+		this.state.reset()
 
 		// Clear recorded actions
 		this.recorder.clear()

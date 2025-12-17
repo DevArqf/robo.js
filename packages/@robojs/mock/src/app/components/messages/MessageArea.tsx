@@ -1,7 +1,7 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useSession } from '../../hooks/useSession'
-import { usePlaybackMessages, useIsPlaybackMode, usePlayback, usePlaybackTypingUsers } from '../../stores/playbackStore'
+import { usePlaybackMessages, useIsPlaybackMode, usePlayback, usePlaybackTypingUsers, usePlaybackChannels, usePlaybackGuilds } from '../../stores/playbackStore'
 import { useContextMenu } from '../../hooks/useContextMenu'
 import { Message } from './Message'
 import { MessageInput } from './MessageInput'
@@ -306,6 +306,19 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 	const playbackMessages = usePlaybackMessages(channelId)
 	const playbackTypingUsers = usePlaybackTypingUsers(channelId)
 	const playbackState = usePlayback()
+	const playbackGuilds = usePlaybackGuilds()
+
+	// Get guild ID for channel lookup - in playback mode, use first guild if available
+	const playbackGuildId = playbackGuilds?.[0]?.id ?? null
+	const playbackChannels = usePlaybackChannels(playbackGuildId)
+
+	// Get the selected channel - use playback data when in playback mode
+	const displaySelectedChannel = useMemo(() => {
+		if (isPlaybackMode && playbackChannels && channelId) {
+			return playbackChannels.find(c => c.id === channelId) ?? null
+		}
+		return selectedChannel
+	}, [isPlaybackMode, playbackChannels, channelId, selectedChannel])
 
 	// Use playback messages when in playback mode, otherwise use session messages
 	const displayMessages = isPlaybackMode && playbackMessages !== null ? playbackMessages : channelMessages
@@ -369,7 +382,7 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 		[openDM]
 	)
 
-	if (!channelId || !selectedChannel) {
+	if (!channelId || !displaySelectedChannel) {
 		return (
 			<div className={styles.container}>
 				<div className={styles.empty}>
@@ -405,8 +418,8 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 				key={`${channelId}-${isPlaybackMode}`}
 				messages={displayMessages}
 				isPlaybackMode={isPlaybackMode}
-				channelName={selectedChannel.name}
-				channelTopic={selectedChannel.topic ?? undefined}
+				channelName={displaySelectedChannel.name}
+				channelTopic={displaySelectedChannel.topic ?? undefined}
 				onButtonClick={async (messageId, customId) => { await clickButton(messageId, customId) }}
 				onSelectOption={async (messageId, customId, values) => { await selectOption(messageId, customId, values) }}
 				onAddReaction={async (messageId, emoji) => { await addReaction(messageId, emoji) }}
@@ -434,7 +447,7 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 			<TypingIndicator typingUsers={displayTypingUsers} />
 
 			{/* Message input */}
-			<MessageInput channelId={selectedChannel.id} channelName={selectedChannel.name} />
+			<MessageInput channelId={displaySelectedChannel.id} channelName={displaySelectedChannel.name} />
 
 			{/* Context menu */}
 			{contextMenu && (

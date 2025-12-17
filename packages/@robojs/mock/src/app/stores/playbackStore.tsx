@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useRef, useCallback, useEffect, useMemo, type ReactNode, type Dispatch } from 'react'
-import type { StageEventType, StageMessage, StageMessageCreateData, StageChannel, StageMember, StateSyncPayload } from '../types/stage'
+import type { StageEventType, StageMessage, StageMessageCreateData, StageChannel, StageMember, StageGuild, StateSyncPayload } from '../types/stage'
 
 // ============================================================================
 // Playback Types
@@ -382,8 +382,12 @@ export function usePlaybackMessages(channelId: string | null): StageMessage[] | 
 	const { state } = usePlaybackStore()
 
 	return useMemo(() => {
+		// Debug logging
+		console.log('[usePlaybackMessages] mode:', state.mode, 'events:', state.events.length, 'currentTime:', state.currentTime, 'duration:', state.duration, 'channelId:', channelId)
+
 		// In live mode, return null to signal "use normal session messages"
 		if (state.mode === 'live' || state.events.length === 0) {
+			console.log('[usePlaybackMessages] Returning null - live mode or no events')
 			return null
 		}
 
@@ -393,6 +397,7 @@ export function usePlaybackMessages(channelId: string | null): StageMessage[] | 
 
 		// Filter events up to current time
 		const eventsAtTime = state.events.filter((e) => e.timestamp <= currentTimestamp)
+		console.log('[usePlaybackMessages] eventsAtTime:', eventsAtTime.length, 'of', state.events.length)
 
 		// Build message state from events
 		const messages: Map<string, StageMessage> = new Map()
@@ -401,11 +406,13 @@ export function usePlaybackMessages(channelId: string | null): StageMessage[] | 
 			switch (event.type) {
 				case 'message_create': {
 					const data = event.data as StageMessageCreateData
+					console.log('[usePlaybackMessages] message_create event, has message:', !!data?.message)
 					if (data?.message) {
 						// Only add messages that belong to the selected channel
 						// (or all messages if no channel is selected)
 						if (!channelId || data.message.channel_id === channelId) {
 							messages.set(data.message.id, data.message)
+							console.log('[usePlaybackMessages] Added message:', data.message.id, data.message.content?.substring(0, 30))
 						}
 					}
 					break
@@ -464,14 +471,40 @@ export function usePlaybackMessages(channelId: string | null): StageMessage[] | 
 					}
 					break
 				}
+				// Handle dispatch events (gateway events from recordings)
+				case 'dispatch': {
+					const data = event.data as { event?: string; payload?: StageMessage }
+					console.log('[usePlaybackMessages] dispatch event:', data?.event, 'has payload:', !!data?.payload)
+					if (data?.event === 'MESSAGE_CREATE' && data?.payload) {
+						const message = data.payload
+						console.log('[usePlaybackMessages] dispatch MESSAGE_CREATE, channel match:', !channelId || message.channel_id === channelId, 'msg channel:', message.channel_id, 'filter channel:', channelId)
+						if (!channelId || message.channel_id === channelId) {
+							messages.set(message.id, message)
+							console.log('[usePlaybackMessages] Added dispatch message:', message.id, message.content?.substring(0, 30))
+						}
+					} else if (data?.event === 'MESSAGE_UPDATE' && data?.payload) {
+						const message = data.payload
+						if (messages.has(message.id)) {
+							messages.set(message.id, message)
+						}
+					} else if (data?.event === 'MESSAGE_DELETE' && data?.payload) {
+						const payload = data.payload as unknown as { id: string }
+						if (payload?.id) {
+							messages.delete(payload.id)
+						}
+					}
+					break
+				}
 			}
 		}
 
 		// Return sorted by message ID (which is a snowflake, so chronological)
-		return Array.from(messages.values()).sort((a, b) => {
+		const result = Array.from(messages.values()).sort((a, b) => {
 			// Snowflakes can be compared as strings for chronological order
 			return a.id.localeCompare(b.id)
 		})
+		console.log('[usePlaybackMessages] Returning', result.length, 'messages')
+		return result
 	}, [state.mode, state.events, state.currentTime, channelId])
 }
 
@@ -641,4 +674,40 @@ export function usePlaybackMembers(guildId: string | null): StageMember[] | null
 
 		return members
 	}, [state.mode, state.events, state.currentTime, guildId])
+}
+
+/**
+ * Hook that provides guilds based on playback time.
+ * When in live mode, returns null (use normal session guilds).
+ * When in playback mode, extracts guilds from state_sync event.
+ */
+export function usePlaybackGuilds(): StageGuild[] | null {
+	const { state } = usePlaybackStore()
+
+	return useMemo(() => {
+		// In live mode, return null to signal "use normal session guilds"
+		if (state.mode === 'live' || state.events.length === 0) {
+			return null
+		}
+
+		// Get the timestamp cutoff for current playback position
+		const startTimestamp = state.events[0].timestamp
+		const currentTimestamp = startTimestamp + state.currentTime
+
+		// Find the most recent state_sync event up to current time
+		let guilds: StageGuild[] = []
+
+		for (const event of state.events) {
+			if (event.timestamp > currentTimestamp) break
+
+			if (event.type === 'state_sync') {
+				const data = event.data as StateSyncPayload
+				if (data?.guilds) {
+					guilds = data.guilds
+				}
+			}
+		}
+
+		return guilds
+	}, [state.mode, state.events, state.currentTime])
 }

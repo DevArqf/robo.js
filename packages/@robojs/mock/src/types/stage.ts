@@ -51,6 +51,9 @@ export type StageEventType =
 	| 'event_filtered'         // Event was not delivered due to missing intent
 	| 'loop_detected'          // Event loop detected, circuit breaker triggered
 
+	// Playback/Recording (raw gateway events)
+	| 'dispatch'               // Raw gateway dispatch event from recordings
+
 /**
  * Command types sent from stage clients to server
  */

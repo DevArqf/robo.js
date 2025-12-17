@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { usePlaybackStore } from '../../stores/playbackStore'
+import { useWebSocket } from '../../stores/sessionStore'
 import { loadRecordingToPlayback } from '../../utils/loadRecordingToPlayback'
 import { apiFetch } from '../../utils/api'
+import { useToaster } from '../common/Toaster'
 import { JsonViewer } from './JsonViewer'
 import styles from './TestResults.module.css'
 
@@ -264,10 +266,12 @@ function FileListItem({
 function CompactDetailView({
 	file,
 	onReplay,
+	onCopySessionId,
 	replayLoading
 }: {
 	file: TestFileEntry
 	onReplay: (sessionId: string) => void
+	onCopySessionId: (sessionId: string) => void
 	replayLoading?: boolean
 }) {
 	const [activeSection, setActiveSection] = useState<'tests' | 'logs'>('tests')
@@ -285,6 +289,17 @@ function CompactDetailView({
 							{formatDuration(file.completedAt - file.startedAt)}
 						</span>
 					)}
+					<span
+						className={styles.compactDetailSessionId}
+						title={`Session ID: ${file.sessionId}\nClick to copy`}
+						onClick={(e) => {
+							e.stopPropagation()
+							navigator.clipboard.writeText(file.sessionId)
+							onCopySessionId(file.sessionId)
+						}}
+					>
+						{file.sessionId.slice(0, 8)}...
+					</span>
 				</div>
 				<button
 					className={`${styles.replaySessionButton} ${!file.recordingPath ? styles.disabled : ''}`}
@@ -368,6 +383,7 @@ export function TestResults() {
 	const [error, setError] = useState<string | null>(null)
 	const [selectedFile, setSelectedFile] = useState<TestFileEntry | null>(null)
 	const [summaryCollapsed, setSummaryCollapsed] = useState(false)
+	const { showToast } = useToaster()
 
 	const fetchRegistry = useCallback(() => {
 		setLoading(true)
@@ -401,20 +417,37 @@ export function TestResults() {
 		}
 	}, [registry, selectedFile])
 
-	const { dispatch } = usePlaybackStore()
+	const { dispatch: playbackDispatch } = usePlaybackStore()
+	const { disconnect } = useWebSocket()
 	const [replayLoading, setReplayLoading] = useState(false)
 
 	const handleReplay = useCallback(
 		async (sessionId: string) => {
 			setReplayLoading(true)
-			const result = await loadRecordingToPlayback(sessionId, dispatch)
+
+			// Set playback mode FIRST so UI doesn't show "disconnected" state
+			// This signals to the UI that we're transitioning to playback
+			playbackDispatch({ type: 'SET_MODE', payload: 'playback' })
+
+			// Disconnect from any current session - playback mode uses recorded data, not live
+			disconnect()
+
+			// Load the recording into playback store
+			const result = await loadRecordingToPlayback(sessionId, playbackDispatch)
+
 			setReplayLoading(false)
 
 			if (!result.success) {
-				alert(`Failed to load recording: ${result.error}`)
+				// If loading failed, revert to live mode
+				playbackDispatch({ type: 'SET_MODE', payload: 'live' })
+				showToast(`Failed to load recording: ${result.error}`, 'error')
+				return
 			}
+
+			// Playback mode is now active - UI will show recorded channels/members/messages
+			showToast('Playback loaded - use timeline to navigate', 'success', 3000)
 		},
-		[dispatch]
+		[playbackDispatch, disconnect, showToast]
 	)
 
 	if (loading && !registry) {
@@ -500,7 +533,12 @@ export function TestResults() {
 				{/* Right: Detail View */}
 				<div className={styles.detailPane}>
 					{selectedFile ? (
-						<CompactDetailView file={selectedFile} onReplay={handleReplay} replayLoading={replayLoading} />
+						<CompactDetailView
+							file={selectedFile}
+							onReplay={handleReplay}
+							onCopySessionId={(id) => showToast(`Session ID copied: ${id}`, 'success', 2000)}
+							replayLoading={replayLoading}
+						/>
 					) : (
 						<div className={styles.noSelection}>Select a test file to view details</div>
 					)}

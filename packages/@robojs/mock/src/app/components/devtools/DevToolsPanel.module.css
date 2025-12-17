@@ -46,28 +46,30 @@
 /* Resize handle - larger hit area for easier dragging */
 .resizeHandle {
 	position: absolute;
-	top: -6px;
+	top: 0;
 	left: 0;
 	right: 0;
-	height: 12px;
+	height: 8px;
 	cursor: ns-resize;
 	z-index: 101;
+	transform: translateY(-50%);
 }
 
-/* Blends with the top border line, expands and colors on hover */
+/* Animates from center outward on hover */
 .resizeHandle::before {
 	content: '';
 	position: absolute;
-	bottom: 0;
+	top: 50%;
 	left: 0;
 	right: 0;
 	height: 1px;
 	background: var(--background-accent);
-	transition: height 0.15s ease, background 0.15s ease;
+	transform: translateY(-50%);
+	transition: transform 0.15s ease, background 0.15s ease;
 }
 
 .resizeHandle:hover::before {
-	height: 2px;
+	transform: translateY(-50%) scaleY(4);
 	background: var(--brand-500);
 }
 

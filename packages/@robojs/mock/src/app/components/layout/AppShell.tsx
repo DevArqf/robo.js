@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, useEffect } from 'react'
 import { useSession } from '../../hooks/useSession'
-import { useIsPlaybackMode, usePlaybackChannels, usePlaybackMembers } from '../../stores/playbackStore'
+import { useIsPlaybackMode, usePlaybackChannels, usePlaybackMembers, usePlaybackGuilds } from '../../stores/playbackStore'
 import { FriendsAppShell } from '../friends'
 import { ServerList } from '../sidebar/ServerList'
 import { ChannelList } from '../sidebar/ChannelList'
@@ -27,8 +27,6 @@ export function AppShell() {
 		selectGuild,
 		selectChannel,
 		toggleMembers,
-		selectedChannel,
-		selectedGuild,
 		botUser,
 		sessionId,
 		joinVoice,
@@ -52,12 +50,59 @@ export function AppShell() {
 
 	// Playback mode hooks
 	const isPlaybackMode = useIsPlaybackMode()
-	const playbackChannels = usePlaybackChannels(selectedGuildId)
-	const playbackMembers = usePlaybackMembers(selectedGuildId)
+	const playbackGuilds = usePlaybackGuilds()
+
+	// In playback mode, we need our own guild/channel selection since session data may be stale
+	const [playbackSelectedGuildId, setPlaybackSelectedGuildId] = useState<string | null>(null)
+	const [playbackSelectedChannelId, setPlaybackSelectedChannelId] = useState<string | null>(null)
+
+	// Determine which guild/channel ID to use based on mode
+	const activeGuildId = isPlaybackMode && playbackSelectedGuildId ? playbackSelectedGuildId : selectedGuildId
+	const activeChannelId = isPlaybackMode && playbackSelectedChannelId ? playbackSelectedChannelId : selectedChannelId
+
+	const playbackChannels = usePlaybackChannels(activeGuildId)
+	const playbackMembers = usePlaybackMembers(activeGuildId)
 
 	// Use playback data when in playback mode, otherwise use session data
+	const displayGuilds = isPlaybackMode && playbackGuilds !== null ? playbackGuilds : guilds
 	const displayChannels = isPlaybackMode && playbackChannels !== null ? playbackChannels : guildChannels
 	const displayMembers = isPlaybackMode && playbackMembers !== null ? playbackMembers : guildMembers
+
+	// Get the selected guild/channel objects based on mode
+	const displaySelectedGuild = useMemo(() => {
+		if (!activeGuildId) return null
+		return displayGuilds.find(g => g.id === activeGuildId) ?? null
+	}, [displayGuilds, activeGuildId])
+
+	const displaySelectedChannel = useMemo(() => {
+		if (!activeChannelId) return null
+		return displayChannels.find(c => c.id === activeChannelId) ?? null
+	}, [displayChannels, activeChannelId])
+
+	// Auto-select first guild when entering playback mode
+	useEffect(() => {
+		if (isPlaybackMode && playbackGuilds && playbackGuilds.length > 0 && !playbackSelectedGuildId) {
+			setPlaybackSelectedGuildId(playbackGuilds[0].id)
+		}
+		// Reset when leaving playback mode
+		if (!isPlaybackMode && playbackSelectedGuildId) {
+			setPlaybackSelectedGuildId(null)
+			setPlaybackSelectedChannelId(null)
+		}
+	}, [isPlaybackMode, playbackGuilds, playbackSelectedGuildId])
+
+	// Auto-select first channel when guild changes in playback mode
+	useEffect(() => {
+		if (isPlaybackMode && playbackChannels && playbackChannels.length > 0 && !playbackSelectedChannelId) {
+			// Find first text channel (type 0)
+			const textChannel = playbackChannels.find(c => c.type === 0)
+			if (textChannel) {
+				setPlaybackSelectedChannelId(textChannel.id)
+			} else if (playbackChannels.length > 0) {
+				setPlaybackSelectedChannelId(playbackChannels[0].id)
+			}
+		}
+	}, [isPlaybackMode, playbackChannels, playbackSelectedChannelId])
 
 	// Combine users with botUser for voice channel display (Phase 5P)
 	const allUsers = useMemo(() => {
@@ -74,20 +119,29 @@ export function AppShell() {
 	const handleGuildSelect = useCallback(
 		(guildId: string | null) => {
 			setShowHome(false)
-			selectGuild(guildId)
+			if (isPlaybackMode) {
+				setPlaybackSelectedGuildId(guildId)
+				setPlaybackSelectedChannelId(null) // Reset channel when guild changes
+			} else {
+				selectGuild(guildId)
+			}
 		},
-		[selectGuild]
+		[selectGuild, isPlaybackMode]
 	)
 
 	// Wrap channel selection to close mobile sidebar
 	const handleChannelSelect = useCallback(
 		(channelId: string | null) => {
 			if (channelId) {
-				selectChannel(channelId)
+				if (isPlaybackMode) {
+					setPlaybackSelectedChannelId(channelId)
+				} else {
+					selectChannel(channelId)
+				}
 			}
 			setMobileSidebarOpen(false)
 		},
-		[selectChannel]
+		[selectChannel, isPlaybackMode]
 	)
 
 	const handleToggleThreads = useCallback(() => {
@@ -134,7 +188,7 @@ export function AppShell() {
 	}, [selectGuild, selectChannel])
 
 	const guildName = () => {
-		const filterGuilds = guilds.filter((guild) => guild.id === selectedGuildId)
+		const filterGuilds = displayGuilds.filter((guild) => guild.id === activeGuildId)
 		if (filterGuilds.length > 0) {
 			return `${filterGuilds[0].icon ? filterGuilds[0].icon + ' | ' : ''}  ${filterGuilds[0].name}`
 		}
@@ -152,8 +206,8 @@ export function AppShell() {
 			<div className={styles.contentWrapper}>
 				<div className={styles.serverList}>
 					<ServerList
-						guilds={guilds}
-						selectedId={selectedGuildId}
+						guilds={displayGuilds}
+						selectedId={activeGuildId}
 						onSelect={handleGuildSelect}
 						sessionId={sessionId}
 						onHomeClick={handleHomeClick}
@@ -167,9 +221,9 @@ export function AppShell() {
 					) : (
 						<>
 							<ChannelList
-								guild={selectedGuild ?? undefined}
+								guild={displaySelectedGuild ?? undefined}
 								channels={displayChannels}
-								selectedId={selectedChannelId}
+								selectedId={activeChannelId}
 								onSelect={handleChannelSelect}
 								voiceStates={guildVoiceStates}
 								users={allUsers}
@@ -179,7 +233,7 @@ export function AppShell() {
 							/>
 							<div className={styles.main}>
 								<Header
-									channel={selectedChannel}
+									channel={displaySelectedChannel}
 									onToggleMembers={toggleMembers}
 									showMembers={showMembers}
 									onToggleThreads={handleToggleThreads}
@@ -193,7 +247,7 @@ export function AppShell() {
 								/>
 
 								<div className={styles.content}>
-									<MessageArea channelId={selectedChannelId} />
+									<MessageArea channelId={activeChannelId} />
 									{showThreads && <ThreadList />}
 									{showMembers && <MemberList members={displayMembers} roles={guildRoles} />}
 								</div>
