@@ -18,21 +18,21 @@
 import { execSync } from 'node:child_process'
 import { createCliCommandConfig, color, Env, Manifest } from 'robo.js'
 import { loadConfig, populatePortal, executePrepareHooks, executeStartHooks, loadPluginData } from 'robo.js/unstable.js'
-import { writeServerInfo, deleteServerInfo, STANDALONE_MOCK_PORT } from '../../../utils/server-info.js'
-import { mockLogger } from '../../../core/logger.js'
-import { getGatewayServer } from '../../../core/gateway.js'
-import { getStageServer } from '../../../core/stage.js'
-import { getStageBridge } from '../../../core/stage-bridge.js'
-import { startVoiceGateway, VOICE_GATEWAY_PORT } from '../../../core/voice-gateway.js'
-import { sessionManager } from '../../../core/manager.js'
-import { getMockPluginPrefix } from '../../../utils/server.js'
+import { writeServerInfo, deleteServerInfo, STANDALONE_MOCK_PORT } from '../../../../utils/server-info.js'
+import { mockLogger } from '../../../../core/logger.js'
+import { getGatewayServer } from '../../../../core/gateway.js'
+import { getStageServer } from '../../../../core/stage.js'
+import { getStageBridge } from '../../../../core/stage-bridge.js'
+import { startVoiceGateway, VOICE_GATEWAY_PORT } from '../../../../core/voice-gateway.js'
+import { sessionManager } from '../../../../core/manager.js'
+import { getMockPluginPrefix } from '../../../../utils/server.js'
 import {
 	dispatchInteractionToSession,
 	type DispatchInteractionInput
-} from '../../../session/interaction-dispatch.js'
+} from '../../../../session/interaction-dispatch.js'
 import type { CliContext } from 'robo.js'
-import type { ActionType, CreateSessionOptions, MockAttachment, SessionConfig } from '../../../types/index.js'
-import { serializeSessionState } from '../../../session/state.js'
+import type { ActionType, CreateSessionOptions, MockAttachment, SessionConfig } from '../../../../types/index.js'
+import { serializeSessionState } from '../../../../session/state.js'
 
 // Dynamic imports for @robojs/server
 type BaseEngine = import('@robojs/server/engines').BaseEngine

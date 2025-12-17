@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, createContext, useContext, type ReactNode } from 'react'
+import { useState, useEffect, useCallback, useRef, createContext, useContext, type ReactNode } from 'react'
 import { EventLog } from './EventLog'
 import { StateViewer } from './StateViewer'
 import { NetworkLog } from './NetworkLog'
@@ -10,6 +10,10 @@ import styles from './DevToolsPanel.module.css'
 export type Tab = 'events' | 'state' | 'network' | 'performance' | 'tools' | 'tests'
 
 const STORAGE_KEY = 'stage_devtools_open'
+const HEIGHT_STORAGE_KEY = 'stage_devtools_height'
+const DEFAULT_HEIGHT = 400
+const MIN_HEIGHT = 200
+const MAX_HEIGHT_RATIO = 0.7
 
 // Context for external control of DevTools
 interface DevToolsContextValue {
@@ -22,6 +26,14 @@ interface DevToolsContextValue {
 	requestedTab?: Tab
 	/** Clear the requested tab after it's been applied */
 	clearRequestedTab: () => void
+	/** Panel height in pixels */
+	height: number
+	/** Set panel height */
+	setHeight: (height: number) => void
+	/** Whether panel is maximized */
+	isMaximized: boolean
+	/** Toggle maximized state */
+	toggleMaximize: () => void
 }
 
 const DevToolsContext = createContext<DevToolsContextValue | null>(null)
@@ -49,10 +61,20 @@ export function DevToolsProvider({ children, initialTab, autoOpen }: DevToolsPro
 		return stored === 'true'
 	})
 	const [requestedTab, setRequestedTab] = useState<Tab | undefined>(undefined)
+	const [height, setHeightState] = useState(() => {
+		const stored = localStorage.getItem(HEIGHT_STORAGE_KEY)
+		const parsed = stored ? parseInt(stored, 10) : NaN
+		return isNaN(parsed) ? DEFAULT_HEIGHT : Math.max(MIN_HEIGHT, parsed)
+	})
+	const [isMaximized, setIsMaximized] = useState(false)
 
 	useEffect(() => {
 		localStorage.setItem(STORAGE_KEY, String(isOpen))
 	}, [isOpen])
+
+	useEffect(() => {
+		localStorage.setItem(HEIGHT_STORAGE_KEY, String(height))
+	}, [height])
 
 	const toggle = useCallback(() => setIsOpen((o) => !o), [])
 	const open = useCallback((tab?: Tab) => {
@@ -64,16 +86,61 @@ export function DevToolsProvider({ children, initialTab, autoOpen }: DevToolsPro
 	const close = useCallback(() => setIsOpen(false), [])
 	const clearRequestedTab = useCallback(() => setRequestedTab(undefined), [])
 
+	const setHeight = useCallback((newHeight: number) => {
+		const maxHeight = window.innerHeight * MAX_HEIGHT_RATIO
+		const clamped = Math.min(Math.max(newHeight, MIN_HEIGHT), maxHeight)
+		setHeightState(clamped)
+	}, [])
+
+	const toggleMaximize = useCallback(() => {
+		setIsMaximized((m) => !m)
+	}, [])
+
 	return (
-		<DevToolsContext.Provider value={{ isOpen, toggle, open, close, initialTab, requestedTab, clearRequestedTab }}>
+		<DevToolsContext.Provider
+			value={{
+				isOpen,
+				toggle,
+				open,
+				close,
+				initialTab,
+				requestedTab,
+				clearRequestedTab,
+				height,
+				setHeight,
+				isMaximized,
+				toggleMaximize
+			}}
+		>
 			{children}
 		</DevToolsContext.Provider>
 	)
 }
 
 export function DevToolsPanel() {
-	const { isOpen, toggle, initialTab, requestedTab, clearRequestedTab } = useDevTools()
+	const { isOpen, toggle, initialTab, requestedTab, clearRequestedTab, height, setHeight, isMaximized, toggleMaximize } =
+		useDevTools()
 	const [activeTab, setActiveTab] = useState<Tab>(initialTab || 'events')
+	const [isClosing, setIsClosing] = useState(false)
+	const [shouldRender, setShouldRender] = useState(isOpen)
+	const isDragging = useRef(false)
+	const startY = useRef(0)
+	const startHeight = useRef(0)
+
+	// Handle open/close transitions
+	useEffect(() => {
+		if (isOpen) {
+			setShouldRender(true)
+			setIsClosing(false)
+		} else if (shouldRender) {
+			setIsClosing(true)
+			const timer = setTimeout(() => {
+				setShouldRender(false)
+				setIsClosing(false)
+			}, 150) // Match animation duration
+			return () => clearTimeout(timer)
+		}
+	}, [isOpen, shouldRender])
 
 	// Handle requested tab changes from context
 	useEffect(() => {
@@ -95,15 +162,67 @@ export function DevToolsPanel() {
 		return () => document.removeEventListener('keydown', handler)
 	}, [toggle])
 
-	// Collapsed state - no floating button, controlled via PlaybackControls
-	if (!isOpen) {
+	// Handle resize drag
+	const handleResizeStart = useCallback(
+		(e: React.MouseEvent) => {
+			e.preventDefault()
+			isDragging.current = true
+			startY.current = e.clientY
+			startHeight.current = isMaximized ? window.innerHeight * MAX_HEIGHT_RATIO : height
+			document.body.style.cursor = 'ns-resize'
+			document.body.style.userSelect = 'none'
+		},
+		[height, isMaximized]
+	)
+
+	useEffect(() => {
+		const handleMouseMove = (e: MouseEvent) => {
+			if (!isDragging.current) return
+			const deltaY = startY.current - e.clientY
+			const newHeight = startHeight.current + deltaY
+			setHeight(newHeight)
+		}
+
+		const handleMouseUp = () => {
+			if (isDragging.current) {
+				isDragging.current = false
+				document.body.style.cursor = ''
+				document.body.style.userSelect = ''
+			}
+		}
+
+		document.addEventListener('mousemove', handleMouseMove)
+		document.addEventListener('mouseup', handleMouseUp)
+
+		return () => {
+			document.removeEventListener('mousemove', handleMouseMove)
+			document.removeEventListener('mouseup', handleMouseUp)
+		}
+	}, [setHeight])
+
+	// Double-click header to toggle maximize
+	const handleHeaderDoubleClick = useCallback(() => {
+		toggleMaximize()
+	}, [toggleMaximize])
+
+	// Don't render if not open and not animating
+	if (!shouldRender) {
 		return null
 	}
 
+	const panelHeight = isMaximized ? `${Math.round(window.innerHeight * MAX_HEIGHT_RATIO)}px` : `${height}px`
+
+	const panelClasses = [styles.panel, isMaximized && styles.maximized, isClosing && styles.closing]
+		.filter(Boolean)
+		.join(' ')
+
 	return (
-		<div className={styles.panel}>
+		<div className={panelClasses} style={{ height: panelHeight }}>
+			{/* Resize handle */}
+			<div className={styles.resizeHandle} onMouseDown={handleResizeStart} />
+
 			{/* Header with tabs */}
-			<div className={styles.header}>
+			<div className={styles.header} onDoubleClick={handleHeaderDoubleClick}>
 				<div className={styles.tabs}>
 					<button
 						className={`${styles.tab} ${activeTab === 'events' ? styles.active : ''}`}
@@ -149,9 +268,18 @@ export function DevToolsPanel() {
 					</button>
 				</div>
 
-				<button className={styles.closeButton} onClick={toggle} title="Close Dev Tools">
-					<CloseIcon />
-				</button>
+				<div className={styles.headerControls}>
+					<button
+						className={styles.maximizeButton}
+						onClick={toggleMaximize}
+						title={isMaximized ? 'Restore' : 'Maximize'}
+					>
+						{isMaximized ? <RestoreIcon /> : <MaximizeIcon />}
+					</button>
+					<button className={styles.closeButton} onClick={toggle} title="Close Dev Tools">
+						<CloseIcon />
+					</button>
+				</div>
 			</div>
 
 			{/* Tab content */}
@@ -222,6 +350,22 @@ function CloseIcon() {
 	return (
 		<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
 			<path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
+		</svg>
+	)
+}
+
+function MaximizeIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+			<path d="M5.828 10.172a.5.5 0 0 0-.707 0l-4.096 4.096V11.5a.5.5 0 0 0-1 0v3.975a.5.5 0 0 0 .5.5H4.5a.5.5 0 0 0 0-1H1.732l4.096-4.096a.5.5 0 0 0 0-.707zm4.344-4.344a.5.5 0 0 0 .707 0l4.096-4.096V4.5a.5.5 0 1 0 1 0V.525a.5.5 0 0 0-.5-.5H11.5a.5.5 0 0 0 0 1h2.768l-4.096 4.096a.5.5 0 0 0 0 .707z" />
+		</svg>
+	)
+}
+
+function RestoreIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+			<path d="M5.828 10.172a.5.5 0 0 0-.707-.707l-4.096 4.096V10.5a.5.5 0 0 0-1 0v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 0-1H1.732l4.096-4.096zm4.344-4.344a.5.5 0 0 0 .707.707l4.096-4.096V5.5a.5.5 0 1 0 1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 0 0 1h2.768l-4.096 4.096z" />
 		</svg>
 	)
 }

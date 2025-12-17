@@ -167,7 +167,7 @@ async function setupExternalConnection(
 			ctx.logger.info(`Created session: ${sessionId}`)
 		} catch (error) {
 			ctx.logger.error(`Failed to connect to mock server at ${baseUrl}: ${(error as Error).message}`)
-			ctx.logger.info('Make sure the mock server is running: robo mock')
+			ctx.logger.info('Make sure the mock server is running: robo mock start')
 			process.exit(1)
 		}
 	} else {

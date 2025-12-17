@@ -16,14 +16,14 @@ import type { SessionConfig } from './index.js'
  */
 export interface MockPluginConfig {
 	/**
-	 * Automatically open the Stage UI in the browser when running `robo mock`.
+	 * Automatically open the Stage UI in the browser when running `robo mock start`.
 	 * Can be overridden with the `--no-browser` CLI flag.
 	 * @default true
 	 */
 	autoOpenStage?: boolean
 
 	/**
-	 * Default session configuration used when running `robo mock`.
+	 * Default session configuration used when running `robo mock start`.
 	 * Provides initial state for guilds, users, channels, etc.
 	 */
 	defaultSessionConfig?: SessionConfig
@@ -36,7 +36,7 @@ export interface MockPluginConfig {
 	dataDirectory?: string
 
 	/**
-	 * Port for standalone mock server mode (`robo mock` command).
+	 * Port for standalone mock server mode (`robo mock start` command).
 	 * Uses a unique default to avoid clashing with user's server.
 	 * @default 6625
 	 */

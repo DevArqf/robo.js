@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { usePlaybackStore } from '../../stores/playbackStore'
 import { loadRecordingToPlayback } from '../../utils/loadRecordingToPlayback'
 import { apiFetch } from '../../utils/api'
+import { JsonViewer } from './JsonViewer'
 import styles from './TestResults.module.css'
 
 // Types matching the registry
@@ -55,15 +56,16 @@ function formatDuration(ms: number): string {
 	return `${(ms / 60000).toFixed(1)}m`
 }
 
-function formatTime(timestamp: number): string {
-	return new Date(timestamp).toLocaleTimeString()
-}
+// Log level type
+type LogLevel = 'all' | 'error' | 'warn' | 'info' | 'debug'
 
-// Log viewer sub-component
+// Log viewer sub-component with filtering
 function LogViewer({ testFile }: { testFile: string }) {
 	const [content, setContent] = useState<string>('')
 	const [loading, setLoading] = useState(true)
 	const [error, setError] = useState<string | null>(null)
+	const [searchQuery, setSearchQuery] = useState('')
+	const [levelFilter, setLevelFilter] = useState<LogLevel>('all')
 
 	useEffect(() => {
 		const logName = testFile.split('/').pop()?.replace(/\.test\.(ts|js|tsx|jsx)$/, '.log') || ''
@@ -89,24 +91,98 @@ function LogViewer({ testFile }: { testFile: string }) {
 			})
 	}, [testFile])
 
+	// Filter and search logs
+	// Robo.js logger format: "prefix: level - message" where level is padded to 5 chars
+	// Examples: "mock: error -", "mock: debug -", "mock: info  -", "mock: warn  -"
+	const filteredLines = content.split('\n').filter((line) => {
+		// Apply level filter
+		if (levelFilter !== 'all') {
+			const lowerLine = line.toLowerCase()
+			// Match Robo.js logger format: "level -" or "level  -" (with padding)
+			const isError = /\berror\s+-/.test(lowerLine)
+			const isWarn = /\bwarn\s+-/.test(lowerLine)
+			const isDebug = /\bdebug\s+-/.test(lowerLine)
+			const isTrace = /\btrace\s+-/.test(lowerLine)
+			const isInfo = /\binfo\s+-/.test(lowerLine) || (!isError && !isWarn && !isDebug && !isTrace)
+
+			if (levelFilter === 'error' && !isError) return false
+			if (levelFilter === 'warn' && !isWarn) return false
+			if (levelFilter === 'info' && !isInfo) return false
+			if (levelFilter === 'debug' && !(isDebug || isTrace)) return false
+		}
+
+		// Apply search filter
+		if (searchQuery && !line.toLowerCase().includes(searchQuery.toLowerCase())) {
+			return false
+		}
+
+		return true
+	})
+
 	if (loading) return <div className={styles.logLoading}>Loading logs...</div>
 	if (error) return <div className={styles.logError}>{error}</div>
 	if (!content) return <div className={styles.logEmpty}>No logs available</div>
 
 	return (
-		<pre className={styles.logContent}>
-			{content.split('\n').map((line, i) => {
-				let lineClass = styles.logLine
-				if (line.includes(' ERROR ') || line.includes('[error]')) lineClass += ` ${styles.logError}`
-				else if (line.includes(' WARN ') || line.includes('[warn]')) lineClass += ` ${styles.logWarn}`
-				else if (line.includes(' DEBUG ') || line.includes('[debug]')) lineClass += ` ${styles.logDebug}`
-				return (
-					<div key={i} className={lineClass}>
-						{line}
-					</div>
-				)
-			})}
-		</pre>
+		<div className={styles.logViewerContainer}>
+			<div className={styles.logFilters}>
+				<input
+					type="text"
+					className={styles.logSearchInput}
+					placeholder="Search logs..."
+					value={searchQuery}
+					onChange={(e) => setSearchQuery(e.target.value)}
+				/>
+				<div className={styles.logLevelFilters}>
+					{(['all', 'error', 'warn', 'info', 'debug'] as LogLevel[]).map((level) => (
+						<button
+							key={level}
+							className={`${styles.logLevelButton} ${levelFilter === level ? styles.active : ''} ${styles[level]}`}
+							onClick={() => setLevelFilter(level)}
+						>
+							{level.toUpperCase()}
+						</button>
+					))}
+				</div>
+				<span className={styles.logCount}>
+					{filteredLines.length} / {content.split('\n').length} lines
+				</span>
+			</div>
+			<pre className={styles.logContent}>
+				{filteredLines.map((line, i) => {
+					let lineClass = styles.logLine
+					const lowerLine = line.toLowerCase()
+					if (/\berror\s+-/.test(lowerLine)) lineClass += ` ${styles.logLineError}`
+					else if (/\bwarn\s+-/.test(lowerLine)) lineClass += ` ${styles.logLineWarn}`
+					else if (/\b(debug|trace)\s+-/.test(lowerLine)) lineClass += ` ${styles.logLineDebug}`
+
+					// Highlight search matches
+					if (searchQuery) {
+						const regex = new RegExp(`(${searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
+						const parts = line.split(regex)
+						return (
+							<div key={i} className={lineClass}>
+								{parts.map((part, j) =>
+									regex.test(part) ? (
+										<mark key={j} className={styles.logHighlight}>
+											{part}
+										</mark>
+									) : (
+										part
+									)
+								)}
+							</div>
+						)
+					}
+
+					return (
+						<div key={i} className={lineClass}>
+							{line}
+						</div>
+					)
+				})}
+			</pre>
+		</div>
 	)
 }
 
@@ -123,13 +199,19 @@ function AssertionDetail({ assertion }: { assertion: AssertionResult }) {
 			</div>
 			{expanded && (
 				<div className={styles.assertionDetails}>
-					<div className={styles.assertionValue}>
-						<strong>Expected:</strong>
-						<pre>{JSON.stringify(assertion.expected, null, 2)}</pre>
-					</div>
-					<div className={styles.assertionValue}>
-						<strong>Actual:</strong>
-						<pre>{JSON.stringify(assertion.actual, null, 2)}</pre>
+					<div className={styles.assertionValuePair}>
+						<div className={styles.assertionValue}>
+							<strong>Expected:</strong>
+							<div className={styles.jsonViewerWrapper}>
+								<JsonViewer data={assertion.expected} collapsed={-1} />
+							</div>
+						</div>
+						<div className={styles.assertionValue}>
+							<strong>Actual:</strong>
+							<div className={styles.jsonViewerWrapper}>
+								<JsonViewer data={assertion.actual} collapsed={-1} />
+							</div>
+						</div>
 					</div>
 					{assertion.diff && (
 						<div className={styles.assertionDiff}>
@@ -143,84 +225,127 @@ function AssertionDetail({ assertion }: { assertion: AssertionResult }) {
 	)
 }
 
-// Test file detail view
-function TestFileDetail({
+// Compact file list item for split view
+function FileListItem({
 	file,
-	onBack,
+	isSelected,
+	onSelect
+}: {
+	file: TestFileEntry
+	isSelected: boolean
+	onSelect: () => void
+}) {
+	const fileName = file.path.split('/').pop() || file.path
+	const passedCount = file.tests.filter((t) => t.status === 'passed').length
+	const failedCount = file.tests.filter((t) => t.status === 'failed').length
+
+	return (
+		<div
+			className={`${styles.fileListItem} ${styles[file.status]} ${isSelected ? styles.selected : ''}`}
+			onClick={onSelect}
+		>
+			<div className={styles.fileListItemMain}>
+				<span className={styles.fileListItemStatus}>
+					{file.status === 'passed' ? '✓' : file.status === 'failed' ? '✗' : '○'}
+				</span>
+				<span className={styles.fileListItemName} title={file.path}>
+					{fileName}
+				</span>
+			</div>
+			<div className={styles.fileListItemStats}>
+				{passedCount > 0 && <span className={styles.passedCount}>{passedCount}</span>}
+				{failedCount > 0 && <span className={styles.failedCount}>{failedCount}</span>}
+			</div>
+		</div>
+	)
+}
+
+// Compact detail view for split pane
+function CompactDetailView({
+	file,
 	onReplay,
 	replayLoading
 }: {
 	file: TestFileEntry
-	onBack: () => void
 	onReplay: (sessionId: string) => void
 	replayLoading?: boolean
 }) {
 	const [activeSection, setActiveSection] = useState<'tests' | 'logs'>('tests')
 
 	return (
-		<div className={styles.detailView}>
-			<div className={styles.detailHeader}>
-				<button className={styles.backButton} onClick={onBack}>
-					← Back
-				</button>
-				<h3 className={styles.detailTitle}>{file.path}</h3>
-				<StatusBadge status={file.status} />
-			</div>
-
-			<div className={styles.detailMeta}>
-				<span>Session: {file.sessionId}</span>
-				<span>Started: {formatTime(file.startedAt)}</span>
-				{file.completedAt && <span>Duration: {formatDuration(file.completedAt - file.startedAt)}</span>}
-			</div>
-
-			<div className={styles.detailActions}>
-				{file.recordingPath && (
-					<button
-						className={styles.replayButton}
-						onClick={() => onReplay(file.sessionId)}
-						disabled={replayLoading}
-					>
-						{replayLoading ? 'Loading...' : '▶ Replay Session'}
-					</button>
-				)}
-			</div>
-
-			<div className={styles.sectionTabs}>
+		<div className={styles.compactDetailView}>
+			<div className={styles.compactDetailHeader}>
+				<div className={styles.compactDetailInfo}>
+					<StatusBadge status={file.status} />
+					<span className={styles.compactDetailPath} title={file.path}>
+						{file.path}
+					</span>
+					{file.completedAt && (
+						<span className={styles.compactDetailDuration}>
+							{formatDuration(file.completedAt - file.startedAt)}
+						</span>
+					)}
+				</div>
 				<button
-					className={`${styles.sectionTab} ${activeSection === 'tests' ? styles.active : ''}`}
+					className={`${styles.replaySessionButton} ${!file.recordingPath ? styles.disabled : ''}`}
+					onClick={() => onReplay(file.sessionId)}
+					disabled={replayLoading || !file.recordingPath}
+					title={file.recordingPath ? 'Play back this test session in the Stage view above' : 'No recording available for this session'}
+				>
+					{replayLoading ? (
+						<>
+							<span className={styles.replaySpinner} />
+							Loading...
+						</>
+					) : (
+						<>
+							<span className={styles.replayIcon}>▶</span>
+							Replay
+						</>
+					)}
+				</button>
+			</div>
+
+			<div className={styles.compactSectionTabs}>
+				<button
+					className={`${styles.compactSectionTab} ${activeSection === 'tests' ? styles.active : ''}`}
 					onClick={() => setActiveSection('tests')}
 				>
 					Tests ({file.tests.length})
 				</button>
 				<button
-					className={`${styles.sectionTab} ${activeSection === 'logs' ? styles.active : ''}`}
+					className={`${styles.compactSectionTab} ${activeSection === 'logs' ? styles.active : ''}`}
 					onClick={() => setActiveSection('logs')}
 				>
 					Logs
 				</button>
 			</div>
 
-			<div className={styles.sectionContent}>
+			<div className={styles.compactSectionContent}>
 				{activeSection === 'tests' && (
-					<div className={styles.testsList}>
+					<div className={styles.compactTestsList}>
 						{file.tests.length === 0 && (
 							<div className={styles.emptyState}>No test results recorded</div>
 						)}
 						{file.tests.map((test, i) => (
-							<div key={i} className={`${styles.testItem} ${styles[test.status]}`}>
-								<div className={styles.testHeader}>
-									<StatusBadge status={test.status} />
-									<span className={styles.testName}>{test.name}</span>
-									<span className={styles.testDuration}>{formatDuration(test.duration)}</span>
+							<div key={i} className={`${styles.compactTestItem} ${styles[test.status]}`}>
+								<div className={styles.compactTestHeader}>
+									<span className={styles.compactTestIcon}>
+										{test.status === 'passed' ? '✓' : test.status === 'failed' ? '✗' : '○'}
+									</span>
+									<span className={styles.compactTestName}>{test.name}</span>
+									<span className={styles.compactTestDuration}>{formatDuration(test.duration)}</span>
 								</div>
 								{test.error && (
-									<div className={styles.testError}>
-										<strong>Error:</strong> {test.error.message}
-										{test.error.stack && <pre className={styles.errorStack}>{test.error.stack}</pre>}
+									<div className={styles.compactTestError}>
+										{test.error.message}
+										{test.error.stack && (
+											<pre className={styles.compactErrorStack}>{test.error.stack}</pre>
+										)}
 									</div>
 								)}
 								{test.assertions.length > 0 && (
-									<div className={styles.assertionsList}>
+									<div className={styles.compactAssertionsList}>
 										{test.assertions.map((assertion, j) => (
 											<AssertionDetail key={j} assertion={assertion} />
 										))}
@@ -242,6 +367,7 @@ export function TestResults() {
 	const [loading, setLoading] = useState(true)
 	const [error, setError] = useState<string | null>(null)
 	const [selectedFile, setSelectedFile] = useState<TestFileEntry | null>(null)
+	const [summaryCollapsed, setSummaryCollapsed] = useState(false)
 
 	const fetchRegistry = useCallback(() => {
 		setLoading(true)
@@ -267,6 +393,13 @@ export function TestResults() {
 		}, 2000)
 		return () => clearInterval(interval)
 	}, [fetchRegistry, registry?.status])
+
+	// Auto-select first file if none selected
+	useEffect(() => {
+		if (registry && registry.testFiles.length > 0 && !selectedFile) {
+			setSelectedFile(registry.testFiles[0])
+		}
+	}, [registry, selectedFile])
 
 	const { dispatch } = usePlaybackStore()
 	const [replayLoading, setReplayLoading] = useState(false)
@@ -305,22 +438,10 @@ export function TestResults() {
 			<div className={styles.container}>
 				<div className={styles.emptyState}>
 					<h3>No Test Results</h3>
-					<p>Run tests using <code>robo mock test</code> to see results here.</p>
+					<p>
+						Run tests using <code>robo mock test</code> to see results here.
+					</p>
 				</div>
-			</div>
-		)
-	}
-
-	// Show detail view if a file is selected
-	if (selectedFile) {
-		return (
-			<div className={styles.container}>
-				<TestFileDetail
-					file={selectedFile}
-					onBack={() => setSelectedFile(null)}
-					onReplay={handleReplay}
-					replayLoading={replayLoading}
-				/>
 			</div>
 		)
 	}
@@ -343,70 +464,47 @@ export function TestResults() {
 
 	return (
 		<div className={styles.container}>
-			{/* Summary Header */}
-			<div className={styles.summary}>
-				<div className={styles.summaryHeader}>
-					<h3>Test Run: {registry.runId}</h3>
-					<StatusBadge status={registry.status} />
-					<button className={styles.refreshButton} onClick={fetchRegistry} title="Refresh">
-						↻
-					</button>
+			{/* Collapsible Summary Bar */}
+			<div className={`${styles.summaryBar} ${summaryCollapsed ? styles.collapsed : ''}`}>
+				<button className={styles.summaryToggle} onClick={() => setSummaryCollapsed(!summaryCollapsed)}>
+					{summaryCollapsed ? '▶' : '▼'}
+				</button>
+				<StatusBadge status={registry.status} />
+				<span className={styles.summaryRunId}>{registry.runId}</span>
+				<div className={styles.summaryInlineStats}>
+					<span className={styles.summaryStatTotal}>{totalTests}</span>
+					<span className={styles.summaryStatPassed}>{passedTests} ✓</span>
+					{failedTests > 0 && <span className={styles.summaryStatFailed}>{failedTests} ✗</span>}
+					{skippedTests > 0 && <span className={styles.summaryStatSkipped}>{skippedTests} ○</span>}
+					<span className={styles.summaryStatDuration}>{formatDuration(duration)}</span>
 				</div>
-				<div className={styles.summaryStats}>
-					<div className={styles.stat}>
-						<span className={styles.statValue}>{totalTests}</span>
-						<span className={styles.statLabel}>Total</span>
-					</div>
-					<div className={`${styles.stat} ${styles.passed}`}>
-						<span className={styles.statValue}>{passedTests}</span>
-						<span className={styles.statLabel}>Passed</span>
-					</div>
-					<div className={`${styles.stat} ${styles.failed}`}>
-						<span className={styles.statValue}>{failedTests}</span>
-						<span className={styles.statLabel}>Failed</span>
-					</div>
-					<div className={`${styles.stat} ${styles.skipped}`}>
-						<span className={styles.statValue}>{skippedTests}</span>
-						<span className={styles.statLabel}>Skipped</span>
-					</div>
-					<div className={styles.stat}>
-						<span className={styles.statValue}>{formatDuration(duration)}</span>
-						<span className={styles.statLabel}>Duration</span>
-					</div>
-				</div>
+				<button className={styles.refreshButton} onClick={fetchRegistry} title="Refresh">
+					↻
+				</button>
 			</div>
 
-			{/* Test Files List */}
-			<div className={styles.filesList}>
-				{registry.testFiles.map((file, i) => (
-					<div
-						key={i}
-						className={`${styles.fileItem} ${styles[file.status]}`}
-						onClick={() => setSelectedFile(file)}
-					>
-						<div className={styles.fileHeader}>
-							<StatusBadge status={file.status} />
-							<span className={styles.filePath}>{file.path}</span>
-							<span className={styles.fileStats}>
-								{file.tests.length} test{file.tests.length !== 1 ? 's' : ''}
-							</span>
-						</div>
-						{file.tests.length > 0 && (
-							<div className={styles.fileTests}>
-								{file.tests.slice(0, 3).map((test, j) => (
-									<span
-										key={j}
-										className={`${styles.testDot} ${styles[test.status]}`}
-										title={test.name}
-									/>
-								))}
-								{file.tests.length > 3 && (
-									<span className={styles.moreTests}>+{file.tests.length - 3}</span>
-								)}
-							</div>
-						)}
-					</div>
-				))}
+			{/* Split Pane Layout */}
+			<div className={styles.splitPane}>
+				{/* Left: File List */}
+				<div className={styles.fileListPane}>
+					{registry.testFiles.map((file, i) => (
+						<FileListItem
+							key={i}
+							file={file}
+							isSelected={selectedFile?.sessionId === file.sessionId}
+							onSelect={() => setSelectedFile(file)}
+						/>
+					))}
+				</div>
+
+				{/* Right: Detail View */}
+				<div className={styles.detailPane}>
+					{selectedFile ? (
+						<CompactDetailView file={selectedFile} onReplay={handleReplay} replayLoading={replayLoading} />
+					) : (
+						<div className={styles.noSelection}>Select a test file to view details</div>
+					)}
+				</div>
 			</div>
 		</div>
 	)
