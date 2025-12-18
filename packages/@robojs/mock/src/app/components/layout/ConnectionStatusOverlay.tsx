@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSession } from '../../hooks/useSession'
-import { useIsPlaybackMode } from '../../stores/playbackStore'
+import { useStageData } from '../../hooks/useStageData'
 import styles from './ConnectionStatusOverlay.module.css'
 
 interface ConnectionStatusOverlayProps {
@@ -9,8 +8,7 @@ interface ConnectionStatusOverlayProps {
 }
 
 export function ConnectionStatusOverlay({ onChangeSession }: ConnectionStatusOverlayProps) {
-	const { isConnected, isConnecting, hasGivenUp, isSessionInvalid, retryCount, retry, error } = useSession()
-	const isPlaybackMode = useIsPlaybackMode()
+	const { isConnected, isConnecting, hasGivenUp, isSessionInvalid, retryCount, retry, error, isPlaybackMode } = useStageData()
 	const [isCollapsed, setIsCollapsed] = useState(false)
 
 	// Keyboard shortcut: Cmd/Ctrl+K to change session

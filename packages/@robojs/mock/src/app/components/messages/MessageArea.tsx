@@ -1,7 +1,6 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useSession } from '../../hooks/useSession'
-import { usePlaybackMessages, useIsPlaybackMode, usePlayback, usePlaybackTypingUsers, usePlaybackChannels, usePlaybackGuilds } from '../../stores/playbackStore'
+import { useStageData } from '../../hooks/useStageData'
 import { useContextMenu } from '../../hooks/useContextMenu'
 import { Message } from './Message'
 import { MessageInput } from './MessageInput'
@@ -282,11 +281,12 @@ function VirtualizedMessageList({
 }
 
 export function MessageArea({ channelId }: MessageAreaProps) {
+	// Unified hook handles live/playback mode switching automatically
 	const {
-		channelMessages,
-		channelTypingUsers,
-		channelPendingInteractions,
-		channelPendingMessages,
+		messages,
+		typingUsers,
+		pendingInteractions,
+		pendingMessages,
 		selectedChannel,
 		clickButton,
 		selectOption,
@@ -299,32 +299,11 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 		setReplyingTo,
 		pinMessage,
 		unpinMessage,
-		openDM
-	} = useSession()
+		openDM,
+		isPlaybackMode,
+		playback
+	} = useStageData({ channelId })
 	const { menu: contextMenu, showMenu: showContextMenu, hideMenu: hideContextMenu } = useContextMenu()
-	const isPlaybackMode = useIsPlaybackMode()
-	const playbackMessages = usePlaybackMessages(channelId)
-	const playbackTypingUsers = usePlaybackTypingUsers(channelId)
-	const playbackState = usePlayback()
-	const playbackGuilds = usePlaybackGuilds()
-
-	// Get guild ID for channel lookup - in playback mode, use first guild if available
-	const playbackGuildId = playbackGuilds?.[0]?.id ?? null
-	const playbackChannels = usePlaybackChannels(playbackGuildId)
-
-	// Get the selected channel - use playback data when in playback mode
-	const displaySelectedChannel = useMemo(() => {
-		if (isPlaybackMode && playbackChannels && channelId) {
-			return playbackChannels.find(c => c.id === channelId) ?? null
-		}
-		return selectedChannel
-	}, [isPlaybackMode, playbackChannels, channelId, selectedChannel])
-
-	// Use playback messages when in playback mode, otherwise use session messages
-	const displayMessages = isPlaybackMode && playbackMessages !== null ? playbackMessages : channelMessages
-
-	// Use playback typing users when in playback mode, otherwise use session typing users
-	const displayTypingUsers = isPlaybackMode && playbackTypingUsers !== null ? playbackTypingUsers : channelTypingUsers
 
 	// Context menu handlers
 	const handleMessageContextMenu = useCallback(
@@ -382,7 +361,7 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 		[openDM]
 	)
 
-	if (!channelId || !displaySelectedChannel) {
+	if (!channelId || !selectedChannel) {
 		return (
 			<div className={styles.container}>
 				<div className={styles.empty}>
@@ -407,8 +386,8 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 						<path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zm0 14A6 6 0 1 1 8 2a6 6 0 0 1 0 12zm.5-9H7v5l4.25 2.5.75-1.23-3.5-2.08V5z" />
 					</svg>
 					<span>
-						Playback Mode — Viewing {displayMessages.length} message{displayMessages.length !== 1 ? 's' : ''} at{' '}
-						{formatPlaybackTime(playbackState.currentTime)}
+						Playback Mode — Viewing {messages.length} message{messages.length !== 1 ? 's' : ''} at{' '}
+						{formatPlaybackTime(playback.currentTime)}
 					</span>
 				</div>
 			)}
@@ -416,10 +395,10 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 			{/* Virtualized message list - keyed to force reset on channel/mode change */}
 			<VirtualizedMessageList
 				key={`${channelId}-${isPlaybackMode}`}
-				messages={displayMessages}
+				messages={messages}
 				isPlaybackMode={isPlaybackMode}
-				channelName={displaySelectedChannel.name}
-				channelTopic={displaySelectedChannel.topic ?? undefined}
+				channelName={selectedChannel.name}
+				channelTopic={selectedChannel.topic ?? undefined}
 				onButtonClick={async (messageId, customId) => { await clickButton(messageId, customId) }}
 				onSelectOption={async (messageId, customId, values) => { await selectOption(messageId, customId, values) }}
 				onAddReaction={async (messageId, emoji) => { await addReaction(messageId, emoji) }}
@@ -429,12 +408,12 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 			/>
 
 			{/* Pending messages (sending/failed) */}
-			{channelPendingMessages.map((pending) => (
+			{pendingMessages.map((pending) => (
 				<PendingMessage key={pending.id} message={pending} onRetry={retryMessage} onCancel={cancelMessage} />
 			))}
 
 			{/* Thinking indicators for deferred bot responses */}
-			{channelPendingInteractions.map((pending) => (
+			{pendingInteractions.map((pending) => (
 				<ThinkingIndicator
 					key={pending.id}
 					botName={pending.botName}
@@ -444,10 +423,10 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 			))}
 
 			{/* Typing indicator */}
-			<TypingIndicator typingUsers={displayTypingUsers} />
+			<TypingIndicator typingUsers={typingUsers} />
 
 			{/* Message input */}
-			<MessageInput channelId={displaySelectedChannel.id} channelName={displaySelectedChannel.name} />
+			<MessageInput channelId={selectedChannel.id} channelName={selectedChannel.name} />
 
 			{/* Context menu */}
 			{contextMenu && (

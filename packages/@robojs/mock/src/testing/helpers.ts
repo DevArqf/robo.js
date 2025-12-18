@@ -417,10 +417,14 @@ export interface MockRoboHandle {
 	stop: () => Promise<void>
 	/** Child process (only when hmr: true) */
 	process?: ChildProcess
-	/** Wait for HMR reload to complete (only when hmr: true) */
-	waitForHmrReload?: (timeout?: number) => Promise<void>
-	/** Wait for full restart to complete (only when hmr: true) */
-	waitForFullRestart?: (timeout?: number) => Promise<void>
+	/** Get current HMR reload count - use before file changes to track position (only when hmr: true) */
+	getHmrCount?: () => number
+	/** Get current restart count - use before file changes to track position (only when hmr: true) */
+	getRestartCount?: () => number
+	/** Wait for HMR reload to complete (only when hmr: true). Pass fromCount from getHmrCount() captured before file changes. */
+	waitForHmrReload?: (timeout?: number, fromCount?: number) => Promise<void>
+	/** Wait for full restart to complete (only when hmr: true). Pass fromCount from getRestartCount() captured before file changes. */
+	waitForFullRestart?: (timeout?: number, fromCount?: number) => Promise<void>
 }
 
 /**
@@ -590,15 +594,36 @@ async function startHmrMode(options: StartMockRoboOptions): Promise<MockRoboHand
 		stdio: ['pipe', 'pipe', 'pipe']
 	})
 
-	// Collect stdout for pattern matching
-	let stdout = ''
+	// Track HMR and restart events via counters
+	let hmrReloadCount = 0
+	let fullRestartCount = 0
+	// eslint-disable-next-line no-control-regex
+	const ansiPattern = /\x1B\[[0-9;]*[a-zA-Z]/g
+	const stripAnsi = (str: string) => str.replace(ansiPattern, '')
+
+	const processOutput = (text: string) => {
+		const cleanText = stripAnsi(text)
+		// Count HMR reload messages
+		const hmrMatches = cleanText.match(/\[HMR\] Reloaded/g)
+		if (hmrMatches) {
+			hmrReloadCount += hmrMatches.length
+		}
+		// Count full restart messages
+		if (/Restarting Robo|full restart/.test(cleanText)) {
+			fullRestartCount++
+		}
+	}
+
 	devProcess.stdout?.on('data', (chunk: Buffer) => {
-		stdout += chunk.toString()
+		const text = chunk.toString()
+		processOutput(text)
 		if (options.verbose) {
 			process.stdout.write(chunk)
 		}
 	})
 	devProcess.stderr?.on('data', (chunk: Buffer) => {
+		const text = chunk.toString()
+		processOutput(text)
 		if (options.verbose) {
 			process.stderr.write(chunk)
 		}
@@ -608,16 +633,23 @@ async function startHmrMode(options: StartMockRoboOptions): Promise<MockRoboHand
 	const timeout = options.timeout ?? 60000
 	await waitForBotConnection(sessionId, timeout)
 
-	// HMR-specific methods
-	const waitForHmrReload = async (hmrTimeout = 10000): Promise<void> => {
-		const startLen = stdout.length
+	// HMR-specific methods - use counters to detect changes regardless of timing
+	// Get current counts so tests can capture position BEFORE making file changes
+	const getHmrCount = () => hmrReloadCount
+	const getRestartCount = () => fullRestartCount
+
+	const waitForHmrReload = async (hmrTimeout = 10000, fromCount?: number): Promise<void> => {
+		// Use provided count or capture current count
+		const startCount = fromCount ?? hmrReloadCount
 		const startTime = Date.now()
 
+		// Wait at least 200ms before checking to avoid catching stale reloads from startup
+		await sleep(200)
+
 		while (Date.now() - startTime < hmrTimeout) {
-			const newOutput = stdout.slice(startLen)
-			if (/\[HMR\] Reloaded/.test(newOutput)) {
-				// Brief delay to ensure handler is fully loaded
-				await sleep(100)
+			if (hmrReloadCount > startCount) {
+				// Wait for handler to fully reload and propagate
+				await sleep(500)
 				return
 			}
 			await sleep(100)
@@ -625,13 +657,13 @@ async function startHmrMode(options: StartMockRoboOptions): Promise<MockRoboHand
 		throw new Error(`HMR reload not detected after ${hmrTimeout}ms`)
 	}
 
-	const waitForFullRestart = async (restartTimeout = 30000): Promise<void> => {
-		const startLen = stdout.length
+	const waitForFullRestart = async (restartTimeout = 30000, fromCount?: number): Promise<void> => {
+		// Use provided count or capture current count
+		const startCount = fromCount ?? fullRestartCount
 		const startTime = Date.now()
 
 		while (Date.now() - startTime < restartTimeout) {
-			const newOutput = stdout.slice(startLen)
-			if (/Restarting Robo/.test(newOutput) || /\[HMR\].*full restart/.test(newOutput)) {
+			if (fullRestartCount > startCount) {
 				// Wait for ready after restart
 				await waitForBotConnection(sessionId, 30000)
 				return
@@ -650,6 +682,8 @@ async function startHmrMode(options: StartMockRoboOptions): Promise<MockRoboHand
 		guildId: session.guildId,
 		client: null, // Not available in HMR mode (different process)
 		process: devProcess,
+		getHmrCount,
+		getRestartCount,
 		waitForHmrReload,
 		waitForFullRestart,
 		stop: async () => {
