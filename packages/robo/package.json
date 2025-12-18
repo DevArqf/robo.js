@@ -23,13 +23,29 @@
 			"import": "./dist/index.js",
 			"types": "./dist/index.d.ts"
 		},
+		"./flashcore": {
+			"import": "./flashcore.js",
+			"types": "./flashcore.d.ts"
+		},
 		"./hmr": {
 			"import": "./hmr.js",
 			"types": "./hmr.d.ts"
 		},
+		"./logger": {
+			"import": "./logger.js",
+			"types": "./logger.d.ts"
+		},
+		"./types": {
+			"import": "./types.js",
+			"types": "./types.d.ts"
+		},
 		"./unstable": {
 			"import": "./unstable.js",
 			"types": "./unstable.d.ts"
+		},
+		"./utils": {
+			"import": "./utils.js",
+			"types": "./utils.d.ts"
 		},
 		"./*": {
 			"types": "./*",
