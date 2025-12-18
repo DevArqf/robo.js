@@ -6,6 +6,7 @@ import { PlaybackProvider } from './stores/playbackStore'
 import { UnifiedSelectionProvider } from './stores/unifiedSelectionStore'
 import { ToasterProvider } from './components/common/Toaster'
 import { DevToolsProvider } from './components/devtools/DevToolsPanel'
+import { LogsProvider } from './stores/logsStore'
 import { initDevReload } from '@robojs/server/client'
 
 // Initialize dev reload for hot reloading during development
@@ -48,13 +49,15 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 		<ToasterProvider>
 			<DevToolsProvider initialTab={testResultsMode ? 'tests' : undefined} autoOpen={testResultsMode}>
 				<PlaybackProvider>
-					<UnifiedSelectionProvider>
-						<SessionProvider initialSessionId={initialSessionId}>
-							<WebSocketProvider>
-								<App testResultsMode={testResultsMode} />
-							</WebSocketProvider>
-						</SessionProvider>
-					</UnifiedSelectionProvider>
+					<LogsProvider>
+						<UnifiedSelectionProvider>
+							<SessionProvider initialSessionId={initialSessionId}>
+								<WebSocketProvider>
+									<App testResultsMode={testResultsMode} />
+								</WebSocketProvider>
+							</SessionProvider>
+						</UnifiedSelectionProvider>
+					</LogsProvider>
 				</PlaybackProvider>
 			</DevToolsProvider>
 		</ToasterProvider>

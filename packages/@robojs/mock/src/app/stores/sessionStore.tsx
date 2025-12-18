@@ -951,6 +951,12 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 					break
 				}
 
+				case 'log_entry': {
+					// Log entry from connected bot - emit custom event for LogsProvider
+					window.dispatchEvent(new CustomEvent('stage:log_entry', { detail: event.data }))
+					break
+				}
+
 				default:
 					dispatch({ type: 'INCREMENT_EVENT_COUNT' })
 			}

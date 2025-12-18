@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useStageData } from '../../hooks/useStageData'
+import { useLogs } from '../../stores/logsStore'
 import { FriendsAppShell } from '../friends'
 import { ServerList } from '../sidebar/ServerList'
 import { ChannelList } from '../sidebar/ChannelList'
@@ -8,6 +9,7 @@ import { StatusBar } from './StatusBar'
 import { MessageArea } from '../messages/MessageArea'
 import { MemberList } from '../members/MemberList'
 import { ThreadList } from '../threads/ThreadList'
+import { LogsPanel } from '../logs'
 import { PlaybackControls } from '../playback/PlaybackControls'
 import { DevToolsPanel } from '../devtools/DevToolsPanel'
 import styles from './AppShell.module.css'
@@ -50,6 +52,9 @@ export function AppShell() {
 
 	// Pinned messages dropdown state
 	const [showPinnedMessages, setShowPinnedMessages] = useState(false)
+
+	// Logs panel state from context
+	const { isOpen: showLogs } = useLogs()
 
 	// Combine users with botUser and currentUser for voice channel display
 	const allUsers = useMemo(() => {
@@ -143,62 +148,71 @@ export function AppShell() {
 
 	return (
 		<div className={shellClassName}>
-			<div className={styles.topShell}>
-				<span>{guildName()}</span>
-			</div>
+			{/* Body wrapper contains main content + logs panel (pushes content left) */}
+			<div className={styles.bodyWrapper}>
+				{/* Main area contains everything except logs panel */}
+				<div className={styles.mainArea}>
+					<div className={styles.topShell}>
+						<span>{guildName()}</span>
+					</div>
 
-			<div className={styles.contentWrapper}>
-				<div className={styles.serverList}>
-					<ServerList
-						guilds={guilds}
-						selectedId={selectedGuildId}
-						onSelect={handleGuildSelect}
-						sessionId={sessionId}
-						onHomeClick={handleHomeClick}
-						homeSelected={showHome}
-					/>
-				</div>
-
-				<div className={styles.mainContent}>
-					{showHome ? (
-						<FriendsAppShell />
-					) : (
-						<>
-							<ChannelList
-								guild={selectedGuild ?? undefined}
-								channels={channels}
-								selectedId={selectedChannelId}
-								onSelect={handleChannelSelect}
-								voiceStates={voiceStates}
-								users={allUsers}
-								onJoinVoice={joinVoice}
-								onLeaveVoice={leaveVoice}
-								currentUserId={currentUser?.id}
+					<div className={styles.contentWrapper}>
+						<div className={styles.serverList}>
+							<ServerList
+								guilds={guilds}
+								selectedId={selectedGuildId}
+								onSelect={handleGuildSelect}
+								sessionId={sessionId}
+								onHomeClick={handleHomeClick}
+								homeSelected={showHome}
 							/>
-							<div className={styles.main}>
-								<Header
-									channel={selectedChannel}
-									onToggleMembers={toggleMembers}
-									showMembers={showMembers}
-									onToggleThreads={handleToggleThreads}
-									showThreads={showThreads}
-									onToggleNotifications={handleToggleNotifications}
-									showNotifications={showNotifications}
-									onTogglePinnedMessages={handleTogglePinnedMessages}
-									showPinnedMessages={showPinnedMessages}
-									onMobileMenuToggle={handleMobileMenuToggle}
-									isMobileSidebarOpen={mobileSidebarOpen}
-								/>
+						</div>
 
-								<div className={styles.content}>
-									<MessageArea channelId={selectedChannelId} />
-									{showThreads && <ThreadList />}
-									{showMembers && <MemberList members={members} roles={roles} />}
-								</div>
-							</div>
-						</>
-					)}
+						<div className={styles.mainContent}>
+							{showHome ? (
+								<FriendsAppShell />
+							) : (
+								<>
+									<ChannelList
+										guild={selectedGuild ?? undefined}
+										channels={channels}
+										selectedId={selectedChannelId}
+										onSelect={handleChannelSelect}
+										voiceStates={voiceStates}
+										users={allUsers}
+										onJoinVoice={joinVoice}
+										onLeaveVoice={leaveVoice}
+										currentUserId={currentUser?.id}
+									/>
+									<div className={styles.main}>
+										<Header
+											channel={selectedChannel}
+											onToggleMembers={toggleMembers}
+											showMembers={showMembers}
+											onToggleThreads={handleToggleThreads}
+											showThreads={showThreads}
+											onToggleNotifications={handleToggleNotifications}
+											showNotifications={showNotifications}
+											onTogglePinnedMessages={handleTogglePinnedMessages}
+											showPinnedMessages={showPinnedMessages}
+											onMobileMenuToggle={handleMobileMenuToggle}
+											isMobileSidebarOpen={mobileSidebarOpen}
+										/>
+
+										<div className={styles.content}>
+											<MessageArea channelId={selectedChannelId} />
+											{showThreads && <ThreadList />}
+											{showMembers && <MemberList members={members} roles={roles} />}
+										</div>
+									</div>
+								</>
+							)}
+						</div>
+					</div>
 				</div>
+
+				{/* Logs panel - outside main area to push everything left */}
+				{showLogs && <LogsPanel />}
 			</div>
 
 			{/* Bottom bar with playback controls and status */}

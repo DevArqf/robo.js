@@ -27,13 +27,15 @@ import type {
 	SessionRecording,
 	SessionConfig,
 	SeedMessageConfig,
-	VoiceServerState
+	VoiceServerState,
+	SessionLogEntry
 } from '../types/index.js'
 import { AutoModerationTriggerType } from '../types/index.js'
 import { generateSessionId, createMockToken, generateInteractionToken } from '../utils/id.js'
 import { generateSnowflake } from '../utils/snowflake.js'
 import { MockServerState, createMockUser, createMockGuild, createMockChannel } from './state.js'
 import { ActionRecorder } from './recorder.js'
+import { LogRecorder } from './log-recorder.js'
 import { saveRecording } from './recording-storage.js'
 import { mockLogger } from '../core/logger.js'
 import { getGatewayServer } from '../core/gateway.js'
@@ -101,6 +103,7 @@ export class Session implements ISession {
 	readonly voiceServers: Map<string, VoiceServerState>
 
 	readonly recorder: ActionRecorder
+	readonly logRecorder: LogRecorder
 	private ending = false
 	private autoArchiveInterval: ReturnType<typeof setInterval> | null = null
 
@@ -134,6 +137,9 @@ export class Session implements ISession {
 
 		// Initialize action recorder with optional max actions
 		this.recorder = new ActionRecorder(options?.config?.maxActions ?? 10000)
+
+		// Initialize log recorder for capturing bot logs
+		this.logRecorder = new LogRecorder(this.id, options?.config?.maxLogs ?? 10000)
 
 		// Initialize state with optional configuration
 		this.state = new MockServerState({
@@ -2128,6 +2134,48 @@ export class Session implements ISession {
 		this.recorder.clear()
 	}
 
+	// ============================================================================
+	// Log Recording (for Logs Panel)
+	// ============================================================================
+
+	/**
+	 * Record a log entry from a connected bot
+	 * @param entry The log entry (without id, which will be generated)
+	 */
+	recordLog(entry: Omit<SessionLogEntry, 'id'>): SessionLogEntry {
+		const logEntry = this.logRecorder.record(entry)
+
+		// Forward to Stage UI in real-time
+		try {
+			getStageBridge().onLogEntry(this.id, logEntry)
+		} catch {
+			// Stage bridge may not be initialized in some contexts
+		}
+
+		return logEntry
+	}
+
+	/**
+	 * Get all captured logs
+	 */
+	getLogs(): SessionLogEntry[] {
+		return this.logRecorder.getAll()
+	}
+
+	/**
+	 * Get logs since a timestamp
+	 */
+	getLogsSince(timestamp: number): SessionLogEntry[] {
+		return this.logRecorder.getSince(timestamp)
+	}
+
+	/**
+	 * Clear recorded logs without resetting state
+	 */
+	clearLogs(): void {
+		this.logRecorder.clear()
+	}
+
 	/**
 	 * Get the number of recorded actions
 	 */
@@ -2305,7 +2353,8 @@ export class Session implements ISession {
 				recordedAt: new Date(now).toISOString()
 			},
 			initialConfig: this.captureInitialConfig(),
-			actions: this.recorder.getAll()
+			actions: this.recorder.getAll(),
+			logs: this.logRecorder.length > 0 ? this.logRecorder.getAll() : undefined
 		}
 	}
 
@@ -2620,8 +2669,9 @@ export class Session implements ISession {
 		// Clear state using the reset method
 		this.state.reset()
 
-		// Clear recorded actions
+		// Clear recorded actions and logs
 		this.recorder.clear()
+		this.logRecorder.clear()
 
 		mockLogger.debug(`Session ended: ${this.id}`)
 	}

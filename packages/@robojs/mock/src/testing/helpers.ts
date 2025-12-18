@@ -638,23 +638,28 @@ async function startHmrMode(options: StartMockRoboOptions): Promise<MockRoboHand
 	const getHmrCount = () => hmrReloadCount
 	const getRestartCount = () => fullRestartCount
 
-	const waitForHmrReload = async (hmrTimeout = 10000, fromCount?: number): Promise<void> => {
+	const waitForHmrReload = async (hmrTimeout = 15000, fromCount?: number): Promise<void> => {
 		// Use provided count or capture current count
 		const startCount = fromCount ?? hmrReloadCount
 		const startTime = Date.now()
+		let pollInterval = 100
 
-		// Wait at least 200ms before checking to avoid catching stale reloads from startup
-		await sleep(200)
+		// Wait at least 300ms before checking to avoid catching stale reloads from startup
+		await sleep(300)
 
 		while (Date.now() - startTime < hmrTimeout) {
 			if (hmrReloadCount > startCount) {
 				// Wait for handler to fully reload and propagate
-				await sleep(500)
+				// Increased from 500ms to 750ms for better reliability on slower CI systems
+				await sleep(750)
 				return
 			}
-			await sleep(100)
+			await sleep(pollInterval)
+			// Exponential backoff: 100ms → 120ms → 144ms → ... capped at 300ms
+			// This reduces CPU usage during longer waits while still being responsive
+			pollInterval = Math.min(Math.round(pollInterval * 1.2), 300)
 		}
-		throw new Error(`HMR reload not detected after ${hmrTimeout}ms`)
+		throw new Error(`HMR reload not detected after ${hmrTimeout}ms (startCount=${startCount}, currentCount=${hmrReloadCount})`)
 	}
 
 	const waitForFullRestart = async (restartTimeout = 30000, fromCount?: number): Promise<void> => {
@@ -799,6 +804,71 @@ async function startDirectMode(options: StartMockRoboOptions = {}): Promise<Mock
 		fileDrainHandle = loggerInstance.addDrain(fileDrain, `test-file-${sessionId}`)
 	}
 
+	// Set up session log drain to forward logs to the mock server
+	// This enables the Logs Panel in Stage UI to show bot logs in real-time
+	let sessionLogDrainHandle: DrainHandle | null = null
+	const config = getMockConfig()
+
+	// Create a drain that POSTs logs to the control API
+	const { logger: getLogger } = await import('robo.js')
+
+	// eslint-disable-next-line no-control-regex
+	const ANSI_REGEX = /\x1b\[.*?m/g
+
+	const sessionLogDrain = async (_loggerInstance: unknown, level: string, ...data: unknown[]): Promise<void> => {
+		try {
+			// Build message, stripping ANSI codes
+			const message = data
+				.map((item) => {
+					if (item instanceof Error) {
+						return `${item.message}${item.stack ? '\n' + item.stack : ''}`
+					}
+					if (typeof item === 'string') {
+						return item.replace(ANSI_REGEX, '')
+					}
+					try {
+						return JSON.stringify(item)
+					} catch {
+						return '[unserializable]'
+					}
+				})
+				.join(' ')
+
+			// Extract structured data
+			const structuredData = data.filter((d) => typeof d === 'object' && d !== null)
+
+			// Extract prefix from logger if available
+			const loggerWithPrefix = _loggerInstance as { _prefix?: string } | undefined
+			const prefix = loggerWithPrefix?._prefix
+
+			// POST to control API (fire and forget - don't block logging)
+			fetch(`${config.controlUrl}/sessions/${sessionId}/logs`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					timestamp: Date.now(),
+					level,
+					message,
+					prefix,
+					data: structuredData.length > 0 ? structuredData : undefined,
+					source: {
+						connectionId: `direct-${sessionId}`,
+						sessionId,
+						botUserId: session.botUser?.id,
+						botUsername: session.botUser?.username
+					}
+				})
+			}).catch(() => {
+				// Ignore errors - don't block test execution
+			})
+		} catch {
+			// Ignore errors during log processing
+		}
+	}
+
+	// Add session log drain
+	sessionLogDrainHandle = getLogger().addDrain(sessionLogDrain, `session-logs-${sessionId}`)
+
 	// Import and start Robo directly
 	const { Robo } = await import('robo.js')
 	await Robo.start()
@@ -839,11 +909,15 @@ async function startDirectMode(options: StartMockRoboOptions = {}): Promise<Mock
 			await new Promise((resolve) => setTimeout(resolve, 100))
 
 			// Clean up drains:
-			// 1. Remove the file drain from secondary drains
-			// 2. Restore console drain as primary drain (in case other code runs after tests)
+			// 1. Remove the session log drain
+			// 2. Remove the file drain from secondary drains
+			// 3. Restore console drain as primary drain (in case other code runs after tests)
 			// NOTE: We skip flush() because consoleDrain uses stream.write() callbacks
 			// which can hang if stdout has backpressure during shutdown.
 			// Since file drain uses blocking: true (synchronous writes), all logs are already on disk.
+			if (sessionLogDrainHandle) {
+				sessionLogDrainHandle.remove()
+			}
 			if (fileDrainHandle) {
 				fileDrainHandle.remove()
 			}

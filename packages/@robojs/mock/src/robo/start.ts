@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process'
 import { getServerEngine } from '@robojs/server'
-import type { StartContext, HandlerEntry } from 'robo.js'
-import { Manifest, getPluginOptions } from 'robo.js'
+import type { StartContext, HandlerEntry, DrainHandle } from 'robo.js'
+import { Manifest, getPluginOptions, logger } from 'robo.js'
 import { getStageBridge } from '../core/stage-bridge.js'
 import { getStageServer } from '../core/stage.js'
 import { startVoiceGateway, VOICE_GATEWAY_PORT } from '../core/voice-gateway.js'
@@ -13,12 +13,19 @@ import { resolveBotUser } from '../utils/bot-user-resolver.js'
 import { DEFAULT_MOCK_PLUGIN_CONFIG, type MockPluginConfig } from '../types/plugin.js'
 import { registerWebSocketHandlers, areHandlersRegistered, markHandlersRegistered } from './prepare.js'
 import type { Session } from '../session/session.js'
+import { createSessionLogDrain } from '../session/log-drain.js'
 
 /**
  * Global reference to the mock mode session.
  * Used for shutdown cleanup and summary.
  */
 let mockModeSession: Session | null = null
+
+/**
+ * Global reference to the log drain handle.
+ * Used for cleanup when the session ends.
+ */
+let mockModeLogDrainHandle: DrainHandle | null = null
 
 /**
  * Gets the current mock mode session (if any).
@@ -33,6 +40,11 @@ export function getMockModeSession(): Session | null {
  * Called during cleanup.
  */
 export function clearMockModeSession(): void {
+	// Clean up log drain if it exists
+	if (mockModeLogDrainHandle) {
+		mockModeLogDrainHandle.remove()
+		mockModeLogDrainHandle = null
+	}
 	mockModeSession = null
 }
 
@@ -122,6 +134,26 @@ export default async (context: StartContext<MockPluginConfig>) => {
 			name: mockModeState.sessionName ?? undefined,
 			config: sessionConfig
 		})
+
+		// Wire log drain to capture logs from the Robo process
+		// This enables the Stage UI to display logs in real-time
+		const sessionForDrain = mockModeSession
+		const logDrain = createSessionLogDrain({
+			sessionId: sessionForDrain.id,
+			connectionId: 'dev-mode', // Single connection in dev mode
+			botInfo: {
+				userId: resolvedBotUser.config.id,
+				username: resolvedBotUser.config.username
+			},
+			onLog: (entry) => {
+				// Record to session's log recorder which forwards to Stage UI
+				sessionForDrain.recordLog(entry)
+			}
+		})
+
+		// Add drain to the main logger and store handle for cleanup
+		mockModeLogDrainHandle = logger().addDrain(logDrain, `mock-session-${sessionForDrain.id}`)
+		mockLogger.debug('Log drain installed for dev mode')
 
 		// Register commands to mock server via HTTP
 		await registerCommandsToMockServer(mockModeSession)

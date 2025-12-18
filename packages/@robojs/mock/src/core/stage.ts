@@ -82,11 +82,15 @@ export class StageServer {
 	 * just seeing a connection failure.
 	 */
 	handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+		mockLogger.debug('Stage handleUpgrade called with URL:', req.url)
+		mockLogger.debug('Socket writable:', socket.writable, 'destroyed:', socket.destroyed)
+
 		const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
 
 		// Try to find session by token first, then by session ID
 		const token = url.searchParams.get('token')
 		const sessionId = url.searchParams.get('session')
+		mockLogger.debug('Parsed token:', token?.substring(0, 30) + '...', 'sessionId:', sessionId)
 
 		// Reject if no token/session provided at all (this is a client bug)
 		if (!token && !sessionId) {
@@ -116,7 +120,9 @@ export class StageServer {
 
 		// Complete the WebSocket upgrade - we'll validate session in handleConnection
 		// This allows us to send a proper session_invalid event to the client
+		mockLogger.debug('Calling wss.handleUpgrade...')
 		this.wss.handleUpgrade(req, socket, head, (ws) => {
+			mockLogger.debug('wss.handleUpgrade callback fired, ws readyState:', ws.readyState)
 			// Store session ID (or attempted ID) and lastSeq in socket for later use
 			;(ws as WebSocket & { _stageSessionId: string; _lastSeq: number; _sessionValid: boolean })._stageSessionId = session?.id ?? resolvedSessionId ?? ''
 			;(ws as WebSocket & { _stageSessionId: string; _lastSeq: number; _sessionValid: boolean })._lastSeq = lastSeq
@@ -131,9 +137,13 @@ export class StageServer {
 	 */
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	private handleConnection(ws: WebSocket, _req: IncomingMessage): void {
+		mockLogger.debug('handleConnection called, ws.readyState:', ws.readyState, 'OPEN=', WebSocket.OPEN)
+
 		const sessionId = (ws as WebSocket & { _stageSessionId: string })._stageSessionId
 		const lastSeq = (ws as WebSocket & { _lastSeq: number })._lastSeq || 0
 		const sessionValid = (ws as WebSocket & { _sessionValid: boolean })._sessionValid
+
+		mockLogger.debug('Session lookup - id:', sessionId, 'valid:', sessionValid)
 
 		// If session is invalid, send session_invalid event and close
 		// This allows the client to receive a proper message instead of just seeing connection failure
@@ -932,8 +942,17 @@ export class StageServer {
 
 		// Send to client
 		if (ws.readyState === WebSocket.OPEN) {
-			ws.send(JSON.stringify(fullEvent))
-			mockLogger.debug(`Stage event sent: ${fullEvent.type} (seq: ${fullEvent.seq})`)
+			const data = JSON.stringify(fullEvent)
+			mockLogger.debug(`Sending stage event: ${fullEvent.type} (seq: ${fullEvent.seq}), data length: ${data.length}`)
+			ws.send(data, (err) => {
+				if (err) {
+					mockLogger.error(`Failed to send stage event: ${err.message}`)
+				} else {
+					mockLogger.debug(`Stage event sent successfully: ${fullEvent.type}`)
+				}
+			})
+		} else {
+			mockLogger.warn(`Cannot send event, ws.readyState is ${ws.readyState} (not OPEN=${WebSocket.OPEN})`)
 		}
 	}
 
@@ -989,7 +1008,8 @@ export class StageServer {
 			}
 		}
 
-		if (broadcastCount > 0) {
+		// Skip debug log for log_entry to avoid feedback loop spam
+		if (broadcastCount > 0 && event.type !== 'log_entry') {
 			mockLogger.debug(`Broadcast ${event.type} (seq: ${seq}) to ${broadcastCount} stage client(s) for session ${sessionId}`)
 		}
 	}

@@ -11,7 +11,7 @@ import type {
 	StageLoopDetectedData,
 	StageUser
 } from '../types/stage.js'
-import type { MockUser } from '../types/index.js'
+import type { MockUser, SessionLogEntry } from '../types/index.js'
 
 /**
  * Bridge between Session events and the Stage WebSocket server.
@@ -247,6 +247,21 @@ export class StageBridge {
 		stageServer.broadcastToSession(sessionId, {
 			type: 'loop_detected',
 			data
+		})
+	}
+
+	/**
+	 * Called when a log entry is recorded from a connected bot.
+	 * Streams the log to Stage UI for real-time display in the Logs Panel.
+	 *
+	 * @param sessionId - The session
+	 * @param logEntry - The log entry to broadcast
+	 */
+	onLogEntry(sessionId: string, logEntry: SessionLogEntry): void {
+		const stageServer = getStageServer()
+		stageServer.broadcastToSession(sessionId, {
+			type: 'log_entry',
+			data: logEntry
 		})
 	}
 

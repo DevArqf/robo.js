@@ -57,6 +57,9 @@ export type StageEventType =
 	// Current User (User Abstraction Layer)
 	| 'current_user_update'    // Current acting user changed
 
+	// Logs Panel
+	| 'log_entry'              // Log entry from connected bot
+
 /**
  * Command types sent from stage clients to server
  */
