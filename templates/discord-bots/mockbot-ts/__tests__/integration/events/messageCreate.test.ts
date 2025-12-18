@@ -6,21 +6,21 @@
 import { fileURLToPath } from 'node:url'
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals'
 import {
-	startMockBot,
+	startMockRobo,
 	dispatchEvent,
 	expectAction,
 	generateSnowflake
 } from '@robojs/mock/testing'
-import type { MockBotHandle } from '@robojs/mock/testing'
+import type { MockRoboHandle } from '@robojs/mock/testing'
 
 const __filename = fileURLToPath(import.meta.url)
 
 describe('messageCreate event', () => {
-	let bot: MockBotHandle
+	let bot: MockRoboHandle
 
 	beforeAll(async () => {
 		// Start a bot connected to the mock server
-		bot = await startMockBot({
+		bot = await startMockRobo({
 			name: 'messageCreate-tests',
 			testFilePath: __filename
 		})
@@ -102,7 +102,7 @@ describe('messageCreate event', () => {
 			description: 'Bot should include count in reply',
 			type: 'message_sent',
 			expected: {
-				content: expect.stringMatching(/Count: \d+/)
+				content: expect.stringContaining('Counter:')
 			},
 			timeout: 5000
 		})

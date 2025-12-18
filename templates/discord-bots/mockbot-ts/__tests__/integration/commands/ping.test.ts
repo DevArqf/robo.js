@@ -6,21 +6,21 @@
 import { fileURLToPath } from 'node:url'
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals'
 import {
-	startMockBot,
+	startMockRobo,
 	dispatchInteraction,
 	expectAction,
 	getChannelMessages
 } from '@robojs/mock/testing'
-import type { MockBotHandle } from '@robojs/mock/testing'
+import type { MockRoboHandle } from '@robojs/mock/testing'
 
 const __filename = fileURLToPath(import.meta.url)
 
 describe('ping command', () => {
-	let bot: MockBotHandle
+	let bot: MockRoboHandle
 
 	beforeAll(async () => {
 		// Start a bot connected to the mock server
-		bot = await startMockBot({
+		bot = await startMockRobo({
 			name: 'ping-tests',
 			testFilePath: __filename
 		})
