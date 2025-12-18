@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { LogDrain, Logger } from '../../src/core/logger.js'
@@ -75,4 +75,51 @@ export async function waitForFile(filePath: string, timeout = 1000): Promise<voi
  */
 export function createLargeString(sizeInBytes: number): string {
 	return 'x'.repeat(sizeInBytes)
+}
+
+/**
+ * Creates a temporary .robo/logs directory structure for testing auto file logging.
+ */
+export function createTempRoboLogsDir(): { baseDir: string; logsDir: string } {
+	const baseDir = createTempLogDir()
+	const logsDir = join(baseDir, '.robo', 'logs')
+	mkdirSync(logsDir, { recursive: true })
+	return { baseDir, logsDir }
+}
+
+/**
+ * Waits for a log file to have content (non-empty).
+ */
+export async function waitForLogContent(filePath: string, timeout = 5000): Promise<string> {
+	const start = Date.now()
+	while (Date.now() - start < timeout) {
+		if (existsSync(filePath)) {
+			const content = readFileSync(filePath, 'utf-8')
+			if (content.length > 0) {
+				return content
+			}
+		}
+		await new Promise((r) => setTimeout(r, 100))
+	}
+	throw new Error(`Log file ${filePath} did not receive content within ${timeout}ms`)
+}
+
+/**
+ * Simulates the auto file logging configuration logic from robo.ts.
+ * Returns whether an auto file drain should be created based on config and mode.
+ */
+export function shouldCreateAutoFileDrain(
+	config: { logger?: { files?: unknown[] } } | null | undefined,
+	isMockTestMode: boolean
+): boolean {
+	// Auto-create if files is undefined (not explicitly empty) and not in mock test mode
+	return config?.logger?.files === undefined && !isMockTestMode
+}
+
+/**
+ * Generates the expected auto log file path for a given mode.
+ */
+export function getAutoLogPath(mode: string | null | undefined): string {
+	const logMode = mode || 'default'
+	return `.robo/logs/${logMode}.log`
 }

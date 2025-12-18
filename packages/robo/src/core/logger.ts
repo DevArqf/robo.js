@@ -467,6 +467,38 @@ export function createMultiDrain(drains: LogDrain[]): LogDrain {
 	}
 }
 
+/**
+ * Wraps a drain with level filtering.
+ * Only log entries at or above the specified minimum level will be passed to the wrapped drain.
+ *
+ * This is useful when combining drains with different level requirements, such as:
+ * - Console output at 'info' level
+ * - File output at 'debug' level
+ *
+ * @param drain - The drain to wrap with level filtering
+ * @param minLevel - The minimum level to pass through (e.g., 'info', 'debug')
+ * @returns A new drain that filters messages below the specified level
+ *
+ * @example
+ * ```typescript
+ * const filteredConsole = createLevelFilteredDrain(consoleDrain, 'info')
+ * const fileDrain = createFileDrain({ path: 'logs/app.log', level: 'debug' })
+ * const multiDrain = createMultiDrain([filteredConsole, fileDrain])
+ * ```
+ */
+export function createLevelFilteredDrain(drain: LogDrain, minLevel: LogLevel | string): LogDrain {
+	return async (logger: Logger, level: string, ...data: unknown[]): Promise<void> => {
+		const levelValues = logger.getLevelValues()
+		const minLevelValue = levelValues[minLevel] ?? LogLevelValues[minLevel] ?? 0
+		const currentLevelValue = levelValues[level] ?? LogLevelValues[level] ?? 0
+
+		// Only pass through if current level >= minimum level
+		if (currentLevelValue >= minLevelValue) {
+			await drain(logger, level, ...data)
+		}
+	}
+}
+
 const DEFAULT_MAX_ENTRIES = 100
 
 class LogEntry {

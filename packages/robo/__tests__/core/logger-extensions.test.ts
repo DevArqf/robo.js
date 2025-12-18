@@ -1,4 +1,4 @@
-import { createMultiDrain, Logger, logger } from '../../src/core/logger.js'
+import { createMultiDrain, createLevelFilteredDrain, Logger, logger } from '../../src/core/logger.js'
 import { createMockDrain, createDelayedMockDrain } from '../utils/logging-test-helpers.js'
 
 describe('createMultiDrain', () => {
@@ -271,5 +271,115 @@ describe('logger.addDrain (singleton)', () => {
 
 		// Cleanup
 		handle.remove()
+	})
+})
+
+describe('createLevelFilteredDrain', () => {
+	test('passes messages at or above minimum level', async () => {
+		const { drain, calls } = createMockDrain()
+		const filteredDrain = createLevelFilteredDrain(drain, 'info')
+		const testLogger = new Logger({ level: 'trace' })
+
+		await filteredDrain(testLogger, 'info', 'info message')
+		await filteredDrain(testLogger, 'warn', 'warn message')
+		await filteredDrain(testLogger, 'error', 'error message')
+
+		expect(calls.length).toBe(3)
+		expect(calls[0].level).toBe('info')
+		expect(calls[1].level).toBe('warn')
+		expect(calls[2].level).toBe('error')
+	})
+
+	test('blocks messages below minimum level', async () => {
+		const { drain, calls } = createMockDrain()
+		const filteredDrain = createLevelFilteredDrain(drain, 'info')
+		const testLogger = new Logger({ level: 'trace' })
+
+		await filteredDrain(testLogger, 'debug', 'debug message')
+		await filteredDrain(testLogger, 'trace', 'trace message')
+
+		expect(calls.length).toBe(0)
+	})
+
+	test('debug level filter allows debug and above', async () => {
+		const { drain, calls } = createMockDrain()
+		const filteredDrain = createLevelFilteredDrain(drain, 'debug')
+		const testLogger = new Logger({ level: 'trace' })
+
+		await filteredDrain(testLogger, 'trace', 'trace message')
+		await filteredDrain(testLogger, 'debug', 'debug message')
+		await filteredDrain(testLogger, 'info', 'info message')
+
+		expect(calls.length).toBe(2)
+		expect(calls[0].level).toBe('debug')
+		expect(calls[1].level).toBe('info')
+	})
+
+	test('warn level filter blocks info and below', async () => {
+		const { drain, calls } = createMockDrain()
+		const filteredDrain = createLevelFilteredDrain(drain, 'warn')
+		const testLogger = new Logger({ level: 'trace' })
+
+		await filteredDrain(testLogger, 'debug', 'debug message')
+		await filteredDrain(testLogger, 'info', 'info message')
+		await filteredDrain(testLogger, 'warn', 'warn message')
+		await filteredDrain(testLogger, 'error', 'error message')
+
+		expect(calls.length).toBe(2)
+		expect(calls[0].level).toBe('warn')
+		expect(calls[1].level).toBe('error')
+	})
+
+	test('works with multi-drain composition', async () => {
+		const { drain: drain1, calls: calls1 } = createMockDrain()
+		const { drain: drain2, calls: calls2 } = createMockDrain()
+
+		// drain1 filters at info, drain2 filters at debug
+		const filteredDrain1 = createLevelFilteredDrain(drain1, 'info')
+		const filteredDrain2 = createLevelFilteredDrain(drain2, 'debug')
+
+		const multiDrain = createMultiDrain([filteredDrain1, filteredDrain2])
+		const testLogger = new Logger({ level: 'trace' })
+
+		await multiDrain(testLogger, 'debug', 'debug message')
+		await multiDrain(testLogger, 'info', 'info message')
+
+		// drain1 should only have info message
+		expect(calls1.length).toBe(1)
+		expect(calls1[0].level).toBe('info')
+
+		// drain2 should have both debug and info
+		expect(calls2.length).toBe(2)
+		expect(calls2[0].level).toBe('debug')
+		expect(calls2[1].level).toBe('info')
+	})
+
+	test('preserves message data when passing through', async () => {
+		const { drain, calls } = createMockDrain()
+		const filteredDrain = createLevelFilteredDrain(drain, 'info')
+		const testLogger = new Logger({ level: 'trace' })
+
+		const testData = { key: 'value', nested: { foo: 'bar' } }
+		await filteredDrain(testLogger, 'info', 'message', testData, 123)
+
+		expect(calls.length).toBe(1)
+		expect(calls[0].data).toEqual(['message', testData, 123])
+	})
+
+	test('handles custom log levels', async () => {
+		const { drain, calls } = createMockDrain()
+		const filteredDrain = createLevelFilteredDrain(drain, 'info')
+		const testLogger = new Logger({
+			level: 'trace',
+			customLevels: {
+				custom: { priority: 5, label: 'CUSTOM' } // Between event(5) and ready(6)
+			}
+		})
+
+		await filteredDrain(testLogger, 'custom', 'custom level message')
+
+		// custom (priority 5) >= info (priority 2), so should pass
+		expect(calls.length).toBe(1)
+		expect(calls[0].level).toBe('custom')
 	})
 })

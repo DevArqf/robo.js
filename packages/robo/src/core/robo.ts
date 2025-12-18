@@ -1,7 +1,7 @@
 import { registerProcessEvents } from './process.js'
 import { getConfig, loadConfig } from './config.js'
 import { FLASHCORE_KEYS } from './constants.js'
-import { consoleDrain, createFileDrain, createMultiDrain, logger, LogLevel } from './logger.js'
+import { consoleDrain, createFileDrain, createLevelFilteredDrain, createMultiDrain, logger, LogLevel } from './logger.js'
 import { Env } from './env.js'
 import { executeEventHandler } from './handlers.js'
 import { Nanocore } from '../internal/nanocore.js'
@@ -111,11 +111,13 @@ async function start(options?: StartOptions) {
 					})
 				)
 			}
-		} else if (mode === 'development' && config?.logger?.files === undefined) {
-			// Dev mode default: auto-create logs/dev.log if files is undefined (not explicitly empty)
+		} else if (config?.logger?.files === undefined && !isMockTestMode) {
+			// Auto-create log file for any mode if files is undefined (not explicitly empty)
+			// Uses .robo/logs/{mode}.log (e.g., .robo/logs/development.log, .robo/logs/production.log)
+			const logMode = mode || 'default'
 			fileDrains.push(
 				createFileDrain({
-					path: 'logs/dev.log',
+					path: `.robo/logs/${logMode}.log`,
 					level: 'debug',
 					timestamp: 'short'
 				})
@@ -125,7 +127,14 @@ async function start(options?: StartOptions) {
 		// Combine console + file drains
 		// In mock test mode (without verbose), use no-op drain - tests set up their own file drain
 		const baseDrain = isMockTestMode && !isMockVerbose ? noOpDrain : (config?.logger?.drain ?? consoleDrain)
-		const combinedDrain = fileDrains.length > 0 ? createMultiDrain([baseDrain, ...fileDrains]) : baseDrain
+
+		// When combining with file drains, filter console output to info+ level
+		// This allows file drains to capture debug messages while console stays at info level
+		const consoleLevel = config?.logger?.level ?? 'info'
+		const filteredBaseDrain = fileDrains.length > 0 && baseDrain !== noOpDrain
+			? createLevelFilteredDrain(baseDrain, consoleLevel)
+			: baseDrain
+		const combinedDrain = fileDrains.length > 0 ? createMultiDrain([filteredBaseDrain, ...fileDrains]) : baseDrain
 
 		logger({
 			drain: combinedDrain,

@@ -12,7 +12,7 @@ export {
 	prioritizeHookBefore,
 	setHookPriority
 } from './core/hooks.js'
-export { consoleDrain, createFileDrain, createMultiDrain, formatTimestamp, logger, Logger } from './core/logger.js'
+export { consoleDrain, createFileDrain, createLevelFilteredDrain, createMultiDrain, formatTimestamp, logger, Logger } from './core/logger.js'
 export { Manifest } from './core/manifest-api.js'
 export { Mode } from './core/mode.js'
 export { getPluginOptions } from './core/portal.js'
