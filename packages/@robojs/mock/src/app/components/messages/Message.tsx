@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import type { StageMessage, StageReaction, StageUser } from '../../types/stage'
 import { formatTimestamp } from '../../utils/time'
 import { getAvatarUrl } from '../../utils/avatar'
@@ -7,6 +8,7 @@ import { Attachments } from './Attachments'
 import { ComponentsContainer } from './ComponentRow'
 import { Reactions } from './Reactions'
 import { EphemeralBadge } from './EphemeralBadge'
+import { useUserById } from '../../hooks/useCurrentUser'
 import styles from './Message.module.css'
 
 // Discord message flags
@@ -76,7 +78,13 @@ export function Message({
 	onContextMenu,
 	onUserContextMenu
 }: MessageProps) {
-	const { author, content, timestamp, edited_timestamp, embeds, attachments, components, reactions, flags, pinned, message_reference, type } = message
+	const { author: messageAuthor, content, timestamp, edited_timestamp, embeds, attachments, components, reactions, flags, pinned, message_reference, type } = message
+
+	// Look up the latest user data by ID - this makes user display reactive to changes
+	// Falls back to the embedded author data if user is not found in state
+	const resolvedUser = useUserById(messageAuthor.id, messageAuthor)
+	const author = useMemo(() => resolvedUser ?? messageAuthor, [resolvedUser, messageAuthor])
+
 	const isEphemeral = ((flags ?? 0) & MESSAGE_FLAGS.EPHEMERAL) !== 0
 	const isV2 = ((flags ?? 0) & MESSAGE_FLAGS.IS_COMPONENTS_V2) !== 0
 	const isSystemMessage = type === MESSAGE_TYPES.GUILD_MEMBER_JOIN

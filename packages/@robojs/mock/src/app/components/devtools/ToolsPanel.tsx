@@ -765,7 +765,8 @@ export function ToolsPanel() {
 			messages: {},
 			users: testUsers,
 			commands: [],
-			voice_states: []
+			voice_states: [],
+			currentUser: testUser1
 		}
 
 		// Add state_sync as the first event

@@ -1,5 +1,7 @@
+import { useMemo } from 'react'
 import { getAvatarUrl } from '../../utils/avatar'
 import { Markdown } from '../common/Markdown'
+import { useUserById } from '../../hooks/useCurrentUser'
 import styles from './PendingMessage.module.css'
 
 export interface PendingMessageData {
@@ -23,13 +25,17 @@ interface PendingMessageProps {
 }
 
 export function PendingMessage({ message, onRetry, onCancel }: PendingMessageProps) {
-	const { author, content, state, error } = message
+	const { author: messageAuthor, content, state, error } = message
+
+	// Look up the latest user data by ID - this makes user display reactive to changes
+	const resolvedUser = useUserById(messageAuthor.id, messageAuthor)
+	const author = useMemo(() => resolvedUser ?? messageAuthor, [resolvedUser, messageAuthor])
 
 	return (
 		<div className={`${styles.message} ${state === 'failed' ? styles.failed : styles.sending}`}>
 			<div className={styles.avatar}>
 				<img
-					src={getAvatarUrl(author.id, author.avatar)}
+					src={getAvatarUrl(author.id, author.avatar ?? null)}
 					alt=""
 					className={styles.avatarImage}
 					onError={(e) => {

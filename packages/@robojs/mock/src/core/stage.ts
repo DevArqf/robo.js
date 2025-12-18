@@ -32,7 +32,9 @@ import type {
 	StageRemoveReactionData,
 	StageJoinVoiceData,
 	StageLeaveVoiceData,
-	StageUpdateVoiceStateData
+	StageUpdateVoiceStateData,
+	StageSetCurrentUserData,
+	StageSwitchUserData
 } from '../types/stage.js'
 import type { MockApplicationCommand, MockApplicationCommandOption } from '../types/index.js'
 import type { Session } from '../types/index.js'
@@ -119,6 +121,7 @@ export class StageServer {
 			;(ws as WebSocket & { _stageSessionId: string; _lastSeq: number; _sessionValid: boolean })._stageSessionId = session?.id ?? resolvedSessionId ?? ''
 			;(ws as WebSocket & { _stageSessionId: string; _lastSeq: number; _sessionValid: boolean })._lastSeq = lastSeq
 			;(ws as WebSocket & { _stageSessionId: string; _lastSeq: number; _sessionValid: boolean })._sessionValid = !!session
+			mockLogger.debug('Emitting connection event for session:', session?.id ?? resolvedSessionId)
 			this.wss.emit('connection', ws, req)
 		})
 	}
@@ -126,6 +129,7 @@ export class StageServer {
 	/**
 	 * Handle new WebSocket connection
 	 */
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	private handleConnection(ws: WebSocket, _req: IncomingMessage): void {
 		const sessionId = (ws as WebSocket & { _stageSessionId: string })._stageSessionId
 		const lastSeq = (ws as WebSocket & { _lastSeq: number })._lastSeq || 0
@@ -227,7 +231,8 @@ export class StageServer {
 			messages: this.getRecentMessagesByChannel(state),
 			users: Array.from(state.users.values()).map((u) => this.toStageUser(u)),
 			commands: Array.from(state.commands.values()).map((c) => this.toStageCommand(c)),
-			voice_states: this.getStageVoiceStates(state)
+			voice_states: this.getStageVoiceStates(state),
+			currentUser: this.toStageUser(state.currentUser)
 		}
 
 		this.pushEvent(ws, connState, {
@@ -252,7 +257,7 @@ export class StageServer {
 	/**
 	 * Convert MockChannel to StageChannel
 	 */
-	private toStageChannel(channel: { id: string; name: string; type: number; guildId?: string; parentId?: string | null; position?: number; topic?: string | null }): StageChannel {
+	private toStageChannel(channel: { id: string; name: string; type: number; guildId?: string; parentId?: string | null; position?: number; topic?: string | null; recipientIds?: string[] }): StageChannel {
 		return {
 			id: channel.id,
 			name: channel.name,
@@ -260,20 +265,23 @@ export class StageServer {
 			guild_id: channel.guildId,
 			parent_id: channel.parentId,
 			position: channel.position,
-			topic: channel.topic
+			topic: channel.topic,
+			recipient_ids: channel.recipientIds
 		}
 	}
 
 	/**
 	 * Convert MockUser to StageUser
 	 */
-	private toStageUser(user: { id: string; username: string; discriminator?: string; avatar?: string | null; bot?: boolean }): StageUser {
+	private toStageUser(user: { id: string; username: string; discriminator?: string; avatar?: string | null; bot?: boolean; status?: 'online' | 'offline' | 'idle' | 'dnd'; activities?: Array<{ name: string; type: number; state?: string; url?: string }> }): StageUser {
 		return {
 			id: user.id,
 			username: user.username,
 			discriminator: user.discriminator,
 			avatar: user.avatar ?? null,
-			bot: user.bot
+			bot: user.bot,
+			status: user.status,
+			activities: user.activities
 		}
 	}
 
@@ -641,7 +649,7 @@ export class StageServer {
 				case 'start_typing': {
 					const data = command.data as StageStartTypingData
 					// Dispatch TYPING_START event via Session.dispatch()
-					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.getOrCreateTestUser()
+					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.currentUser
 					if (!user) {
 						this.sendCommandResponse(ws, connState, command.id, false, undefined, 'User not found')
 						break
@@ -677,7 +685,7 @@ export class StageServer {
 
 				case 'add_reaction': {
 					const data = command.data as StageAddReactionData
-					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.getOrCreateTestUser()
+					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.currentUser
 					if (!user) {
 						this.sendCommandResponse(ws, connState, command.id, false, undefined, 'User not found')
 						break
@@ -697,7 +705,7 @@ export class StageServer {
 
 				case 'remove_reaction': {
 					const data = command.data as StageRemoveReactionData
-					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.getOrCreateTestUser()
+					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.currentUser
 					if (!user) {
 						this.sendCommandResponse(ws, connState, command.id, false, undefined, 'User not found')
 						break
@@ -723,7 +731,7 @@ export class StageServer {
 
 				case 'join_voice': {
 					const data = command.data as StageJoinVoiceData
-					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.getOrCreateTestUser()
+					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.currentUser
 					if (!user) {
 						this.sendCommandResponse(ws, connState, command.id, false, undefined, 'User not found')
 						break
@@ -758,7 +766,7 @@ export class StageServer {
 
 				case 'leave_voice': {
 					const data = command.data as StageLeaveVoiceData
-					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.getOrCreateTestUser()
+					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.currentUser
 					if (!user) {
 						this.sendCommandResponse(ws, connState, command.id, false, undefined, 'User not found')
 						break
@@ -785,7 +793,7 @@ export class StageServer {
 
 				case 'update_voice_state': {
 					const data = command.data as StageUpdateVoiceStateData
-					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.getOrCreateTestUser()
+					const user = data.user?.id ? session.state.getUser(data.user.id) : session.state.currentUser
 					if (!user) {
 						this.sendCommandResponse(ws, connState, command.id, false, undefined, 'User not found')
 						break
@@ -818,6 +826,40 @@ export class StageServer {
 						}
 					})
 					this.sendCommandResponse(ws, connState, command.id, true)
+					break
+				}
+
+				case 'set_current_user': {
+					const data = command.data as StageSetCurrentUserData
+					// Update current user properties
+					const updatedUser = session.state.updateCurrentUser({
+						username: data.username,
+						avatar: data.avatar,
+						status: data.status,
+						activities: data.activities
+					})
+					// Broadcast current_user_update to all stage clients in this session
+					this.broadcastToSession(connState.sessionId, {
+						type: 'current_user_update',
+						data: { user: this.toStageUser(updatedUser) }
+					})
+					this.sendCommandResponse(ws, connState, command.id, true, { user: this.toStageUser(updatedUser) })
+					break
+				}
+
+				case 'switch_user': {
+					const data = command.data as StageSwitchUserData
+					const switchedUser = session.state.switchCurrentUser(data.user_id)
+					if (switchedUser) {
+						// Broadcast current_user_update to all stage clients in this session
+						this.broadcastToSession(connState.sessionId, {
+							type: 'current_user_update',
+							data: { user: this.toStageUser(switchedUser) }
+						})
+						this.sendCommandResponse(ws, connState, command.id, true, { user: this.toStageUser(switchedUser) })
+					} else {
+						this.sendCommandResponse(ws, connState, command.id, false, undefined, 'User not found')
+					}
 					break
 				}
 

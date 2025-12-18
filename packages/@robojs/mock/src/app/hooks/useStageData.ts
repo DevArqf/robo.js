@@ -60,6 +60,7 @@ export interface StageDataResult {
 	isSessionInvalid: boolean
 	retryCount: number
 	botUser: StageUser | null
+	currentUser: StageUser | null
 
 	// === UI State ===
 	showMembers: boolean
@@ -349,9 +350,12 @@ export function useStageData(options?: UseStageDataOptions): StageDataResult {
 			throw new Error('No channel selected')
 		}
 
-		// Create pending message
+		// Create pending message using current user
 		const pendingId = `pending_${Date.now()}_${Math.random().toString(36).slice(2)}`
-		const author = { id: 'user_0', username: 'You', avatar: null }
+		const currentUser = sessionState.currentUser
+		const author = currentUser
+			? { id: currentUser.id, username: currentUser.username, avatar: currentUser.avatar ?? null }
+			: { id: 'user_0', username: 'You', avatar: null } // Fallback for backward compat
 
 		sessionDispatch({
 			type: 'ADD_PENDING_MESSAGE',
@@ -362,6 +366,7 @@ export function useStageData(options?: UseStageDataOptions): StageDataResult {
 			const result = await sendCommand('send_message', {
 				channel_id: targetChannelId,
 				content,
+				author: { id: author.id, username: author.username },
 				...(messageReference && { message_reference: messageReference })
 			})
 			sessionDispatch({ type: 'REMOVE_PENDING_MESSAGE', payload: pendingId })
@@ -373,7 +378,7 @@ export function useStageData(options?: UseStageDataOptions): StageDataResult {
 			})
 			throw err
 		}
-	}, [isPlaybackMode, selection.selectedChannelId, sendCommand, sessionDispatch])
+	}, [isPlaybackMode, selection.selectedChannelId, sendCommand, sessionDispatch, sessionState.currentUser])
 
 	const retryMessage = useCallback(async (messageId: string) => {
 		if (isPlaybackMode) return
@@ -575,6 +580,7 @@ export function useStageData(options?: UseStageDataOptions): StageDataResult {
 		isSessionInvalid,
 		retryCount,
 		botUser: sessionState.botUser,
+		currentUser: sessionState.currentUser,
 
 		// UI State
 		showMembers: sessionState.showMembers,

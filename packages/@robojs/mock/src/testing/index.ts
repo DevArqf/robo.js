@@ -102,3 +102,7 @@ export type {
 	MockBotHandle, // Deprecated alias
 	StartMockBotOptions // Deprecated alias
 } from './helpers.js'
+
+// User utilities (Phase 8)
+export { TestUsers, TestInteractions, createTestUtils } from './user-utils.js'
+export type { TestUtils } from './user-utils.js'

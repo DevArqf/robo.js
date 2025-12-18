@@ -54,6 +54,9 @@ export type StageEventType =
 	// Playback/Recording (raw gateway events)
 	| 'dispatch'               // Raw gateway dispatch event from recordings
 
+	// Current User (User Abstraction Layer)
+	| 'current_user_update'    // Current acting user changed
+
 /**
  * Command types sent from stage clients to server
  */
@@ -74,6 +77,9 @@ export type StageCommandType =
 	| 'join_voice'             // Join a voice channel
 	| 'leave_voice'            // Leave voice channel
 	| 'update_voice_state'     // Update mute/deaf state
+	// Current User (User Abstraction Layer)
+	| 'set_current_user'       // Update current acting user
+	| 'switch_user'            // Switch to a different user
 
 // ============================================================================
 // Stage Event Payloads
@@ -110,6 +116,7 @@ export interface StateSyncPayload {
 	users: StageUser[]
 	commands: StageApplicationCommand[]  // Phase 5G: Available slash commands
 	voice_states: StageVoiceState[]  // Phase 5P: Voice channel states
+	currentUser: StageUser | null  // Current "acting" user for Stage UI
 }
 
 /**
@@ -143,6 +150,8 @@ export interface StageChannel {
 	}
 	message_count?: number
 	owner_id?: Snowflake
+	// DM-specific fields (type 1)
+	recipient_ids?: Snowflake[]
 }
 
 /**
@@ -606,6 +615,27 @@ export interface StageUpdateVoiceStateData {
 		id?: Snowflake
 		username?: string
 	}
+}
+
+/**
+ * Data for set_current_user command
+ * Updates the current "acting" user for Stage UI interactions
+ */
+export interface StageSetCurrentUserData {
+	username?: string
+	avatar?: string | null
+	status?: 'online' | 'offline' | 'idle' | 'dnd'
+	activities?: StageActivity[]
+	/** If true, creates a new user instead of updating the current one */
+	create_new?: boolean
+}
+
+/**
+ * Data for switch_user command
+ * Switches to a different existing user as the current user
+ */
+export interface StageSwitchUserData {
+	user_id: Snowflake
 }
 
 // ============================================================================

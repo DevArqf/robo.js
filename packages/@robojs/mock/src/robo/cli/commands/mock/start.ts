@@ -527,7 +527,7 @@ function registerControlRoutes(engine: BaseEngine): void {
 			// Raw INTERACTION_CREATE payload (from integration tests)
 			if (data.id && data.type !== undefined && data.application_id && data.token) {
 				const interactionData = data.data as { name?: string; custom_id?: string; values?: string[] } | undefined
-				const userId = data.user?.id || session.state.botUser.id
+				const userId = data.user?.id || session.state.currentUser.id
 				const channelId = data.channel_id || session.state.channels.values().next().value?.id || ''
 
 				// Create interaction in state

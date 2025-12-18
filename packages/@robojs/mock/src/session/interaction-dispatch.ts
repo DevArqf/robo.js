@@ -57,9 +57,10 @@ export async function dispatchInteractionToSession(
 	// Get channel info from state for the channel object (Discord API spec)
 	const channel = session.state.channels.get(defaultChannelId)
 
-	// Get or create user
-	const userId = input.user?.id || session.state.botUser.id
-	const username = input.user?.username || 'TestUser'
+	// Get or create user - use currentUser as default
+	const currentUser = session.state.currentUser
+	const userId = input.user?.id || currentUser.id
+	const username = input.user?.username || currentUser.username
 
 	// Ensure user exists in state
 	if (!session.state.users.has(userId)) {

@@ -482,7 +482,8 @@ describe('MockServerState', () => {
 
 			expect(dmChannel).toBeDefined()
 			expect(dmChannel.type).toBe(1) // DM channel type
-			expect(state.dmChannels.has(recipientId)).toBe(true)
+			// DM channels are keyed by composite key (currentUser.id:recipientId)
+			expect(state.dmChannels.size).toBe(1)
 		})
 
 		it('should return existing DM channel', () => {
@@ -580,7 +581,8 @@ describe('MockServerState', () => {
 			// DM channels are stored in both maps for O(1) lookup by channel ID
 			expect(serialized.channels.length).toBe(2)
 			expect(serialized.dmChannels.length).toBe(1)
-			expect(serialized.users.length).toBe(1)
+			// users includes botUser and currentUser (lazy-created on first access)
+			expect(serialized.users.length).toBe(2)
 			expect(serialized.messages.length).toBe(1)
 			expect(serialized.botUser.username).toBe('MockBot')
 			expect(serialized.applicationId).toBe(state.applicationId)

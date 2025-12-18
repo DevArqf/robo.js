@@ -30,6 +30,7 @@ export function AppShell() {
 		selectChannel,
 		toggleMembers,
 		botUser,
+		currentUser,
 		sessionId,
 		joinVoice,
 		leaveVoice
@@ -50,12 +51,19 @@ export function AppShell() {
 	// Pinned messages dropdown state
 	const [showPinnedMessages, setShowPinnedMessages] = useState(false)
 
-	// Combine users with botUser for voice channel display (Phase 5P)
+	// Combine users with botUser and currentUser for voice channel display
 	const allUsers = useMemo(() => {
-		if (!botUser) return users
-		const botInUsers = users.some((u) => u.id === botUser.id)
-		return botInUsers ? users : [...users, botUser]
-	}, [users, botUser])
+		const result = [...users]
+		// Add botUser if not already in list
+		if (botUser && !result.some((u) => u.id === botUser.id)) {
+			result.push(botUser)
+		}
+		// Add currentUser if not already in list
+		if (currentUser && !result.some((u) => u.id === currentUser.id)) {
+			result.push(currentUser)
+		}
+		return result
+	}, [users, botUser, currentUser])
 
 	const handleMobileMenuToggle = useCallback(() => {
 		setMobileSidebarOpen((prev) => !prev)
@@ -165,7 +173,7 @@ export function AppShell() {
 								users={allUsers}
 								onJoinVoice={joinVoice}
 								onLeaveVoice={leaveVoice}
-								currentUserId={botUser?.id}
+								currentUserId={currentUser?.id}
 							/>
 							<div className={styles.main}>
 								<Header

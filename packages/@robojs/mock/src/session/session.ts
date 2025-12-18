@@ -201,6 +201,7 @@ export class Session implements ISession {
 		// Create users from config and add as members to all guilds
 		if (options?.config?.users && options.config.users.length > 0) {
 			const guilds = Array.from(this.state.guilds.values())
+			let firstNonBotUser: MockUser | null = null
 
 			for (const userConfig of options.config.users) {
 				const user = createMockUser({
@@ -210,6 +211,11 @@ export class Session implements ISession {
 				})
 				this.state.users.set(user.id, user)
 
+				// Track first non-bot user for current user
+				if (!firstNonBotUser && !user.bot) {
+					firstNonBotUser = user
+				}
+
 				// Add user to all guilds as a member
 				for (const guild of guilds) {
 					this.state.addMemberToGuild(guild.id, user.id, {
@@ -217,6 +223,24 @@ export class Session implements ISession {
 						nick: null
 					})
 				}
+			}
+
+			// Set the first non-bot user as the current user
+			if (firstNonBotUser) {
+				this.state.currentUser = firstNonBotUser
+			}
+		}
+
+		// Ensure currentUser is a member of all guilds
+		// This is needed whether users were configured or not (default currentUser from getter)
+		const currentUser = this.state.currentUser
+		const allGuilds = Array.from(this.state.guilds.values())
+		for (const guild of allGuilds) {
+			if (!this.state.getGuildMember(guild.id, currentUser.id)) {
+				this.state.addMemberToGuild(guild.id, currentUser.id, {
+					roles: [],
+					nick: null
+				})
 			}
 		}
 
@@ -264,8 +288,8 @@ export class Session implements ISession {
 					this.state.users.set(author.id, author)
 				}
 			} else {
-				// Use a default test user
-				author = this.state.getOrCreateTestUser()
+				// Use current user as default author
+				author = this.state.currentUser
 			}
 
 			// Create the message
@@ -412,8 +436,8 @@ export class Session implements ISession {
 				this.state.addUser(author)
 			}
 		} else {
-			// Create a default test user
-			author = this.state.getOrCreateTestUser()
+			// Use current user as default author
+			author = this.state.currentUser
 		}
 
 		// Validate channel exists
@@ -590,7 +614,8 @@ export class Session implements ISession {
 				this.state.addUser(user)
 			}
 		} else {
-			user = this.state.getOrCreateTestUser()
+			// Use current user as default
+			user = this.state.currentUser
 		}
 
 		// Determine channel - use provided or find first available
@@ -685,7 +710,8 @@ export class Session implements ISession {
 				this.state.addUser(user)
 			}
 		} else {
-			user = this.state.getOrCreateTestUser()
+			// Use current user as default
+			user = this.state.currentUser
 		}
 
 		// Derive channel and guild from message if not specified
@@ -758,7 +784,8 @@ export class Session implements ISession {
 				this.state.addUser(user)
 			}
 		} else {
-			user = this.state.getOrCreateTestUser()
+			// Use current user as default
+			user = this.state.currentUser
 		}
 
 		// Derive channel and guild from message if not specified
@@ -836,7 +863,8 @@ export class Session implements ISession {
 				this.state.addUser(user)
 			}
 		} else {
-			user = this.state.getOrCreateTestUser()
+			// Use current user as default
+			user = this.state.currentUser
 		}
 
 		// Resolve channel - use provided channelId, derive from message, or get first available
@@ -924,7 +952,8 @@ export class Session implements ISession {
 				this.state.addUser(user)
 			}
 		} else {
-			user = this.state.getOrCreateTestUser()
+			// Use current user as default
+			user = this.state.currentUser
 		}
 
 		// Resolve channel
@@ -1027,7 +1056,8 @@ export class Session implements ISession {
 				this.state.addUser(user)
 			}
 		} else {
-			user = this.state.getOrCreateTestUser()
+			// Use current user as default
+			user = this.state.currentUser
 		}
 
 		// Resolve target based on command type
@@ -1150,7 +1180,8 @@ export class Session implements ISession {
 				this.state.addUser(owner)
 			}
 		} else {
-			owner = this.state.getOrCreateTestUser()
+			// Use current user as default
+			owner = this.state.currentUser
 		}
 
 		// Determine thread type based on parent channel or explicit type
@@ -2385,6 +2416,164 @@ export class Session implements ISession {
 		}
 
 		return archivedIds
+	}
+
+	// ============================================================================
+	// User Management API (Phase 8)
+	// ============================================================================
+
+	/**
+	 * Get the current acting user
+	 */
+	getCurrentUser(): MockUser {
+		return this.state.currentUser
+	}
+
+	/**
+	 * Set the current acting user by ID (switches to existing user)
+	 * @returns The switched user, or undefined if not found
+	 */
+	setCurrentUser(userId: string): MockUser | undefined {
+		return this.state.switchCurrentUser(userId)
+	}
+
+	/**
+	 * Create a new user and optionally set as current
+	 * @param config User configuration
+	 * @param setAsCurrent Whether to set this user as the current user (default: false)
+	 * @returns The created user
+	 */
+	createUser(config: { username: string; bot?: boolean; avatar?: string | null; status?: 'online' | 'offline' | 'idle' | 'dnd' }, setAsCurrent = false): MockUser {
+		const user = createMockUser({
+			username: config.username,
+			bot: config.bot ?? false,
+			avatar: config.avatar ?? null,
+			status: config.status
+		})
+		this.state.users.set(user.id, user)
+
+		// Add to all guilds as member
+		for (const guild of this.state.guilds.values()) {
+			this.state.addMemberToGuild(guild.id, user.id, {
+				roles: [],
+				nick: null
+			})
+		}
+
+		if (setAsCurrent) {
+			this.state.currentUser = user
+		}
+
+		return user
+	}
+
+	/**
+	 * Update a user's properties
+	 * @param userId The user ID to update
+	 * @param updates The properties to update
+	 * @returns The updated user, or undefined if not found
+	 */
+	updateUser(userId: string, updates: Partial<{ username: string; avatar: string | null; status: 'online' | 'offline' | 'idle' | 'dnd' }>): MockUser | undefined {
+		const user = this.state.users.get(userId)
+		if (!user) return undefined
+
+		const updated: MockUser = { ...user, ...updates }
+		this.state.users.set(userId, updated)
+
+		// If this is the current user, update that reference too
+		if (this.state.currentUser.id === userId) {
+			this.state.updateCurrentUser(updates)
+		}
+
+		return updated
+	}
+
+	/**
+	 * Get all users in the session
+	 */
+	getUsers(): MockUser[] {
+		return Array.from(this.state.users.values())
+	}
+
+	/**
+	 * Get a specific user by ID
+	 */
+	getUser(userId: string): MockUser | undefined {
+		return this.state.users.get(userId)
+	}
+
+	/**
+	 * Perform an action as a specific user (temporary switch)
+	 * Restores the original current user after the action completes
+	 * @param userId The user ID to act as
+	 * @param action The action to perform
+	 * @returns The result of the action
+	 */
+	async asUser<T>(userId: string, action: () => T | Promise<T>): Promise<T> {
+		const previousUser = this.state.currentUser
+		const targetUser = this.state.switchCurrentUser(userId)
+		if (!targetUser) {
+			throw new Error(`User ${userId} not found`)
+		}
+		try {
+			return await action()
+		} finally {
+			this.state.switchCurrentUser(previousUser.id)
+		}
+	}
+
+	/**
+	 * Send a message as a specific user
+	 * @param userId The user ID to send as
+	 * @param channelId The channel to send to
+	 * @param content The message content
+	 * @returns The created message
+	 */
+	async sendMessageAs(userId: string, channelId: string, content: string): Promise<MockMessage> {
+		const user = this.state.users.get(userId)
+		if (!user) throw new Error(`User ${userId} not found`)
+
+		return this.dispatchMessage({
+			channelId,
+			content,
+			author: { id: user.id, username: user.username }
+		})
+	}
+
+	/**
+	 * Invoke a command as a specific user
+	 * @param userId The user ID to invoke as
+	 * @param commandName The command name
+	 * @param options Optional command options
+	 * @returns The created interaction
+	 */
+	async invokeCommandAs(userId: string, commandName: string, options?: Record<string, string | number | boolean>): Promise<MockInteraction> {
+		const user = this.state.users.get(userId)
+		if (!user) throw new Error(`User ${userId} not found`)
+
+		return this.dispatchSlashCommand({
+			commandName,
+			options,
+			user: { id: user.id, username: user.username }
+		})
+	}
+
+	/**
+	 * Click a button as a specific user
+	 * @param userId The user ID to click as
+	 * @param messageId The message containing the button
+	 * @param customId The button's custom ID
+	 * @returns The created interaction
+	 */
+	async clickButtonAs(userId: string, messageId: string, customId: string): Promise<MockInteraction> {
+		const user = this.state.users.get(userId)
+		if (!user) throw new Error(`User ${userId} not found`)
+
+		return this.dispatchButtonClick({
+			messageId,
+			customId,
+			user: { id: user.id, username: user.username }
+		})
 	}
 
 	/**

@@ -265,7 +265,7 @@ export default async (request: RoboRequest) => {
 			// Store the interaction in state so callback endpoint can find it
 			const interactionData = data.data as { name?: string; custom_id?: string; values?: string[] } | undefined
 			const member = data.member as { user?: { id?: string } } | undefined
-			const userId = member?.user?.id || data.user?.id || session.state.botUser.id
+			const userId = member?.user?.id || data.user?.id || session.state.currentUser.id
 			const channelId = data.channel_id || session.state.channels.values().next().value?.id || ''
 
 			// Create interaction in state

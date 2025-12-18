@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { StageChannel, StageGuild, StageVoiceState, StageUser } from '../../types/stage'
 import { VoiceChannel } from './VoiceChannel'
+import { UserArea } from './UserArea'
 import styles from './ChannelList.module.css'
 import CogwheelIcon from '../icons/cogwheel'
 import InviteIcon from '../icons/invite'
@@ -215,6 +216,9 @@ export function ChannelList({
 					</div>
 				)}
 			</nav>
+
+			{/* Current user area at bottom */}
+			<UserArea />
 		</div>
 	)
 }

@@ -78,6 +78,7 @@ export interface SessionState {
 	messages: Record<string, StageMessage[]>
 	commands: StageApplicationCommand[] // Phase 5G: Available slash commands
 	botUser: StageUser | null
+	currentUser: StageUser | null // Current "acting" user for Stage UI
 
 	// UI state
 	selectedGuildId: string | null
@@ -147,6 +148,8 @@ type SessionAction =
 	| { type: 'CLEAR_FILTERED_EVENTS' }
 	| { type: 'SET_LOOP_WARNING'; payload: LoopWarning }
 	| { type: 'CLEAR_LOOP_WARNING' }
+	| { type: 'SET_CURRENT_USER'; payload: StageUser }
+	| { type: 'UPDATE_CURRENT_USER'; payload: Partial<StageUser> }
 
 // Initial state
 const initialState: SessionState = {
@@ -163,6 +166,7 @@ const initialState: SessionState = {
 	messages: {},
 	commands: [],
 	botUser: null,
+	currentUser: null,
 	selectedGuildId: null,
 	selectedChannelId: null,
 	showMembers: true,
@@ -193,7 +197,7 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 			return { ...state, error: action.payload, isConnecting: false, isConnected: false }
 
 		case 'HANDLE_STATE_SYNC': {
-			const { session, guilds, channels, members, roles, messages, users, commands, voice_states } = action.payload
+			const { session, guilds, channels, members, roles, messages, users, commands, voice_states, currentUser } = action.payload
 			const firstGuild = guilds[0]
 			// Find first text channel (type 0) or announcement channel (type 5), not categories (type 4) or voice (type 2)
 			const firstChannel = firstGuild
@@ -211,6 +215,7 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 				messages,
 				commands: commands || [],
 				botUser: session.bot,
+				currentUser: currentUser ?? state.currentUser,
 				selectedGuildId: state.selectedGuildId || firstGuild?.id || null,
 				selectedChannelId: state.selectedChannelId || firstChannel?.id || null,
 				eventCount: state.eventCount + 1
@@ -542,6 +547,55 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 				loopWarning: null
 			}
 
+		case 'SET_CURRENT_USER': {
+			const updatedUser = action.payload
+			// Check if user exists in users array
+			const userExists = state.users.some(u => u.id === updatedUser.id)
+			const updatedUsers = userExists
+				? state.users.map(u => u.id === updatedUser.id ? updatedUser : u)
+				: [...state.users, updatedUser]
+			// Check if user exists in members array (for any guild)
+			const memberExists = state.members.some(m => m.user.id === updatedUser.id)
+			const updatedMembers = memberExists
+				? state.members.map(m =>
+						m.user.id === updatedUser.id
+							? { ...m, user: { ...m.user, ...updatedUser } }
+							: m
+					)
+				: state.members
+			return {
+				...state,
+				currentUser: updatedUser,
+				users: updatedUsers,
+				members: updatedMembers
+			}
+		}
+
+		case 'UPDATE_CURRENT_USER': {
+			if (!state.currentUser) return state
+			const updatedUser = { ...state.currentUser, ...action.payload }
+			// Check if user exists in users array
+			const userExists = state.users.some(u => u.id === updatedUser.id)
+			const updatedUsers = userExists
+				? state.users.map(u => u.id === updatedUser.id ? updatedUser : u)
+				: [...state.users, updatedUser]
+			// Check if user exists in members array
+			const memberExists = state.members.some(m => m.user.id === updatedUser.id)
+			const updatedMembers = memberExists
+				? state.members.map(m =>
+						m.user.id === updatedUser.id
+							? { ...m, user: { ...m.user, ...updatedUser } }
+							: m
+					)
+				: state.members
+			return {
+				...state,
+				currentUser: updatedUser,
+				users: updatedUsers,
+				members: updatedMembers
+			}
+		}
+
 		default:
 			return state
 	}
@@ -744,6 +798,15 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 					dispatch({
 						type: 'HANDLE_VOICE_STATE_UPDATE',
 						payload: voiceData
+					})
+					break
+				}
+
+				case 'current_user_update': {
+					const userData = event.data as { user: StageUser }
+					dispatch({
+						type: 'SET_CURRENT_USER',
+						payload: userData.user
 					})
 					break
 				}

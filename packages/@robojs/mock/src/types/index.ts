@@ -82,6 +82,14 @@ export interface SessionState {
 	applicationId: Snowflake
 	sequence: number
 
+	// Current User Management
+	/** Current "acting" user for Stage UI interactions (separate from botUser) */
+	currentUser: MockUser
+	/** Update the current user's properties without changing their ID */
+	updateCurrentUser(updates: Partial<Omit<MockUser, 'id'>>): MockUser
+	/** Switch to a different user as the current user */
+	switchCurrentUser(userId: Snowflake): MockUser | undefined
+
 	// Sequence Management
 	nextSequence(): number
 
@@ -477,6 +485,8 @@ export interface MockChannel {
 	rtcRegion?: string | null // Voice channel region
 	videoQualityMode?: number | null // Voice channel video quality (1 = auto, 2 = full)
 	defaultAutoArchiveDuration?: number // Default thread auto-archive duration
+	/** For DM channels: IDs of the users in this DM (always 2 for regular DMs) */
+	recipientIds?: Snowflake[]
 }
 
 /**
@@ -1734,6 +1744,10 @@ export interface MockUser {
 	globalName: string | null
 	avatar: string | null
 	bot: boolean
+	/** User's online status (for Stage UI display) */
+	status?: 'online' | 'offline' | 'idle' | 'dnd'
+	/** User's activities (for Stage UI display) */
+	activities?: Array<{ name: string; type: number; state?: string; url?: string }>
 }
 
 /**
@@ -1746,6 +1760,10 @@ export interface MockUserConfig {
 	globalName?: string | null
 	avatar?: string | null
 	bot?: boolean
+	/** User's online status (for Stage UI display) */
+	status?: 'online' | 'offline' | 'idle' | 'dnd'
+	/** User's activities (for Stage UI display) */
+	activities?: Array<{ name: string; type: number; state?: string; url?: string }>
 }
 
 // ============================================================================
