@@ -705,9 +705,15 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 					dispatch({ type: 'SET_CONNECTED', payload: true })
 					break
 
-				case 'state_sync':
-					dispatch({ type: 'HANDLE_STATE_SYNC', payload: event.data as StateSyncPayload })
+				case 'state_sync': {
+					const syncPayload = event.data as StateSyncPayload
+					dispatch({ type: 'HANDLE_STATE_SYNC', payload: syncPayload })
+					// Dispatch historical logs to LogsProvider if present
+					if (syncPayload.logs && syncPayload.logs.length > 0) {
+						window.dispatchEvent(new CustomEvent('stage:logs_history', { detail: syncPayload.logs }))
+					}
 					break
+				}
 
 				case 'message_create': {
 					const msgData = event.data as StageMessageCreateData

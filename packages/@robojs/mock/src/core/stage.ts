@@ -38,6 +38,7 @@ import type {
 } from '../types/stage.js'
 import type { MockApplicationCommand, MockApplicationCommandOption } from '../types/index.js'
 import type { Session } from '../types/index.js'
+import { safeStringify } from '../utils/json.js'
 
 // Default configuration values
 const DEFAULT_MAX_BUFFER_SIZE = 1000
@@ -227,6 +228,10 @@ export class StageServer {
 	private sendStateSync(ws: WebSocket, connState: StageConnectionState, session: Session): void {
 		const state = session.state
 
+		// Get last 1,000 logs for history (balance between completeness and payload size)
+		const allLogs = session.getLogs()
+		const recentLogs = allLogs.slice(-1000)
+
 		// Build simplified state for stage client
 		const payload: StateSyncPayload = {
 			session: {
@@ -242,7 +247,8 @@ export class StageServer {
 			users: Array.from(state.users.values()).map((u) => this.toStageUser(u)),
 			commands: Array.from(state.commands.values()).map((c) => this.toStageCommand(c)),
 			voice_states: this.getStageVoiceStates(state),
-			currentUser: this.toStageUser(state.currentUser)
+			currentUser: this.toStageUser(state.currentUser),
+			logs: recentLogs.length > 0 ? recentLogs : undefined
 		}
 
 		this.pushEvent(ws, connState, {
@@ -942,7 +948,7 @@ export class StageServer {
 
 		// Send to client
 		if (ws.readyState === WebSocket.OPEN) {
-			const data = JSON.stringify(fullEvent)
+			const data = safeStringify(fullEvent)
 			mockLogger.debug(`Sending stage event: ${fullEvent.type} (seq: ${fullEvent.seq}), data length: ${data.length}`)
 			ws.send(data, (err) => {
 				if (err) {

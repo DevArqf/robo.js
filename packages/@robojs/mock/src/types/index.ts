@@ -47,6 +47,12 @@ export interface Session {
 	reset(): void
 	startAutoArchive(intervalMs?: number): void
 	stopAutoArchive(): void
+
+	// Log Recording
+	recordLog(entry: Omit<SessionLogEntry, 'id'>): SessionLogEntry
+	getLogs(): SessionLogEntry[]
+	getLogsSince(timestamp: number): SessionLogEntry[]
+	clearLogs(): void
 }
 
 /**
@@ -2007,7 +2013,7 @@ export interface SessionLogEntry {
 	timestamp: number
 	/** Log level */
 	level: SessionLogLevel
-	/** The log message (ANSI stripped) */
+	/** The log message (may contain ANSI escape codes for colored rendering) */
 	message: string
 	/** Structured data for expandable details (objects, errors, etc.) */
 	data?: unknown[]

@@ -1,4 +1,5 @@
 import type { Snowflake } from 'discord-api-types/v10'
+import type { SessionLogEntry } from './index.js'
 
 // ============================================================================
 // Stage WebSocket Protocol Types
@@ -120,6 +121,7 @@ export interface StateSyncPayload {
 	commands: StageApplicationCommand[]  // Phase 5G: Available slash commands
 	voice_states: StageVoiceState[]  // Phase 5P: Voice channel states
 	currentUser: StageUser | null  // Current "acting" user for Stage UI
+	logs?: SessionLogEntry[]  // Historical logs (last 1,000) for log panel
 }
 
 /**

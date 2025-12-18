@@ -53,7 +53,9 @@ export default async function prepareHook(context: PrepareContext<DiscordConfig>
 	setClient(client)
 
 	// Production: eagerly load all routes for fastest runtime
-	if (mode === 'production') {
+	// Note: @robojs/mock runs Robo in-process with Jest ESM. Eager handler imports can
+	// trigger Jest VM module linking errors, so keep handlers lazy in mock mode.
+	if (mode === 'production' && process.env.ROBO_MOCK_MODE !== 'true') {
 		await eagerLoadHandlers()
 	}
 

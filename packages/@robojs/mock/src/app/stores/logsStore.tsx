@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useMemo, useEffect, type ReactNode } from 'react'
 import type { SessionLogEntry, SessionLogLevel } from '../../types/index.js'
+import { stripAnsi } from '../components/logs/AnsiText.js'
 
 // ============================================================================
 // Constants
@@ -391,12 +392,12 @@ export function LogsProvider({ children }: LogsProviderProps) {
 			result = result.filter((log) => filters.levels.has(log.level))
 		}
 
-		// Filter by search
+		// Filter by search (strip ANSI codes for searching)
 		if (filters.search) {
 			const searchLower = filters.search.toLowerCase()
 			result = result.filter(
 				(log) =>
-					log.message.toLowerCase().includes(searchLower) ||
+					stripAnsi(log.message).toLowerCase().includes(searchLower) ||
 					(log.prefix && log.prefix.toLowerCase().includes(searchLower))
 			)
 		}
@@ -447,6 +448,18 @@ export function LogsProvider({ children }: LogsProviderProps) {
 			window.removeEventListener('stage:log_entry', handleLogEntry as EventListener)
 		}
 	}, [addLog])
+
+	// Listen for logs_history events (sent on state_sync with historical logs)
+	useEffect(() => {
+		const handleLogsHistory = (event: CustomEvent<SessionLogEntry[]>) => {
+			addLogs(event.detail)
+		}
+
+		window.addEventListener('stage:logs_history', handleLogsHistory as EventListener)
+		return () => {
+			window.removeEventListener('stage:logs_history', handleLogsHistory as EventListener)
+		}
+	}, [addLogs])
 
 	const value: LogsContextValue = {
 		isOpen,

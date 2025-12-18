@@ -1,8 +1,9 @@
 import type { Logger, LogDrain } from 'robo.js'
 import type { SessionLogEntry, SessionLogLevel, LogSource } from '../types/index.js'
+import { safeStringify } from '../utils/json.js'
 
-// ANSI escape code regex for stripping color codes from log messages
-const ANSI_REGEX = /\x1b\[.*?m/g
+// ANSI escape code regex (exported for UI stripping where needed)
+export const ANSI_REGEX = /\x1b\[.*?m/g
 
 /**
  * Options for creating a session log drain
@@ -75,17 +76,17 @@ export function createSessionLogDrain(options: SessionLogDrainOptions): LogDrain
 			return
 		}
 
-		// Build message from data, stripping ANSI codes
+		// Build message from data, preserving ANSI codes for UI rendering
 		const message = data
 			.map((item) => {
 				if (item instanceof Error) {
 					return `${item.message}${item.stack ? '\n' + item.stack : ''}`
 				}
 				if (typeof item === 'string') {
-					return item.replace(ANSI_REGEX, '')
+					return item // Keep ANSI codes - UI will render them as colors
 				}
 				try {
-					return JSON.stringify(item)
+					return safeStringify(item)
 				} catch {
 					return '[unserializable]'
 				}
