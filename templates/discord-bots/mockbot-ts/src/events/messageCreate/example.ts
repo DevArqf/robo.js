@@ -16,6 +16,10 @@ export default (message: Message) => {
 	//	return
 	//}
 	logger.info(`${message.author} sent message: ${message.content}`)
-	count++
-	message.reply('Hello, world!\n > ' + message.content + '\n > Count: ' + count)
+
+	if (message.author.username.includes('pkmmte')) {
+		count++
+		logger.info('Count: ' + count)
+		message.reply('Hai, world!\n (' + count + ')')
+	}
 }

@@ -475,19 +475,63 @@ class PortalImpl implements PortalAPI {
 
 	/**
 	 * Reload a handler (for HMR).
-	 * Invalidates the cached handler so it's re-imported on next access.
+	 * Uses atomic swap: keeps old handler if import fails.
 	 */
 	async reloadHandler(namespace: string, route: string, key: string): Promise<void> {
 		const record = this.getRecord(namespace, route, key)
 		if (record) {
-			record.handler = null // Invalidate
-
-			// Bust import cache
-			const importPath = this.getImportPath(record)
-			this.bustImportCache(importPath)
-
+			await this.atomicReloadRecord(record)
 			logger.debug(`Reloaded handler: ${namespace}.${route}['${key}']`)
 		}
+	}
+
+	/**
+	 * Reload a handler by its file path (for HMR).
+	 * More reliable than reloadHandler for events where multiple handlers share the same key.
+	 * Uses atomic swap: keeps old handler if import fails.
+	 */
+	async reloadHandlerByPath(namespace: string, route: string, handlerPath: string): Promise<boolean> {
+		logger.debug(`[HMR] reloadHandlerByPath called: namespace=${namespace}, route=${route}, handlerPath=${handlerPath}`)
+
+		const namespaceData = this._namespaces.get(namespace)
+		if (!namespaceData) {
+			logger.debug(`[HMR] Namespace not found: ${namespace}. Available: ${[...this._namespaces.keys()].join(', ')}`)
+			return false
+		}
+
+		const routeData = namespaceData.get(route)
+		if (!routeData) {
+			logger.debug(`[HMR] Route not found: ${route}. Available: ${[...namespaceData.keys()].join(', ')}`)
+			return false
+		}
+
+		// Log all paths in the route for debugging
+		const allPaths: string[] = []
+		for (const recordOrArray of Object.values(routeData)) {
+			const records = Array.isArray(recordOrArray) ? recordOrArray : [recordOrArray]
+			for (const record of records) {
+				allPaths.push(record.path)
+			}
+		}
+		logger.debug(`[HMR] Looking for path: ${handlerPath}. Available paths: ${allPaths.join(', ')}`)
+
+		// Search all handlers in the route for matching path
+		for (const recordOrArray of Object.values(routeData)) {
+			const records = Array.isArray(recordOrArray) ? recordOrArray : [recordOrArray]
+			for (const record of records) {
+				if (record.path === handlerPath) {
+					logger.debug(`[HMR] Found matching record, reloading atomically...`)
+
+					await this.atomicReloadRecord(record)
+
+					logger.debug(`[HMR] Reloaded handler by path: ${namespace}.${route} [${handlerPath}]`)
+					return true
+				}
+			}
+		}
+
+		logger.debug(`[HMR] Path not found in any records`)
+		return false
 	}
 
 	/**
@@ -566,6 +610,59 @@ class PortalImpl implements PortalAPI {
 		// This causes subsequent imports to use a different URL
 		importCacheBuster = Date.now()
 		logger.debug(`Import cache busted, next import will use v=${importCacheBuster}`)
+	}
+
+	/**
+	 * Atomically reload a handler record.
+	 *
+	 * This method ensures that if the import fails, the old handler is preserved.
+	 * This is critical for HMR resilience - a syntax error shouldn't break the handler
+	 * until the developer fixes it.
+	 *
+	 * @param record - The handler record to reload
+	 * @throws If import fails (but old handler is preserved)
+	 */
+	private async atomicReloadRecord(record: HandlerRecord): Promise<void> {
+		// Store reference to old handler for rollback on failure
+		const oldHandler = record.handler
+
+		// Bust import cache so we get fresh code
+		this.bustImportCache(this.getImportPath(record))
+
+		try {
+			// Import with cache busting
+			const importPath = this.getImportPath(record, true)
+			const module = await import(importPath)
+
+			// Build new handler module with all exports
+			const newHandler: HandlerModule = {
+				default: module.default,
+				config: module.config,
+				module: record.module
+			}
+
+			// Add named exports from manifest
+			if (record.exports?.named) {
+				for (const exportName of record.exports.named) {
+					newHandler[exportName] = module[exportName]
+				}
+			}
+
+			// Also add any other exports not already included
+			for (const [exportKey, value] of Object.entries(module)) {
+				if (!(exportKey in newHandler)) {
+					newHandler[exportKey] = value
+				}
+			}
+
+			// Atomic swap: only update handler on success
+			record.handler = newHandler
+		} catch (error) {
+			// Preserve old handler on failure
+			record.handler = oldHandler
+			logger.error(`Failed to reload handler, keeping previous version:`, error)
+			throw error
+		}
 	}
 
 	/**
@@ -655,6 +752,7 @@ export const portal = new Proxy(portalImpl, {
 				'getController',
 				'ensureRoute',
 				'reloadHandler',
+				'reloadHandlerByPath',
 				'reloadRoute',
 				'clearCache',
 				'initialize',

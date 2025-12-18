@@ -87,6 +87,7 @@ export const COMMANDS: CommandMetadata[] = [
 		description: 'Ready, set, code your Robo to life! Starts development mode.',
 		options: [
 			{ alias: '-h', name: '--help', description: 'Shows the available command options' },
+			{ alias: '-H', name: '--hmr', description: 'Enable hot module replacement for handlers (experimental)' },
 			{ alias: '-id', name: '--instance-id', description: 'specify the instance ID to use' },
 			{ alias: '-l', name: '--log-level', description: 'specify the log level to use (debug, info, warn, error)' },
 			{ alias: '-m', name: '--mode', description: 'specify the mode(s) to run in (dev, beta, prod, etc...)' },

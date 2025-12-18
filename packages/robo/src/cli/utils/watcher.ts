@@ -4,7 +4,7 @@ import { logger } from '../../core/logger.js'
 import { hasProperties } from './utils.js'
 
 // Defining the possible values for file changes.
-type ChangeType = 'added' | 'removed' | 'changed'
+export type ChangeType = 'added' | 'removed' | 'changed'
 
 export interface Change {
 	changeType: ChangeType

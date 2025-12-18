@@ -99,10 +99,30 @@ export interface RoboStateMessage extends RoboMessage {
 export interface SpiritMessage {
 	error?: unknown
 	event?: 'build' | 'get-state' | 'command' | 'ready' | 'restart' | 'set-state' | 'start' | 'stop'
+		| 'hmr-compile' | 'hmr-reload-handler' | 'hmr-reload-route' | 'hmr-status'
 	logLevel?: LogLevel
 	payload?: unknown
 	state?: Record<string, unknown>
 	verbose?: boolean
+}
+
+/**
+ * Payload for HMR handler reload events.
+ */
+export interface HmrReloadHandlerPayload {
+	namespace: string
+	route: string
+	key: string
+	/** Handler path relative to build dir (e.g., "events/messageCreate/example.js") */
+	handlerPath: string
+}
+
+/**
+ * Payload for HMR route reload events.
+ */
+export interface HmrReloadRoutePayload {
+	namespace: string
+	route: string
 }
 
 export type Plugin = string | [string, unknown, PluginMetaOptions?]

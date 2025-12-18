@@ -1,6 +1,7 @@
 import { logger } from 'robo.js'
 import { createCommandConfig } from '@robojs/discordjs'
 import type { ChatInputCommandInteraction } from 'discord.js'
+import { getPingMessage } from '~/utils/ping-message.js'
 
 /*
  * Customize your command details and options here.
@@ -22,5 +23,5 @@ export const config = createCommandConfig({
 export default (interaction: ChatInputCommandInteraction) => {
 	logger.info(`Ping command used by ${interaction.user}`)
 
-	interaction.reply('Pong!')
+	return getPingMessage()
 }
