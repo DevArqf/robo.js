@@ -198,6 +198,28 @@ export class Session implements ISession {
 			this.state.addChannelToGuild(defaultGuild.id, generalChannel)
 		}
 
+		// Create users from config and add as members to all guilds
+		if (options?.config?.users && options.config.users.length > 0) {
+			const guilds = Array.from(this.state.guilds.values())
+
+			for (const userConfig of options.config.users) {
+				const user = createMockUser({
+					username: userConfig.username ?? 'TestUser',
+					bot: userConfig.bot ?? false,
+					...userConfig
+				})
+				this.state.users.set(user.id, user)
+
+				// Add user to all guilds as a member
+				for (const guild of guilds) {
+					this.state.addMemberToGuild(guild.id, user.id, {
+						roles: [],
+						nick: null
+					})
+				}
+			}
+		}
+
 		// Create commands from config (for Stage UI testing)
 		if (options?.config?.commands) {
 			for (const commandConfig of options.config.commands) {

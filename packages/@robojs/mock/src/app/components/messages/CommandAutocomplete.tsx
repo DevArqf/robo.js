@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { CommandOptionInput } from './CommandOptionInput'
-import { useSession } from '../../hooks/useSession'
+import { useStageData } from '../../hooks/useStageData'
 import { DropdownContainer, ListItem, ListItemHeader } from '../base'
 import type { StageApplicationCommand } from '../../types/stage'
 import styles from './CommandAutocomplete.module.css'
@@ -14,7 +14,8 @@ interface CommandAutocompleteProps {
 
 export function CommandAutocomplete({ search, commands, onSelect, onClose: _onClose }: CommandAutocompleteProps) {
 	void _onClose // Reserved for future use
-	const { guildMembers, guildChannels } = useSession()
+	// useStageData already filters members/channels by selected guild
+	const { members, channels } = useStageData()
 	const [selectedCommand, setSelectedCommand] = useState<StageApplicationCommand | null>(null)
 	const [optionValues, setOptionValues] = useState<Record<string, unknown>>({})
 	const [highlightedIndex, setHighlightedIndex] = useState(0)
@@ -158,8 +159,8 @@ export function CommandAutocomplete({ search, commands, onSelect, onClose: _onCl
 							value={optionValues[option.name]}
 							onChange={(value) => handleOptionChange(option.name, value)}
 							isFocused={index === focusedOptionIndex}
-							members={guildMembers}
-							channels={guildChannels}
+							members={members}
+							channels={channels}
 						/>
 					))}
 				</div>

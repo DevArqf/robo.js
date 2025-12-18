@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
-import { useSession } from '../../hooks/useSession'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { useStageData } from '../../hooks/useStageData'
 import { CommandAutocomplete } from './CommandAutocomplete'
 import type { StageApplicationCommand } from '../../types/stage'
 import styles from './MessageInput.module.css'
@@ -14,7 +14,9 @@ interface MessageInputProps {
 }
 
 export function MessageInput({ channelId, channelName }: MessageInputProps) {
-	const { sendMessage, replyingTo, clearReplyingTo, slashCommands, invokeCommand } = useSession()
+	const { sendMessage, replyingTo, clearReplyingTo, commands, invokeCommand } = useStageData()
+	// Filter to only slash commands (type 1 = ChatInput)
+	const slashCommands = useMemo(() => commands.filter((c) => (c.type ?? 1) === 1), [commands])
 	const [inputValue, setInputValue] = useState('')
 	const [isSending, setIsSending] = useState(false)
 	const [showCommandAutocomplete, setShowCommandAutocomplete] = useState(false)

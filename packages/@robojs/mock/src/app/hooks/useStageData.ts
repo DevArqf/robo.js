@@ -199,6 +199,35 @@ export function useStageData(options?: UseStageDataOptions): StageDataResult {
 		}
 	}, [isPlaybackMode, playbackChannels, selection])
 
+	// Auto-select first guild/channel in live mode when data is received
+	useEffect(() => {
+		// Only in live mode
+		if (isPlaybackMode) return
+
+		// Auto-select first guild if none selected and guilds are available
+		if (!selection.selectedGuildId && sessionState.guilds.length > 0) {
+			selection.selectGuild(sessionState.guilds[0].id)
+		}
+	}, [isPlaybackMode, sessionState.guilds, selection])
+
+	// Auto-select first channel when guild is selected in live mode
+	useEffect(() => {
+		// Only in live mode
+		if (isPlaybackMode) return
+
+		// If a guild is selected but no channel is selected
+		if (selection.selectedGuildId && !selection.selectedChannelId) {
+			const guildChannels = sessionState.channels.filter(c => c.guild_id === selection.selectedGuildId)
+			// Find first text channel (type 0) or announcement channel (type 5)
+			const textChannel = guildChannels.find(c => c.type === 0 || c.type === 5)
+			if (textChannel) {
+				selection.selectChannel(textChannel.id)
+			} else if (guildChannels.length > 0) {
+				selection.selectChannel(guildChannels[0].id)
+			}
+		}
+	}, [isPlaybackMode, selection.selectedGuildId, selection.selectedChannelId, sessionState.channels, selection])
+
 	// === Resolve Data Based on Mode ===
 	const guilds = isPlaybackMode && playbackGuilds ? playbackGuilds : sessionState.guilds
 

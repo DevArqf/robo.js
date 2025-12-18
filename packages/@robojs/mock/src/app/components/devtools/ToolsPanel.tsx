@@ -1,13 +1,13 @@
 import { useCallback, useState, useEffect } from 'react'
 import { usePlaybackControls, type RecordedEvent } from '../../stores/playbackStore'
-import { useSession } from '../../hooks/useSession'
+import { useStageData } from '../../hooks/useStageData'
 import { useSessionDispatch, type PendingInteraction } from '../../stores/sessionStore'
 import { useToaster } from '../common/Toaster'
 import type { StageEventType, StageMessage, StageChannel, StageMember, StageGuild, StateSyncPayload } from '../../types/stage'
 import styles from './ToolsPanel.module.css'
 
 export function ToolsPanel() {
-	const { selectedChannelId, selectedGuildId, sessionId } = useSession()
+	const { selectedChannelId, selectedGuildId, sessionId } = useStageData()
 	const sessionDispatch = useSessionDispatch()
 	const { addEvents } = usePlaybackControls()
 	const { showToast } = useToaster()

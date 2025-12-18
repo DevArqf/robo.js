@@ -364,6 +364,38 @@ export class MockServerState implements SessionState {
 	}
 
 	/**
+	 * Add a user as a member to a guild.
+	 * Creates the guild member entry if it doesn't exist.
+	 */
+	addMemberToGuild(guildId: Snowflake, userId: Snowflake, config?: Partial<MockGuildMemberConfig>): void {
+		const guild = this.guilds.get(guildId)
+		if (!guild) return
+
+		// Add to guild.members array if not already present
+		if (!guild.members.includes(userId)) {
+			guild.members.push(userId)
+		}
+
+		// Create guild member entry
+		const memberKey = `${guildId}:${userId}`
+		if (!this.guildMembers.has(memberKey)) {
+			this.guildMembers.set(memberKey, {
+				userId,
+				guildId,
+				roles: config?.roles ?? [],
+				nick: config?.nick ?? null,
+				joinedAt: new Date().toISOString(),
+				premiumSince: null,
+				deaf: false,
+				mute: false,
+				pending: false,
+				communicationDisabledUntil: null,
+				flags: 0
+			})
+		}
+	}
+
+	/**
 	 * Remove a guild from the state
 	 */
 	removeGuild(id: Snowflake): boolean {

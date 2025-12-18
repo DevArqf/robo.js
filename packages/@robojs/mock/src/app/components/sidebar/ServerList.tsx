@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import type { StageGuild } from '../../types/stage'
-import { useSession } from '../../hooks/useSession'
+import { useStageData } from '../../hooks/useStageData'
 import CreateIcon from '../icons/create'
 import styles from './ServerList.module.css'
 
@@ -15,7 +15,7 @@ interface ServerListProps {
 }
 
 export function ServerList({ guilds, selectedId, onSelect, unreadGuildIds, sessionId, onHomeClick, homeSelected }: ServerListProps) {
-	const { sendCommand } = useSession()
+	const { sendCommand } = useStageData()
 	const [isSeeding, setIsSeeding] = useState(false)
 	const [seedError, setSeedError] = useState<string | null>(null)
 

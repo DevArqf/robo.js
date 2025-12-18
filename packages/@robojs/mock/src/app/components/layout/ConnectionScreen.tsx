@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useSession } from '../../hooks/useSession'
+import { useStageData } from '../../hooks/useStageData'
 import { useDevTools } from '../devtools/DevToolsPanel'
 import { apiFetch } from '../../utils/api'
 import styles from './ConnectionScreen.module.css'
@@ -8,7 +8,7 @@ import styles from './ConnectionScreen.module.css'
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)
 
 export function ConnectionScreen() {
-	const { sessionId, isConnecting, error, setSessionId, connect, hasGivenUp, isSessionInvalid, retryCount, retry } = useSession()
+	const { sessionId, isConnecting, error, setSessionId, connect, hasGivenUp, isSessionInvalid, retryCount, retry } = useStageData()
 	const { open: openDevTools } = useDevTools()
 	const [inputValue, setInputValue] = useState(sessionId || '')
 	const [isCreating, setIsCreating] = useState(false)

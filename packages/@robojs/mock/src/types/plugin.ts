@@ -54,8 +54,15 @@ export const DEFAULT_MOCK_PLUGIN_CONFIG: Required<MockPluginConfig> = {
 				name: 'Test Server',
 				channels: [
 					{ name: 'general', type: 0 },
-					{ name: 'bot-commands', type: 0 }
+					{ name: 'bot-commands', type: 0 },
+					{ name: 'General', type: 2 }
 				]
+			}
+		],
+		users: [
+			{
+				username: 'TestUser',
+				bot: false
 			}
 		]
 	},
