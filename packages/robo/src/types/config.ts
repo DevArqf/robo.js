@@ -28,6 +28,12 @@ export interface FileOutputConfig {
 	maxFiles?: number
 	/** Output format: 'text' for human-readable, 'json' for structured. Default: 'text' */
 	format?: 'text' | 'json'
+	/**
+	 * Generate a companion .colormap file that records ANSI escape code positions.
+	 * This allows colors to be reconstructed from stripped log files.
+	 * Default: false
+	 */
+	colorMap?: boolean
 }
 
 /**
@@ -50,6 +56,12 @@ export interface FileDrainOptions {
 	maxSize?: number
 	/** Maximum number of rotated files to keep. Default: 5 */
 	maxFiles?: number
+	/**
+	 * Generate a companion .colormap file that records ANSI escape code positions.
+	 * This allows colors to be reconstructed later. Only used when stripAnsi is true.
+	 * Default: false
+	 */
+	colorMap?: boolean
 }
 
 /**
@@ -137,6 +149,12 @@ export interface Config {
 		level?: LogLevel
 		/** Global timestamp format for all log outputs. Default: false (no timestamps) */
 		timestamp?: TimestampFormat
+		/**
+		 * Generate companion .colormap files for file-based log outputs.
+		 * These files record ANSI escape code positions, allowing colors to be reconstructed.
+		 * Individual file configs can override this setting. Default: false
+		 */
+		colorMap?: boolean
 		/** File-based log outputs. In development mode, defaults to logs/dev.log if undefined. */
 		files?: FileOutputConfig[]
 	}

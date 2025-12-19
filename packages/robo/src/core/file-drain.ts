@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { appendFile, mkdir, stat } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { ANSI_REGEX } from './logger.js'
@@ -20,6 +20,153 @@ const LogLevelValues: Record<string, number> = {
 	ready: 6,
 	warn: 7,
 	error: 8
+}
+
+// ============================================================================
+// Color Map Types and Functions
+// ============================================================================
+
+/**
+ * Represents a single ANSI escape code that was stripped from a log message.
+ * Used for reconstructing colors from stripped logs.
+ */
+export interface ColorMapEntry {
+	/** 1-indexed line number in the log file */
+	line: number
+	/** Character column (0-indexed) where the ANSI code was removed */
+	col: number
+	/** The original ANSI escape code (e.g., "\x1b[31m") */
+	code: string
+}
+
+/**
+ * Extracts ANSI codes from a message and returns both the stripped message
+ * and an array of ColorMapEntry objects recording where each code was.
+ *
+ * @param message - The message containing ANSI codes
+ * @param lineNumber - The 1-indexed line number for this entry in the log file
+ * @returns Object with stripped message and array of color map entries
+ */
+export function extractAndStripAnsi(
+	message: string,
+	lineNumber: number
+): { stripped: string; colors: ColorMapEntry[] } {
+	const colors: ColorMapEntry[] = []
+	let stripped = ''
+	let lastIndex = 0
+	let visibleCol = 0
+
+	// Match ANSI escape sequences
+	const pattern = /\x1b\[([0-9;]*)m/g
+	let match: RegExpExecArray | null
+
+	while ((match = pattern.exec(message)) !== null) {
+		// Add text before this ANSI code to the stripped output
+		const textBefore = message.slice(lastIndex, match.index)
+		stripped += textBefore
+		visibleCol += textBefore.length
+
+		// Record the ANSI code position (where it would be in stripped output)
+		colors.push({
+			line: lineNumber,
+			col: visibleCol,
+			code: match[0]
+		})
+
+		lastIndex = pattern.lastIndex
+	}
+
+	// Add remaining text after the last ANSI code
+	stripped += message.slice(lastIndex)
+
+	return { stripped, colors }
+}
+
+/**
+ * Applies a color map to a stripped message to reconstruct the original ANSI-colored text.
+ * Entries should be for the same line and sorted by column ascending.
+ *
+ * @param stripped - The stripped message without ANSI codes
+ * @param colors - Array of ColorMapEntry objects for this line
+ * @returns The message with ANSI codes re-inserted
+ */
+export function applyColorMap(stripped: string, colors: ColorMapEntry[]): string {
+	if (colors.length === 0) {
+		return stripped
+	}
+
+	// Sort by column descending so we can insert from end to beginning
+	// This way insertions don't affect the indices of earlier insertions
+	// For codes at the same position, we reverse their original order so they end up
+	// in the correct order after insertion (last inserted ends up first)
+	const indexed = colors.map((c, i) => ({ ...c, originalIndex: i }))
+	const sortedColors = indexed.sort((a, b) => {
+		if (b.col !== a.col) return b.col - a.col
+		// For same column, reverse original order (descending by index)
+		// so when inserted from end to beginning, they end up in original order
+		return b.originalIndex - a.originalIndex
+	})
+
+	let result = stripped
+	for (const entry of sortedColors) {
+		// Insert the ANSI code at the specified column
+		const col = Math.min(entry.col, result.length)
+		result = result.slice(0, col) + entry.code + result.slice(col)
+	}
+
+	return result
+}
+
+/**
+ * Parses a colormap file content (JSON-lines format) into ColorMapEntry arrays grouped by line.
+ *
+ * @param content - The colormap file content (newline-separated JSON objects)
+ * @returns Map from line number to array of ColorMapEntry for that line
+ */
+export function parseColorMapFile(content: string): Map<number, ColorMapEntry[]> {
+	const result = new Map<number, ColorMapEntry[]>()
+
+	const lines = content.trim().split('\n')
+	for (const line of lines) {
+		if (!line.trim()) continue
+		try {
+			const entry = JSON.parse(line) as ColorMapEntry
+			const existing = result.get(entry.line) || []
+			existing.push(entry)
+			result.set(entry.line, existing)
+		} catch {
+			// Skip malformed lines
+		}
+	}
+
+	return result
+}
+
+/**
+ * Reconstructs colored log content from stripped logs and a colormap.
+ *
+ * @param strippedContent - The content of a stripped log file
+ * @param colorMap - Map from line number to ColorMapEntry array
+ * @returns The log content with ANSI colors restored
+ */
+export function reconstructColoredLogs(
+	strippedContent: string,
+	colorMap: Map<number, ColorMapEntry[]>
+): string {
+	const lines = strippedContent.split('\n')
+	const result: string[] = []
+
+	for (let i = 0; i < lines.length; i++) {
+		const lineNum = i + 1 // 1-indexed
+		const colors = colorMap.get(lineNum)
+		if (colors && colors.length > 0) {
+			result.push(applyColorMap(lines[i], colors))
+		} else {
+			result.push(lines[i])
+		}
+	}
+
+	return result.join('\n')
 }
 
 /**
@@ -51,15 +198,28 @@ export function formatTimestamp(date: Date, format: TimestampFormat): string | n
 }
 
 /**
+ * Result of formatting a log entry, optionally including color map data.
+ */
+interface FormatLogEntryResult {
+	/** The formatted log entry text */
+	entry: string
+	/** Color map entries for this log line (only present if colorMap option is true) */
+	colorMapEntries?: ColorMapEntry[]
+}
+
+/**
  * Formats a log entry for file output.
+ * Optionally extracts color map data if both stripAnsi and colorMap are true.
  */
 function formatLogEntry(
 	level: string,
 	data: unknown[],
 	timestamp: TimestampFormat,
 	format: 'text' | 'json',
-	stripAnsi: boolean
-): string {
+	stripAnsi: boolean,
+	colorMap: boolean,
+	lineNumber: number
+): FormatLogEntryResult {
 	const now = new Date()
 	const ts = formatTimestamp(now, timestamp)
 
@@ -80,56 +240,82 @@ function formatLogEntry(
 		})
 		.join(' ')
 
+	let colorMapEntries: ColorMapEntry[] | undefined
+
 	// Strip ANSI codes if requested
 	if (stripAnsi) {
-		message = message.replace(ANSI_REGEX, '')
+		if (colorMap) {
+			// Extract color positions before stripping
+			const extracted = extractAndStripAnsi(message, lineNumber)
+			message = extracted.stripped
+			if (extracted.colors.length > 0) {
+				colorMapEntries = extracted.colors
+			}
+		} else {
+			// Simple strip without color map
+			message = message.replace(ANSI_REGEX, '')
+		}
 	}
 
+	let entry: string
 	if (format === 'json') {
-		return (
+		entry =
 			JSON.stringify({
 				timestamp: ts || now.toISOString(),
 				level,
 				message
 			}) + '\n'
-		)
+	} else {
+		// Plain text format
+		const parts: string[] = []
+		if (ts) {
+			parts.push(`[${ts}]`)
+		}
+		parts.push(`[${level.toUpperCase()}]`)
+		parts.push('-')
+		parts.push(message)
+		entry = parts.join(' ') + '\n'
 	}
 
-	// Plain text format
-	const parts: string[] = []
-	if (ts) {
-		parts.push(`[${ts}]`)
-	}
-	parts.push(`[${level.toUpperCase()}]`)
-	parts.push('-')
-	parts.push(message)
-
-	return parts.join(' ') + '\n'
+	return { entry, colorMapEntries }
 }
 
 /**
  * Rotates log files when the current file exceeds maxSize.
  * Uses synchronous operations to ensure rotation completes before new writes.
+ * If hasColorMap is true, also rotates the companion .colormap file.
  */
-function rotateFile(filePath: string, maxFiles: number): void {
-	// Delete oldest if at limit
-	const oldestPath = `${filePath}.${maxFiles - 1}`
-	if (existsSync(oldestPath)) {
-		unlinkSync(oldestPath)
-	}
+function rotateFile(filePath: string, maxFiles: number, hasColorMap: boolean = false): void {
+	// Helper to rotate a single file
+	const rotateOneFile = (path: string) => {
+		// Delete oldest if at limit
+		const oldestPath = `${path}.${maxFiles - 1}`
+		if (existsSync(oldestPath)) {
+			unlinkSync(oldestPath)
+		}
 
-	// Shift existing rotated files (.1 -> .2, .2 -> .3, etc)
-	for (let i = maxFiles - 2; i >= 1; i--) {
-		const fromPath = `${filePath}.${i}`
-		const toPath = `${filePath}.${i + 1}`
-		if (existsSync(fromPath)) {
-			renameSync(fromPath, toPath)
+		// Shift existing rotated files (.1 -> .2, .2 -> .3, etc)
+		for (let i = maxFiles - 2; i >= 1; i--) {
+			const fromPath = `${path}.${i}`
+			const toPath = `${path}.${i + 1}`
+			if (existsSync(fromPath)) {
+				renameSync(fromPath, toPath)
+			}
+		}
+
+		// Rotate current file to .1
+		if (existsSync(path)) {
+			renameSync(path, `${path}.1`)
 		}
 	}
 
-	// Rotate current file to .1
-	if (existsSync(filePath)) {
-		renameSync(filePath, `${filePath}.1`)
+	// Rotate main log file
+	rotateOneFile(filePath)
+
+	// Rotate colormap file if enabled
+	if (hasColorMap) {
+		const colorMapPath = `${filePath}.colormap`
+		rotateOneFile(colorMapPath)
 	}
 }
 
@@ -142,6 +328,7 @@ function rotateFile(filePath: string, maxFiles: number): void {
  * - Level filtering
  * - File rotation based on size
  * - Blocking and non-blocking write modes
+ * - Optional color map generation for color reconstruction
  *
  * @param options - Configuration options for the file drain
  * @returns A LogDrain function that writes to the specified file
@@ -154,7 +341,8 @@ function rotateFile(filePath: string, maxFiles: number): void {
  * const drain = createFileDrain({
  *   path: 'logs/app.log',
  *   timestamp: 'iso',
- *   blocking: true
+ *   blocking: true,
+ *   colorMap: true  // Generate .colormap companion file
  * })
  *
  * logger().addDrain(drain, 'file-logger')
@@ -169,11 +357,16 @@ export function createFileDrain(options: FileDrainOptions): LogDrain {
 		format = 'text',
 		stripAnsi = true,
 		maxSize = DEFAULT_MAX_SIZE,
-		maxFiles = DEFAULT_MAX_FILES
+		maxFiles = DEFAULT_MAX_FILES,
+		colorMap = false
 	} = options
+
+	// colorMap only makes sense when stripAnsi is true
+	const enableColorMap = colorMap && stripAnsi
 
 	// Resolve to absolute path
 	const absolutePath = resolve(filePath)
+	const colorMapPath = `${absolutePath}.colormap`
 
 	// Ensure directory exists (sync for initial setup)
 	const dir = dirname(absolutePath)
@@ -192,6 +385,20 @@ export function createFileDrain(options: FileDrainOptions): LogDrain {
 		currentSize = 0
 	}
 
+	// Track current line number for colormap entries
+	let currentLineNumber = 1
+	try {
+		if (existsSync(absolutePath)) {
+			// Count lines in existing file to continue from correct line number
+			const content = readFileSync(absolutePath, 'utf8')
+			currentLineNumber = content.split('\n').length
+			// If file ends with newline, next entry will be on this line
+			// If not, it's fine as is
+		}
+	} catch {
+		currentLineNumber = 1
+	}
+
 	// Track pending writes for non-blocking mode
 	const pendingWrites: Promise<void>[] = []
 
@@ -208,8 +415,16 @@ export function createFileDrain(options: FileDrainOptions): LogDrain {
 			}
 		}
 
-		// Format the log entry
-		const entry = formatLogEntry(level, data, timestamp, format, stripAnsi)
+		// Format the log entry (with optional colormap extraction)
+		const { entry, colorMapEntries } = formatLogEntry(
+			level,
+			data,
+			timestamp,
+			format,
+			stripAnsi,
+			enableColorMap,
+			currentLineNumber
+		)
 		const entryBytes = Buffer.byteLength(entry, 'utf8')
 
 		// Check if rotation is needed
@@ -220,8 +435,15 @@ export function createFileDrain(options: FileDrainOptions): LogDrain {
 				pendingWrites.length = 0
 			}
 
-			rotateFile(absolutePath, maxFiles)
+			rotateFile(absolutePath, maxFiles, enableColorMap)
 			currentSize = 0
+			currentLineNumber = 1 // Reset line counter after rotation
+		}
+
+		// Prepare colormap content if we have entries
+		let colorMapContent = ''
+		if (colorMapEntries && colorMapEntries.length > 0) {
+			colorMapContent = colorMapEntries.map((e) => JSON.stringify(e)).join('\n') + '\n'
 		}
 
 		// Write to file
@@ -237,12 +459,20 @@ export function createFileDrain(options: FileDrainOptions): LogDrain {
 				// Append to file synchronously
 				writeFileSync(absolutePath, entry, { flag: 'a', encoding: 'utf8' })
 				currentSize += entryBytes
+				currentLineNumber++
+
+				// Write colormap if we have entries
+				if (colorMapContent) {
+					writeFileSync(colorMapPath, colorMapContent, { flag: 'a', encoding: 'utf8' })
+				}
 			} catch (error) {
 				// Log write errors to console as fallback
 				console.error('[file-drain] Write error:', error)
 			}
 		} else {
 			// Non-blocking mode: fire-and-forget with tracking
+			currentLineNumber++ // Increment before async operation
+
 			const writePromise = (async () => {
 				try {
 					// Ensure directory exists
@@ -255,6 +485,11 @@ export function createFileDrain(options: FileDrainOptions): LogDrain {
 
 					await appendFile(absolutePath, entry, 'utf8')
 					currentSize += entryBytes
+
+					// Write colormap if we have entries
+					if (colorMapContent) {
+						await appendFile(colorMapPath, colorMapContent, 'utf8')
+					}
 				} catch (error) {
 					// Log write errors to console as fallback
 					console.error('[file-drain] Write error:', error)

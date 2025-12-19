@@ -107,7 +107,8 @@ async function start(options?: StartOptions) {
 						timestamp: fileConfig.timestamp ?? config.logger.timestamp,
 						maxSize: fileConfig.maxSize,
 						maxFiles: fileConfig.maxFiles,
-						format: fileConfig.format
+						format: fileConfig.format,
+						colorMap: fileConfig.colorMap ?? config.logger.colorMap
 					})
 				)
 			}
@@ -119,7 +120,8 @@ async function start(options?: StartOptions) {
 				createFileDrain({
 					path: `.robo/logs/${logMode}.log`,
 					level: 'debug',
-					timestamp: 'short'
+					timestamp: 'short',
+					colorMap: config?.logger?.colorMap
 				})
 			)
 		}

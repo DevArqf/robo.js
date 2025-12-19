@@ -1,6 +1,14 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { createFileDrain, formatTimestamp } from '../../src/core/file-drain.js'
+import {
+	createFileDrain,
+	formatTimestamp,
+	extractAndStripAnsi,
+	applyColorMap,
+	parseColorMapFile,
+	reconstructColoredLogs,
+	type ColorMapEntry
+} from '../../src/core/file-drain.js'
 import { Logger } from '../../src/core/logger.js'
 import { cleanupTempDir, createTempLogDir, readLogFile, parseJsonLogLine, createLargeString } from '../utils/logging-test-helpers.js'
 
@@ -389,5 +397,518 @@ describe('formatTimestamp', () => {
 
 	test('false: returns null', () => {
 		expect(formatTimestamp(testDate, false)).toBeNull()
+	})
+})
+
+// ============================================================================
+// ANSI Color Map Tests
+// ============================================================================
+
+describe('extractAndStripAnsi', () => {
+	describe('basic extraction', () => {
+		test('returns empty colors array for plain text', () => {
+			const result = extractAndStripAnsi('hello world', 1)
+			expect(result.stripped).toBe('hello world')
+			expect(result.colors).toEqual([])
+		})
+
+		test('extracts single color code at start', () => {
+			const result = extractAndStripAnsi('\x1b[31mred text', 1)
+			expect(result.stripped).toBe('red text')
+			expect(result.colors).toEqual([
+				{ line: 1, col: 0, code: '\x1b[31m' }
+			])
+		})
+
+		test('extracts reset code at end', () => {
+			const result = extractAndStripAnsi('text\x1b[0m', 1)
+			expect(result.stripped).toBe('text')
+			expect(result.colors).toEqual([
+				{ line: 1, col: 4, code: '\x1b[0m' }
+			])
+		})
+
+		test('extracts color and reset pair', () => {
+			const result = extractAndStripAnsi('\x1b[31mred\x1b[0m', 1)
+			expect(result.stripped).toBe('red')
+			expect(result.colors).toEqual([
+				{ line: 1, col: 0, code: '\x1b[31m' },
+				{ line: 1, col: 3, code: '\x1b[0m' }
+			])
+		})
+
+		test('tracks correct line number', () => {
+			const result = extractAndStripAnsi('\x1b[32mgreen\x1b[0m', 42)
+			expect(result.colors.every(c => c.line === 42)).toBe(true)
+		})
+	})
+
+	describe('multiple codes', () => {
+		test('extracts multiple different colors', () => {
+			const result = extractAndStripAnsi('\x1b[31mred\x1b[0m \x1b[32mgreen\x1b[0m \x1b[34mblue\x1b[0m', 1)
+			expect(result.stripped).toBe('red green blue')
+			expect(result.colors.length).toBe(6)
+		})
+
+		test('extracts adjacent codes correctly', () => {
+			const result = extractAndStripAnsi('\x1b[1m\x1b[31mbold red\x1b[0m', 1)
+			expect(result.stripped).toBe('bold red')
+			expect(result.colors).toEqual([
+				{ line: 1, col: 0, code: '\x1b[1m' },
+				{ line: 1, col: 0, code: '\x1b[31m' },
+				{ line: 1, col: 8, code: '\x1b[0m' }
+			])
+		})
+
+		test('handles combined code (semicolon syntax)', () => {
+			const result = extractAndStripAnsi('\x1b[1;31mbold red\x1b[0m', 1)
+			expect(result.stripped).toBe('bold red')
+			expect(result.colors.length).toBe(2)
+			expect(result.colors[0].code).toBe('\x1b[1;31m')
+		})
+	})
+
+	describe('edge cases', () => {
+		test('handles empty string', () => {
+			const result = extractAndStripAnsi('', 1)
+			expect(result.stripped).toBe('')
+			expect(result.colors).toEqual([])
+		})
+
+		test('handles only ANSI codes (no visible text)', () => {
+			const result = extractAndStripAnsi('\x1b[31m\x1b[0m', 1)
+			expect(result.stripped).toBe('')
+			expect(result.colors.length).toBe(2)
+		})
+
+		test('handles code in middle of text', () => {
+			const result = extractAndStripAnsi('hello \x1b[33mworld\x1b[0m!', 1)
+			expect(result.stripped).toBe('hello world!')
+			expect(result.colors).toEqual([
+				{ line: 1, col: 6, code: '\x1b[33m' },
+				{ line: 1, col: 11, code: '\x1b[0m' }
+			])
+		})
+
+		test('handles bright color codes (90-97)', () => {
+			const result = extractAndStripAnsi('\x1b[91mbright red\x1b[0m', 1)
+			expect(result.stripped).toBe('bright red')
+			expect(result.colors[0].code).toBe('\x1b[91m')
+		})
+
+		test('handles background color codes (40-47)', () => {
+			const result = extractAndStripAnsi('\x1b[44mblue bg\x1b[0m', 1)
+			expect(result.stripped).toBe('blue bg')
+			expect(result.colors[0].code).toBe('\x1b[44m')
+		})
+
+		test('handles style codes (bold, italic, underline)', () => {
+			const result = extractAndStripAnsi('\x1b[1mbold\x1b[22m \x1b[3mitalic\x1b[23m \x1b[4munderline\x1b[24m', 1)
+			expect(result.stripped).toBe('bold italic underline')
+			expect(result.colors.length).toBe(6)
+		})
+	})
+
+	describe('complex real-world scenarios', () => {
+		test('handles typical robo.js log format', () => {
+			// Simulates: [prefix] colored message
+			const input = '\x1b[90m[Server]\x1b[0m \x1b[32mReady\x1b[0m on port \x1b[33m3000\x1b[0m'
+			const result = extractAndStripAnsi(input, 1)
+			expect(result.stripped).toBe('[Server] Ready on port 3000')
+			expect(result.colors.length).toBe(6)
+		})
+
+		test('handles error with stack trace styling', () => {
+			const input = '\x1b[31mError:\x1b[0m Something failed\n    at \x1b[90mfile.ts:42\x1b[0m'
+			const result = extractAndStripAnsi(input, 1)
+			expect(result.stripped).toBe('Error: Something failed\n    at file.ts:42')
+		})
+
+		test('handles nested formatting', () => {
+			const input = '\x1b[1m\x1b[4m\x1b[31mbold underline red\x1b[0m'
+			const result = extractAndStripAnsi(input, 1)
+			expect(result.stripped).toBe('bold underline red')
+			expect(result.colors[0].code).toBe('\x1b[1m')
+			expect(result.colors[1].code).toBe('\x1b[4m')
+			expect(result.colors[2].code).toBe('\x1b[31m')
+		})
+	})
+})
+
+describe('applyColorMap', () => {
+	describe('basic reconstruction', () => {
+		test('returns original string when no colors', () => {
+			const result = applyColorMap('hello world', [])
+			expect(result).toBe('hello world')
+		})
+
+		test('inserts single code at start', () => {
+			const colors: ColorMapEntry[] = [{ line: 1, col: 0, code: '\x1b[31m' }]
+			const result = applyColorMap('red text', colors)
+			expect(result).toBe('\x1b[31mred text')
+		})
+
+		test('inserts code at end', () => {
+			const colors: ColorMapEntry[] = [{ line: 1, col: 4, code: '\x1b[0m' }]
+			const result = applyColorMap('text', colors)
+			expect(result).toBe('text\x1b[0m')
+		})
+
+		test('inserts code in middle', () => {
+			const colors: ColorMapEntry[] = [{ line: 1, col: 6, code: '\x1b[33m' }]
+			const result = applyColorMap('hello world', colors)
+			expect(result).toBe('hello \x1b[33mworld')
+		})
+	})
+
+	describe('multiple codes', () => {
+		test('inserts multiple codes in correct positions', () => {
+			const colors: ColorMapEntry[] = [
+				{ line: 1, col: 0, code: '\x1b[31m' },
+				{ line: 1, col: 3, code: '\x1b[0m' }
+			]
+			const result = applyColorMap('red', colors)
+			expect(result).toBe('\x1b[31mred\x1b[0m')
+		})
+
+		test('handles adjacent codes at same position', () => {
+			const colors: ColorMapEntry[] = [
+				{ line: 1, col: 0, code: '\x1b[1m' },
+				{ line: 1, col: 0, code: '\x1b[31m' }
+			]
+			const result = applyColorMap('bold red', colors)
+			// Both codes should be at position 0, order should be preserved
+			expect(result).toContain('\x1b[1m')
+			expect(result).toContain('\x1b[31m')
+			expect(result).toContain('bold red')
+		})
+
+		test('reconstructs complex multi-color message', () => {
+			const colors: ColorMapEntry[] = [
+				{ line: 1, col: 0, code: '\x1b[31m' },
+				{ line: 1, col: 3, code: '\x1b[0m' },
+				{ line: 1, col: 4, code: '\x1b[32m' },
+				{ line: 1, col: 9, code: '\x1b[0m' },
+				{ line: 1, col: 10, code: '\x1b[34m' },
+				{ line: 1, col: 14, code: '\x1b[0m' }
+			]
+			const result = applyColorMap('red green blue', colors)
+			expect(result).toBe('\x1b[31mred\x1b[0m \x1b[32mgreen\x1b[0m \x1b[34mblue\x1b[0m')
+		})
+	})
+
+	describe('edge cases', () => {
+		test('handles empty string', () => {
+			const result = applyColorMap('', [])
+			expect(result).toBe('')
+		})
+
+		test('handles code position beyond string length (clamps)', () => {
+			const colors: ColorMapEntry[] = [{ line: 1, col: 100, code: '\x1b[0m' }]
+			const result = applyColorMap('short', colors)
+			expect(result).toBe('short\x1b[0m')
+		})
+
+		test('handles unsorted color array', () => {
+			const colors: ColorMapEntry[] = [
+				{ line: 1, col: 5, code: '\x1b[0m' },
+				{ line: 1, col: 0, code: '\x1b[32m' }
+			]
+			const result = applyColorMap('green', colors)
+			expect(result).toBe('\x1b[32mgreen\x1b[0m')
+		})
+	})
+})
+
+describe('round-trip (extract then apply)', () => {
+	const testCases = [
+		'plain text with no colors',
+		'\x1b[31mred\x1b[0m',
+		'\x1b[1m\x1b[31mbold red\x1b[0m',
+		'mixed \x1b[32mgreen\x1b[0m and \x1b[34mblue\x1b[0m text',
+		'\x1b[90m[prefix]\x1b[0m \x1b[33mmessage\x1b[0m',
+		'\x1b[1;4;31mbold underline red\x1b[0m',
+		'text \x1b[41mwith bg\x1b[0m color',
+		'\x1b[91mbright red\x1b[0m \x1b[92mbright green\x1b[0m',
+		'\x1b[1m\x1b[3m\x1b[4m\x1b[31mmany styles\x1b[0m'
+	]
+
+	test.each(testCases)('preserves original: %s', (original) => {
+		const { stripped, colors } = extractAndStripAnsi(original, 1)
+		const reconstructed = applyColorMap(stripped, colors)
+		expect(reconstructed).toBe(original)
+	})
+
+	test('round-trip with multiple lines', () => {
+		const lines = [
+			'\x1b[31mError:\x1b[0m failed',
+			'    at \x1b[90mfile.ts:42\x1b[0m',
+			'\x1b[32mRecovering...\x1b[0m'
+		]
+
+		for (let i = 0; i < lines.length; i++) {
+			const { stripped, colors } = extractAndStripAnsi(lines[i], i + 1)
+			const reconstructed = applyColorMap(stripped, colors)
+			expect(reconstructed).toBe(lines[i])
+		}
+	})
+})
+
+describe('parseColorMapFile', () => {
+	test('parses single entry', () => {
+		const content = '{"line":1,"col":0,"code":"\\u001b[31m"}\n'
+		const result = parseColorMapFile(content)
+		expect(result.size).toBe(1)
+		expect(result.get(1)).toEqual([{ line: 1, col: 0, code: '\x1b[31m' }])
+	})
+
+	test('parses multiple entries for same line', () => {
+		const content = [
+			'{"line":1,"col":0,"code":"\\u001b[31m"}',
+			'{"line":1,"col":3,"code":"\\u001b[0m"}'
+		].join('\n')
+		const result = parseColorMapFile(content)
+		expect(result.size).toBe(1)
+		expect(result.get(1)?.length).toBe(2)
+	})
+
+	test('parses entries for different lines', () => {
+		const content = [
+			'{"line":1,"col":0,"code":"\\u001b[31m"}',
+			'{"line":2,"col":0,"code":"\\u001b[32m"}',
+			'{"line":3,"col":0,"code":"\\u001b[34m"}'
+		].join('\n')
+		const result = parseColorMapFile(content)
+		expect(result.size).toBe(3)
+		expect(result.has(1)).toBe(true)
+		expect(result.has(2)).toBe(true)
+		expect(result.has(3)).toBe(true)
+	})
+
+	test('handles empty content', () => {
+		const result = parseColorMapFile('')
+		expect(result.size).toBe(0)
+	})
+
+	test('handles whitespace-only content', () => {
+		const result = parseColorMapFile('   \n  \n  ')
+		expect(result.size).toBe(0)
+	})
+
+	test('skips malformed JSON lines', () => {
+		const content = [
+			'{"line":1,"col":0,"code":"\\u001b[31m"}',
+			'not valid json',
+			'{"line":2,"col":0,"code":"\\u001b[32m"}'
+		].join('\n')
+		const result = parseColorMapFile(content)
+		expect(result.size).toBe(2)
+	})
+
+	test('handles trailing newline', () => {
+		const content = '{"line":1,"col":0,"code":"\\u001b[31m"}\n\n'
+		const result = parseColorMapFile(content)
+		expect(result.size).toBe(1)
+	})
+})
+
+describe('reconstructColoredLogs', () => {
+	test('reconstructs single line', () => {
+		const stripped = 'red text'
+		const colorMap = new Map<number, ColorMapEntry[]>([
+			[1, [
+				{ line: 1, col: 0, code: '\x1b[31m' },
+				{ line: 1, col: 8, code: '\x1b[0m' }
+			]]
+		])
+		const result = reconstructColoredLogs(stripped, colorMap)
+		expect(result).toBe('\x1b[31mred text\x1b[0m')
+	})
+
+	test('reconstructs multiple lines', () => {
+		const stripped = 'line one\nline two\nline three'
+		const colorMap = new Map<number, ColorMapEntry[]>([
+			[1, [{ line: 1, col: 0, code: '\x1b[31m' }, { line: 1, col: 8, code: '\x1b[0m' }]],
+			[2, [{ line: 2, col: 0, code: '\x1b[32m' }, { line: 2, col: 8, code: '\x1b[0m' }]],
+			[3, [{ line: 3, col: 0, code: '\x1b[34m' }, { line: 3, col: 10, code: '\x1b[0m' }]]
+		])
+		const result = reconstructColoredLogs(stripped, colorMap)
+		expect(result).toBe('\x1b[31mline one\x1b[0m\n\x1b[32mline two\x1b[0m\n\x1b[34mline three\x1b[0m')
+	})
+
+	test('preserves lines without color entries', () => {
+		const stripped = 'colored\nplain\ncolored again'
+		const colorMap = new Map<number, ColorMapEntry[]>([
+			[1, [{ line: 1, col: 0, code: '\x1b[31m' }, { line: 1, col: 7, code: '\x1b[0m' }]],
+			[3, [{ line: 3, col: 0, code: '\x1b[32m' }, { line: 3, col: 13, code: '\x1b[0m' }]]
+		])
+		const result = reconstructColoredLogs(stripped, colorMap)
+		const lines = result.split('\n')
+		expect(lines[0]).toBe('\x1b[31mcolored\x1b[0m')
+		expect(lines[1]).toBe('plain')
+		expect(lines[2]).toBe('\x1b[32mcolored again\x1b[0m')
+	})
+
+	test('handles empty colormap', () => {
+		const stripped = 'plain text\nanother line'
+		const colorMap = new Map<number, ColorMapEntry[]>()
+		const result = reconstructColoredLogs(stripped, colorMap)
+		expect(result).toBe(stripped)
+	})
+
+	test('handles empty content', () => {
+		const colorMap = new Map<number, ColorMapEntry[]>()
+		const result = reconstructColoredLogs('', colorMap)
+		expect(result).toBe('')
+	})
+})
+
+describe('full colormap file integration', () => {
+	let tempDir: string
+	let testLogger: Logger
+
+	beforeEach(() => {
+		tempDir = createTempLogDir()
+		testLogger = new Logger({ level: 'trace' })
+	})
+
+	afterEach(() => {
+		cleanupTempDir(tempDir)
+	})
+
+	test('creates colormap file when colorMap option enabled', async () => {
+		const logPath = join(tempDir, 'test.log')
+		const drain = createFileDrain({ path: logPath, blocking: true, colorMap: true })
+
+		await drain(testLogger, 'info', '\x1b[31mred message\x1b[0m')
+
+		expect(existsSync(`${logPath}.colormap`)).toBe(true)
+	})
+
+	test('does not create colormap file when colorMap option disabled', async () => {
+		const logPath = join(tempDir, 'test.log')
+		const drain = createFileDrain({ path: logPath, blocking: true, colorMap: false })
+
+		await drain(testLogger, 'info', '\x1b[31mred message\x1b[0m')
+
+		expect(existsSync(`${logPath}.colormap`)).toBe(false)
+	})
+
+	test('does not create colormap file when stripAnsi is false', async () => {
+		const logPath = join(tempDir, 'test.log')
+		const drain = createFileDrain({ path: logPath, blocking: true, colorMap: true, stripAnsi: false })
+
+		await drain(testLogger, 'info', '\x1b[31mred message\x1b[0m')
+
+		// colorMap only works when stripAnsi is true
+		expect(existsSync(`${logPath}.colormap`)).toBe(false)
+	})
+
+	test('colormap file contains valid JSON entries', async () => {
+		const logPath = join(tempDir, 'test.log')
+		const drain = createFileDrain({ path: logPath, blocking: true, colorMap: true })
+
+		await drain(testLogger, 'info', '\x1b[31mred\x1b[0m')
+
+		const colorMapContent = readFileSync(`${logPath}.colormap`, 'utf-8')
+		const lines = colorMapContent.trim().split('\n')
+
+		for (const line of lines) {
+			const parsed = JSON.parse(line)
+			expect(parsed).toHaveProperty('line')
+			expect(parsed).toHaveProperty('col')
+			expect(parsed).toHaveProperty('code')
+		}
+	})
+
+	test('can reconstruct original colored message from log + colormap', async () => {
+		const logPath = join(tempDir, 'test.log')
+		const drain = createFileDrain({ path: logPath, blocking: true, colorMap: true })
+
+		const originalMessage = '\x1b[32mSuccess:\x1b[0m Operation completed'
+		await drain(testLogger, 'info', originalMessage)
+
+		// Read the stripped log
+		const logContent = readFileSync(logPath, 'utf-8')
+
+		// Read and parse the colormap
+		const colorMapContent = readFileSync(`${logPath}.colormap`, 'utf-8')
+		const colorMap = parseColorMapFile(colorMapContent)
+
+		// The log format is [LEVEL] - message\n, so extract just the message part
+		const logLine = logContent.trim()
+		const messageMatch = logLine.match(/\[INFO\] - (.*)$/)
+		expect(messageMatch).not.toBeNull()
+
+		// Reconstruct
+		const reconstructed = reconstructColoredLogs(messageMatch![1], colorMap)
+		expect(reconstructed).toBe(originalMessage)
+	})
+
+	test('handles multiple log entries with colors', async () => {
+		const logPath = join(tempDir, 'test.log')
+		const drain = createFileDrain({ path: logPath, blocking: true, colorMap: true })
+
+		await drain(testLogger, 'info', '\x1b[31mError 1\x1b[0m')
+		await drain(testLogger, 'info', '\x1b[32mSuccess\x1b[0m')
+		await drain(testLogger, 'info', '\x1b[33mWarning\x1b[0m')
+
+		const colorMapContent = readFileSync(`${logPath}.colormap`, 'utf-8')
+		const colorMap = parseColorMapFile(colorMapContent)
+
+		// Should have entries for 3 lines
+		expect(colorMap.has(1)).toBe(true)
+		expect(colorMap.has(2)).toBe(true)
+		expect(colorMap.has(3)).toBe(true)
+	})
+
+	test('colormap file rotates with log file', async () => {
+		const logPath = join(tempDir, 'test.log')
+		const drain = createFileDrain({
+			path: logPath,
+			blocking: true,
+			colorMap: true,
+			maxSize: 100,
+			maxFiles: 3
+		})
+
+		// Write enough to trigger rotation
+		await drain(testLogger, 'info', createLargeString(80) + '\x1b[31mred\x1b[0m')
+		await drain(testLogger, 'info', createLargeString(80) + '\x1b[32mgreen\x1b[0m')
+
+		// Both log and colormap should have rotated
+		expect(existsSync(`${logPath}.1`)).toBe(true)
+		expect(existsSync(`${logPath}.colormap.1`)).toBe(true)
+	})
+
+	test('reconstructs colors after rotation', async () => {
+		const logPath = join(tempDir, 'test.log')
+		const drain = createFileDrain({
+			path: logPath,
+			blocking: true,
+			colorMap: true,
+			maxSize: 100,
+			maxFiles: 3
+		})
+
+		const originalMessage = '\x1b[34mBlue message\x1b[0m'
+		await drain(testLogger, 'info', originalMessage)
+
+		// Force rotation by writing more
+		await drain(testLogger, 'info', createLargeString(120))
+
+		// Read rotated log and colormap
+		const rotatedLogContent = readFileSync(`${logPath}.1`, 'utf-8')
+		const rotatedColorMapContent = readFileSync(`${logPath}.colormap.1`, 'utf-8')
+		const colorMap = parseColorMapFile(rotatedColorMapContent)
+
+		// Extract message from log line
+		const logLine = rotatedLogContent.trim()
+		const messageMatch = logLine.match(/\[INFO\] - (.*)$/)
+
+		if (messageMatch) {
+			const reconstructed = reconstructColoredLogs(messageMatch[1], colorMap)
+			expect(reconstructed).toBe(originalMessage)
+		}
 	})
 })
