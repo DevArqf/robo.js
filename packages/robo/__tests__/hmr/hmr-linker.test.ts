@@ -220,6 +220,36 @@ export { foo, bar, baz }
 			expect(readBuildFile('handler1.js')).toContain(`'./utils.js?robo_hmr=600'`)
 			expect(readBuildFile('handler2.js')).toContain(`'./utils.js?robo_hmr=600'`)
 		})
+
+		it('does not rewrite import-like text inside normal strings', async () => {
+			const original = `const msg = "import foo from './utils.js'";\nexport default msg\n`
+			createBuildFile('handler.js', original)
+
+			const result = await linkModules({
+				mode: 'development',
+				version: 123,
+				modules: ['handler.js']
+			})
+
+			expect(result.success).toBe(true)
+			expect(result.linkedCount).toBe(0)
+			expect(readBuildFile('handler.js')).toBe(original)
+		})
+
+		it('does not rewrite import-like text inside template literals', async () => {
+			const original = `const msg = \`\nimport foo from './utils.js'\n\`;\nexport default msg\n`
+			createBuildFile('handler.js', original)
+
+			const result = await linkModules({
+				mode: 'development',
+				version: 123,
+				modules: ['handler.js']
+			})
+
+			expect(result.success).toBe(true)
+			expect(result.linkedCount).toBe(0)
+			expect(readBuildFile('handler.js')).toBe(original)
+		})
 	})
 
 	describe('linkModules - skips external imports', () => {

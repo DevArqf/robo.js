@@ -11,15 +11,13 @@ let count = 0
  * https://robojs.dev/discord-bots/events
  */
 export default (message: Message) => {
-	//if (message.author.bot) {
-	//	logger.info('Bot message, skipping')
-	//	return
-	//}
+	if (message.author.bot) {
+		return
+	}
+
+	count++
 	logger.info(`${message.author} sent message: ${message.content}`)
 
-	if (message.author.username.includes('pkmmte')) {
-		count++
-		logger.info('Count: ' + count)
-		message.reply('Hai, world!\n (' + count + ')')
-	}
+	// Echo the message back with a counter (useful for integration + HMR tests)
+	message.reply(`Counter: ${count} | ${message.content}`)
 }

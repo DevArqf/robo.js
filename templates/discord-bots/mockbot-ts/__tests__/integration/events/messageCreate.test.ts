@@ -4,9 +4,10 @@
  * Tests the messageCreate event handler that echoes messages.
  */
 import { fileURLToPath } from 'node:url'
-import { describe, it, expect, beforeAll, afterAll } from '@jest/globals'
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals'
 import {
 	startMockRobo,
+	clearSessionActions,
 	dispatchEvent,
 	expectAction,
 	generateSnowflake
@@ -28,6 +29,10 @@ describe('messageCreate event', () => {
 
 	afterAll(async () => {
 		await bot.stop()
+	})
+
+	beforeEach(async () => {
+		await clearSessionActions(bot.sessionId)
 	})
 
 	it('should echo received messages', async () => {
@@ -98,13 +103,13 @@ describe('messageCreate event', () => {
 		})
 
 		// Bot should include count in reply
-		await expectAction(bot.sessionId, {
-			description: 'Bot should include count in reply',
-			type: 'message_sent',
-			expected: {
-				content: expect.stringContaining('Counter:')
-			},
-			timeout: 5000
+			await expectAction(bot.sessionId, {
+				description: 'Bot should include count in reply',
+				type: 'message_sent',
+				expected: {
+				content: expect.stringMatching(/Counter:\s*\d+\s*\|\s*Another message/)
+				},
+				timeout: 5000
+			})
 		})
-	})
 })

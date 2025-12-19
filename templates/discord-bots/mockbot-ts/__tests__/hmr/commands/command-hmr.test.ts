@@ -73,7 +73,7 @@ describe('Command HMR', () => {
 
 		// 3. Modify command file to return different response
 		await files.modify('src/commands/ping.ts', (content) =>
-			content.replace("interaction.reply('Pong!')", "interaction.reply('Hot Pong!')")
+			content.replace('return getPingMessage()', "return 'Hot Pong!'")
 		)
 
 		// 4. Wait for HMR to complete, using count captured before modification
@@ -95,20 +95,67 @@ describe('Command HMR', () => {
 	}, 30000)
 
 	it('should handle syntax errors gracefully', async () => {
-		// This test verifies that the dev process survives a syntax error
-		// The key behavior: bot doesn't crash when a file has syntax errors
+		const channelId = bot.channels[0].id
 
-		// Introduce a syntax error
+		// Ensure ping is working and loaded
+		await dispatchInteraction(bot.sessionId, {
+			type: 2,
+			data: { name: 'ping', type: 1 },
+			guild_id: bot.guildId,
+			channel_id: channelId
+		})
+		await expectAction(bot.sessionId, {
+			description: 'Ping responds before introducing syntax error',
+			type: 'interaction_response',
+			expected: { response_data: { content: 'Pong!' } },
+			timeout: 5000
+		})
+		await clearSessionActions(bot.sessionId)
+
+		// Change ping to a known stable response
+		const hmrCountStable = bot.getHmrCount!()
+		await files.modify('src/commands/ping.ts', (content) =>
+			content.replace('return getPingMessage()', "return 'Stable Pong!'")
+		)
+		await bot.waitForHmrReload!(15000, hmrCountStable)
+
+		await dispatchInteraction(bot.sessionId, {
+			type: 2,
+			data: { name: 'ping', type: 1 },
+			guild_id: bot.guildId,
+			channel_id: channelId
+		})
+		await expectAction(bot.sessionId, {
+			description: 'Ping responds with Stable Pong! after successful HMR',
+			type: 'interaction_response',
+			expected: { response_data: { content: 'Stable Pong!' } },
+			timeout: 5000
+		})
+		await clearSessionActions(bot.sessionId)
+
+		// Introduce a syntax error (compilation should fail; bot should keep last-known-good handler)
 		await files.modify('src/commands/ping.ts', (content) => content + '\n invalid syntax {')
 
 		// Wait for the watcher to process (compilation will fail)
 		await new Promise((resolve) => setTimeout(resolve, 2000))
 
-		// The bot process should still be running (not crashed)
-		// Verify by checking we can still communicate with it
-		const hmrCountAfterError = bot.getHmrCount!()
+		// The bot should still respond with the previous handler behavior
+		await dispatchInteraction(bot.sessionId, {
+			type: 2,
+			data: { name: 'ping', type: 1 },
+			guild_id: bot.guildId,
+			channel_id: channelId
+		})
+		await expectAction(bot.sessionId, {
+			description: 'Ping still responds with last-known-good handler after syntax error',
+			type: 'interaction_response',
+			expected: { response_data: { content: 'Stable Pong!' } },
+			timeout: 10000
+		})
+		await clearSessionActions(bot.sessionId)
 
 		// Restore the file - this triggers HMR with valid code
+		const hmrCountAfterError = bot.getHmrCount!()
 		await files.restoreAll()
 
 		// Wait for HMR after restore
@@ -118,11 +165,19 @@ describe('Command HMR', () => {
 			// HMR detection might fail, but we just need the bot to survive
 		}
 
-		// Give time for handler to reload
-		await new Promise((resolve) => setTimeout(resolve, 1000))
-
-		// If we get here without timing out or crashing, the test passes
-		// The dev mode handled the syntax error gracefully
+		// Verify we recovered to the original behavior
+		await dispatchInteraction(bot.sessionId, {
+			type: 2,
+			data: { name: 'ping', type: 1 },
+			guild_id: bot.guildId,
+			channel_id: channelId
+		})
+		await expectAction(bot.sessionId, {
+			description: 'Ping recovers after fixing syntax error',
+			type: 'interaction_response',
+			expected: { response_data: { content: 'Pong!' } },
+			timeout: 5000
+		})
 	}, 30000)
 
 	it('should hot-reload newly added command', async () => {
@@ -176,14 +231,14 @@ export default (interaction: ChatInputCommandInteraction) => {
 
 		// Make multiple rapid changes
 		await files.modify('src/commands/ping.ts', (content) =>
-			content.replace("interaction.reply('Pong!')", "interaction.reply('Change 1')")
+			content.replace('return getPingMessage()', "return 'Change 1'")
 		)
 
 		// Wait briefly then make another change
 		await new Promise((resolve) => setTimeout(resolve, 300))
 
 		await files.modify('src/commands/ping.ts', (content) =>
-			content.replace("interaction.reply('Change 1')", "interaction.reply('Change 2')")
+			content.replace("return 'Change 1'", "return 'Change 2'")
 		)
 
 		// Wait for HMR to settle (may trigger one or multiple reloads)

@@ -50,22 +50,7 @@ describe('Utility HMR', () => {
 	it('should hot-reload handler when utility file changes', async () => {
 		const channelId = bot.channels[0].id
 
-		// Step 1: Modify ping.ts to use the utility
-		const hmrCountStep1 = bot.getHmrCount!()
-		await files.modify('src/commands/ping.ts', (content) =>
-			content
-				.replace(
-					"import { logger } from 'robo.js'",
-					"import { logger } from 'robo.js'\nimport { getPingMessage } from '../utils/ping-message.js'"
-				)
-				.replace("interaction.reply('Pong!')", 'interaction.reply(getPingMessage())')
-		)
-		await bot.waitForHmrReload!(15000, hmrCountStep1)
-
-		// Clear actions before testing
-		await clearSessionActions(bot.sessionId)
-
-		// Verify the handler uses the utility (should return 'Pong!' from utility)
+		// Verify initial state (ping returns 'Pong!' from the utility chain)
 		await dispatchInteraction(bot.sessionId, {
 			type: 2,
 			data: { name: 'ping', type: 1 },
@@ -79,7 +64,7 @@ describe('Utility HMR', () => {
 			timeout: 5000
 		})
 
-		// Step 2: Modify ONLY the utility file (not the handler)
+		// Modify ONLY the utility file (not the handler)
 		await clearSessionActions(bot.sessionId)
 		const hmrCountStep2 = bot.getHmrCount!()
 		await files.modify('src/utils/ping-message.ts', (content) =>
@@ -107,20 +92,8 @@ describe('Utility HMR', () => {
 	it('should propagate deep dependency changes through the chain', async () => {
 		const channelId = bot.channels[0].id
 
-		// Step 1: Modify ping.ts to use the utility (which uses deeper.ts)
-		// This establishes the dependency chain: ping.ts -> ping-message.ts -> deeper.ts
-		const hmrCountStep1 = bot.getHmrCount!()
-		await files.modify('src/commands/ping.ts', (content) =>
-			content
-				.replace(
-					"import { logger } from 'robo.js'",
-					"import { logger } from 'robo.js'\nimport { getPingMessage } from '../utils/ping-message.js'"
-				)
-				.replace("interaction.reply('Pong!')", 'interaction.reply(getPingMessage())')
-		)
-		await bot.waitForHmrReload!(15000, hmrCountStep1)
-
-		// Verify initial state - should return 'Pong!' from the utility chain
+		// Verify initial state - dependency chain is:
+		// ping.ts -> ping-message.ts -> deeper.ts
 		await clearSessionActions(bot.sessionId)
 		await dispatchInteraction(bot.sessionId, {
 			type: 2,
@@ -135,9 +108,7 @@ describe('Utility HMR', () => {
 			timeout: 5000
 		})
 
-		// Step 2: Modify ONLY deeper.ts (the deep dependency, 2 levels down)
-		// The HMR system should propagate this change up through:
-		// deeper.ts -> ping-message.ts -> ping.ts
+		// Modify ONLY deeper.ts (the deep dependency, 2 levels down)
 		await clearSessionActions(bot.sessionId)
 		const hmrCountStep2 = bot.getHmrCount!()
 		await files.modify('src/utils/deeper.ts', (content) =>
@@ -177,20 +148,7 @@ describe('Utility HMR', () => {
 		await sleep(1000)
 		await clearSessionActions(bot.sessionId)
 
-		// Step 1: Modify ping.ts to use the utility
-		const hmrCountStep1 = bot.getHmrCount!()
-		await files.modify('src/commands/ping.ts', (content) =>
-			content
-				.replace(
-					"import { logger } from 'robo.js'",
-					"import { logger } from 'robo.js'\nimport { getPingMessage } from '../utils/ping-message.js'"
-				)
-				.replace("interaction.reply('Pong!')", 'interaction.reply(getPingMessage())')
-		)
-		await bot.waitForHmrReload!(15000, hmrCountStep1)
-		await sleep(500)
-
-		// Step 2: Create another command that also uses the utility
+		// Create another command that also uses the utility
 		const hmrCountStep2 = bot.getHmrCount!()
 		await files.createTemp(
 			'src/commands/ping2.ts',
@@ -240,7 +198,7 @@ export default (interaction: ChatInputCommandInteraction) => {
 			timeout: 5000
 		})
 
-		// Step 3: Modify the shared utility
+		// Modify the shared utility
 		await clearSessionActions(bot.sessionId)
 		const hmrCountStep3 = bot.getHmrCount!()
 		await files.modify('src/utils/ping-message.ts', (content) =>

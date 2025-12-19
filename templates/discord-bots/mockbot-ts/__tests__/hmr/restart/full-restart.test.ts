@@ -78,7 +78,7 @@ export default () => {
 
 		// Modify a handler
 		await files.modify('src/commands/ping.ts', (content) =>
-			content.replace("interaction.reply('Pong!')", "interaction.reply('No Restart Needed!')")
+			content.replace('return getPingMessage()', "return 'No Restart Needed!'")
 		)
 
 		// Wait for HMR to complete (should happen fast for handler changes)
@@ -192,7 +192,7 @@ describe('HMR and Restart Coexistence', () => {
 
 		// First, make an HMR-compatible change
 		await files.modify('src/commands/ping.ts', (content) =>
-			content.replace("interaction.reply('Pong!')", "interaction.reply('HMR First!')")
+			content.replace('return getPingMessage()', "return 'HMR First!'")
 		)
 
 		await bot.waitForHmrReload!(10000, hmrCountBefore)

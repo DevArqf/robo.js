@@ -719,6 +719,7 @@ async function handleHmrChanges(
 		.filter((c) => c.changeType !== 'removed' && utilityPathSet.has(c.filePath))
 		.map((c) => c.filePath)
 	const filesToCompile = [...new Set([...handlerFilesToCompile, ...utilityFilesToCompile])]
+	const restartOnCompileFailure = added.length > 0 || removed.length > 0
 	if (filesToCompile.length > 0) {
 		logger.debug(`[HMR] Compiling ${filesToCompile.length} file(s)...`)
 		const compileStart = Date.now()
@@ -735,13 +736,21 @@ async function handleHmrChanges(
 
 			if (!compileResult?.success) {
 				logger.error(`[HMR] Compilation failed:`, compileResult?.error)
-				return { ...result, success: false }
+				if (restartOnCompileFailure) {
+					return { ...result, success: false }
+				}
+				logger.warn(`[HMR] Keeping previous code until next change`)
+				return result
 			}
 
 			logger.debug(`[HMR] Compilation completed in ${Date.now() - compileStart}ms`)
 		} catch (error) {
 			logger.error(`[HMR] Compilation failed:`, error)
-			return { ...result, success: false }
+			if (restartOnCompileFailure) {
+				return { ...result, success: false }
+			}
+			logger.warn(`[HMR] Keeping previous code until next change`)
+			return result
 		}
 	}
 
@@ -815,45 +824,60 @@ async function handleHmrChanges(
 		}
 	}
 
-	// Link modules to add cache-busting query params to imports
-	// This ensures handlers get fresh copies of dependencies, not stale cached versions
-	const modulesToLink = new Set(visitedModulesForLinking)
+	// Link modules (import specifier rewriting) only when utility files change.
+	// Linking causes ESM to treat dependencies as new module URLs via ?robo_hmr=,
+	// which is required to make utility changes observable after a handler reload.
+	//
+	// Avoid linking on handler-only changes to reduce unnecessary module duplication
+	// and side-effect accumulation over time.
+	if (nonHandlerChanges.length > 0) {
+		const modulesToLink = new Set<string>(visitedModulesForLinking)
 
-	// Also include directly modified handlers (not from utility changes)
-	for (const mapping of modified) {
-		const buildPath = mapping.filePath
-			.replace(/^src\//, '')
-			.replace(/\.(ts|tsx|mts)$/, '.js')
-		modulesToLink.add(buildPath)
-	}
+		// Include handlers we will reload in this batch so they import deps via robo_hmr=.
+		// (Includes added/modified handlers + those impacted by utility changes.)
+		for (const mapping of [...added, ...allModified]) {
+			const buildPath = mapping.filePath
+				.replace(/^src\//, '')
+				.replace(/\.(ts|tsx|mts)$/, '.js')
+			modulesToLink.add(buildPath)
+		}
 
-	if (modulesToLink.size > 0) {
-		const linkStart = HMR_DEBUG ? Date.now() : 0
-		const hmrVersion = Date.now()
-		logger.debug(`[HMR] Linking ${modulesToLink.size} module(s) with version ${hmrVersion}`)
+		// Include directly changed utilities so their own import chains propagate robo_hmr=.
+		for (const mapping of nonHandlerChanges) {
+			const buildPath = mapping.filePath
+				.replace(/^src\//, '')
+				.replace(/\.(ts|tsx|mts)$/, '.js')
+			modulesToLink.add(buildPath)
+		}
 
-		try {
-			const linkResult = await linkModules({
-				mode: Mode.get(),
-				version: hmrVersion,
-				modules: Array.from(modulesToLink)
-			})
+		if (modulesToLink.size > 0) {
+			const linkStart = HMR_DEBUG ? Date.now() : 0
+			const hmrVersion = Date.now()
+			logger.debug(`[HMR] Linking ${modulesToLink.size} module(s) with version ${hmrVersion}`)
 
-			if (HMR_DEBUG) {
-				const linkTime = Date.now() - linkStart
-				logger.debug(`[HMR] Linked ${linkResult.linkedCount} file(s) in ${linkTime}ms`)
-			} else if (linkResult.linkedCount > 0) {
-				logger.debug(`[HMR] Linked ${linkResult.linkedCount} file(s)`)
-			}
+			try {
+				const linkResult = await linkModules({
+					mode: Mode.get(),
+					version: hmrVersion,
+					modules: Array.from(modulesToLink)
+				})
 
-			if (linkResult.errors.length > 0) {
-				for (const error of linkResult.errors) {
-					logger.warn(`[HMR] Link warning: ${error}`)
+				if (HMR_DEBUG) {
+					const linkTime = Date.now() - linkStart
+					logger.debug(`[HMR] Linked ${linkResult.linkedCount} file(s) in ${linkTime}ms`)
+				} else if (linkResult.linkedCount > 0) {
+					logger.debug(`[HMR] Linked ${linkResult.linkedCount} file(s)`)
 				}
+
+				if (linkResult.errors.length > 0) {
+					for (const error of linkResult.errors) {
+						logger.warn(`[HMR] Link warning: ${error}`)
+					}
+				}
+			} catch (error) {
+				// Linking failure is non-fatal - handlers may still work, just with potential cache issues
+				logger.warn(`[HMR] Linking failed (continuing anyway):`, error)
 			}
-		} catch (error) {
-			// Linking failure is non-fatal - handlers may still work, just with potential cache issues
-			logger.warn(`[HMR] Linking failed (continuing anyway):`, error)
 		}
 	}
 
@@ -864,6 +888,7 @@ async function handleHmrChanges(
 	if (needsRouteReload) {
 		// Route-level reload for added/removed handlers or dynamic import safety
 		const uniqueRoutes = getUniqueRoutes([...added, ...removed, ...allModified])
+		let failedRoutes = 0
 
 		for (const [namespace, route] of uniqueRoutes) {
 			logger.debug(`[HMR] Reloading route: ${namespace}.${route}`)
@@ -875,12 +900,14 @@ async function handleHmrChanges(
 				})
 
 				if (!response?.success) {
-					logger.error(`[HMR] Route reload failed: ${response?.error}`)
-					return { ...result, success: false }
+					failedRoutes++
+					logger.error(`[HMR] Route reload failed (keeping previous code): ${response?.error}`)
+					continue
 				}
 
 				result.reloadedRoutes++
 			} catch (error) {
+				// IPC/worker failures are fatal for HMR - fall back to full restart
 				logger.error(`[HMR] Route reload failed:`, error)
 				return { ...result, success: false }
 			}
@@ -889,11 +916,14 @@ async function handleHmrChanges(
 		logger.log(
 			Indent,
 			color.cyan('[HMR]'),
-			`Reloaded ${result.reloadedRoutes} route(s)`,
+			failedRoutes > 0
+				? `Reloaded ${result.reloadedRoutes} route(s) (${failedRoutes} failed)`
+				: `Reloaded ${result.reloadedRoutes} route(s)`,
 			color.dim(`(${Date.now() - start}ms)`)
 		)
 	} else {
 		// Handler-level reload for modifications only (including those impacted by utility changes)
+		let failedHandlers = 0
 		for (const mapping of allModified) {
 			// Convert source path to build path (e.g., src/events/messageCreate/example.ts -> events/messageCreate/example.js)
 			const handlerPath = mapping.filePath
@@ -914,12 +944,14 @@ async function handleHmrChanges(
 				})
 
 				if (!response?.success) {
-					logger.error(`[HMR] Handler reload failed: ${response?.error}`)
-					return { ...result, success: false }
+					failedHandlers++
+					logger.error(`[HMR] Handler reload failed (keeping previous code): ${response?.error}`)
+					continue
 				}
 
 				result.reloadedHandlers++
 			} catch (error) {
+				// IPC/worker failures are fatal for HMR - fall back to full restart
 				logger.error(`[HMR] Handler reload failed:`, error)
 				return { ...result, success: false }
 			}
@@ -928,7 +960,9 @@ async function handleHmrChanges(
 		logger.log(
 			Indent,
 			color.cyan('[HMR]'),
-			`Reloaded ${result.reloadedHandlers} handler(s)`,
+			failedHandlers > 0
+				? `Reloaded ${result.reloadedHandlers} handler(s) (${failedHandlers} failed)`
+				: `Reloaded ${result.reloadedHandlers} handler(s)`,
 			color.dim(`(${Date.now() - start}ms)`)
 		)
 	}

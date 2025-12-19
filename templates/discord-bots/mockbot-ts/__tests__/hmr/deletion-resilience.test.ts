@@ -33,27 +33,21 @@ describe('Deletion Resilience', () => {
 
 	afterEach(async () => {
 		if (files.hasPendingChanges()) {
+			const hmrCountBefore = bot.getHmrCount!()
 			await files.restoreAll()
-			// Give time for HMR to settle after restoration
-			await sleep(2000)
+			// Wait for HMR to settle after file restoration
+			try {
+				await bot.waitForHmrReload!(20000, hmrCountBefore)
+			} catch {
+				// HMR might not trigger if files didn't actually change
+			}
+			await sleep(500)
 		}
 		await clearSessionActions(bot.sessionId)
 	})
 
 	it('should survive utility file deletion without crashing', async () => {
 		const channelId = bot.channels[0].id
-
-		// Step 1: Set up ping to use the utility
-		const hmrCountStep1 = bot.getHmrCount!()
-		await files.modify('src/commands/ping.ts', (content) =>
-			content
-				.replace(
-					"import { logger } from 'robo.js'",
-					"import { logger } from 'robo.js'\nimport { getPingMessage } from '../utils/ping-message.js'"
-				)
-				.replace("interaction.reply('Pong!')", 'interaction.reply(getPingMessage())')
-		)
-		await bot.waitForHmrReload!(15000, hmrCountStep1)
 
 		// Verify it works initially
 		await dispatchInteraction(bot.sessionId, {
@@ -88,18 +82,6 @@ describe('Deletion Resilience', () => {
 	it('should recover when deleted utility is restored', async () => {
 		const channelId = bot.channels[0].id
 
-		// Step 1: Set up ping to use the utility
-		const hmrCountStep1 = bot.getHmrCount!()
-		await files.modify('src/commands/ping.ts', (content) =>
-			content
-				.replace(
-					"import { logger } from 'robo.js'",
-					"import { logger } from 'robo.js'\nimport { getPingMessage } from '../utils/ping-message.js'"
-				)
-				.replace("interaction.reply('Pong!')", 'interaction.reply(getPingMessage())')
-		)
-		await bot.waitForHmrReload!(15000, hmrCountStep1)
-
 		// Verify it works initially
 		await clearSessionActions(bot.sessionId)
 		await dispatchInteraction(bot.sessionId, {
@@ -128,25 +110,6 @@ describe('Deletion Resilience', () => {
 			await bot.waitForHmrReload!(20000, hmrCountBeforeRestore)
 		} catch {
 			// HMR might not increment if state recovery works differently
-			await sleep(2000)
-		}
-
-		// Set up ping again after restoration (file state was restored)
-		await clearSessionActions(bot.sessionId)
-		const hmrCountStep3 = bot.getHmrCount!()
-		await files.modify('src/commands/ping.ts', (content) =>
-			content
-				.replace(
-					"import { logger } from 'robo.js'",
-					"import { logger } from 'robo.js'\nimport { getPingMessage } from '../utils/ping-message.js'"
-				)
-				.replace("interaction.reply('Pong!')", 'interaction.reply(getPingMessage())')
-		)
-
-		try {
-			await bot.waitForHmrReload!(15000, hmrCountStep3)
-		} catch {
-			// Handler might already be set up
 			await sleep(2000)
 		}
 

@@ -90,7 +90,6 @@ describe('Dynamic Import HMR', () => {
 		const channelId = bot.channels[0].id
 
 		// Step 1: Create a utility module to be dynamically imported alongside lazy.ts
-		const hmrCountStep1 = bot.getHmrCount!()
 		await files.createTemp(
 			'src/utils/lazy-extra.ts',
 			`
@@ -99,7 +98,7 @@ export function getExtraMessage(): string {
 }
 `
 		)
-		await bot.waitForHmrReload!(15000, hmrCountStep1)
+		// Adding an unused utility should not trigger an HMR reload on its own.
 
 		// Step 2: Modify the lazy command to use both dynamic imports
 		const hmrCountStep2 = bot.getHmrCount!()
