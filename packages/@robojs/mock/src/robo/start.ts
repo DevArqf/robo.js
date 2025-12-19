@@ -14,6 +14,7 @@ import { DEFAULT_MOCK_PLUGIN_CONFIG, type MockPluginConfig } from '../types/plug
 import { registerWebSocketHandlers, areHandlersRegistered, markHandlersRegistered } from './prepare.js'
 import type { Session } from '../session/session.js'
 import { createSessionLogDrain } from '../session/log-drain.js'
+import type { SessionLogLevel } from '../types/index.js'
 
 /**
  * Global reference to the mock mode session.
@@ -151,8 +152,18 @@ export default async (context: StartContext<MockPluginConfig>) => {
 			}
 		})
 
+		// Capture cutoff time before drain processes new logs
+		const drainCutoff = Date.now()
+
 		// Add drain to the main logger and store handle for cleanup
 		mockModeLogDrainHandle = logger().addDrain(logDrain, `mock-session-${sessionForDrain.id}`)
+
+		// Replay buffered historical logs (from before drain was installed)
+		replayHistoricalLogs(sessionForDrain, drainCutoff, {
+			id: resolvedBotUser.config.id ?? '',
+			username: resolvedBotUser.config.username ?? 'MockBot'
+		})
+
 		mockLogger.debug('Log drain installed for dev mode')
 
 		// Register commands to mock server via HTTP
@@ -340,4 +351,60 @@ function entriesToContext(entries: HandlerEntry[], type: 'user' | 'message'): Re
 	}
 
 	return result
+}
+
+/**
+ * Replays buffered historical logs to the session.
+ * These are logs that occurred before the drain was installed.
+ */
+function replayHistoricalLogs(
+	session: Session,
+	cutoffTime: number,
+	botUser: { id: string; username: string }
+): void {
+	// Get buffered logs (returns newest-first, may contain undefined slots)
+	const bufferedLogs = logger().getRecentLogs(100)
+
+	// Filter and reverse to get chronological order
+	const historicalLogs = bufferedLogs
+		.filter((entry) => entry && entry.timestamp.getTime() < cutoffTime)
+		.reverse()
+
+	if (historicalLogs.length === 0) {
+		return
+	}
+
+	mockLogger.debug(`Replaying ${historicalLogs.length} historical logs`)
+
+	for (const entry of historicalLogs) {
+		// Build message from data array (same as log-drain.ts)
+		const message = entry.data
+			.map((item) => {
+				if (item instanceof Error) {
+					return `${item.message}${item.stack ? '\n' + item.stack : ''}`
+				}
+				if (typeof item === 'string') {
+					return item
+				}
+				try {
+					return JSON.stringify(item)
+				} catch {
+					return '[unserializable]'
+				}
+			})
+			.join(' ')
+
+		// Record to session (id will be assigned by LogRecorder)
+		session.recordLog({
+			timestamp: entry.timestamp.getTime(),
+			level: entry.level as SessionLogLevel,
+			message,
+			source: {
+				connectionId: 'dev-mode',
+				sessionId: session.id,
+				botUserId: botUser.id,
+				botUsername: botUser.username
+			}
+		})
+	}
 }

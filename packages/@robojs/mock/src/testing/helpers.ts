@@ -37,11 +37,16 @@ export async function waitForAction(
 		typeof options === 'string' ? { type: options } : options
 	const timeout = opts.timeout ?? getMockConfig().defaultTimeout
 	const startTime = Date.now()
+	// Grace window to avoid missing actions that are recorded during the triggering
+	// request (e.g. dispatchEvent/dispatchInteraction) before this function begins polling.
+	// This can happen when the bot responds very quickly and the control API request
+	// takes longer than expected.
+	const querySince = startTime - 5000
 
 	while (Date.now() - startTime < timeout) {
 		const { actions } = await getSessionActions(sessionId, {
 			type: opts.type,
-			since: startTime
+			since: querySince
 		})
 
 		// Filter by type if specified
@@ -78,10 +83,11 @@ export async function waitForAnyAction(
 ): Promise<RecordedAction> {
 	const actualTimeout = timeout ?? getMockConfig().defaultTimeout
 	const startTime = Date.now()
+	const querySince = startTime - 5000
 
 	while (Date.now() - startTime < actualTimeout) {
 		const { actions } = await getSessionActions(sessionId, {
-			since: startTime
+			since: querySince
 		})
 
 		const match = actions.find(filter)
@@ -268,8 +274,16 @@ export async function expectAction(
 	const { description, type, expected, timeout } = options
 
 	try {
-		// Wait for the action
-		const actions = await waitForAction(sessionId, { type, timeout })
+		// Wait for an action that matches the expected data.
+		// Many bots can emit multiple actions of the same type in response to a single event
+		// (e.g. multiple `message_sent` handlers). Filtering here avoids flakey ordering issues.
+		const actions = await waitForAction(sessionId, {
+			type,
+			timeout,
+			filter: expected
+				? (action) => deepEquals(action.data, expected)
+				: undefined
+		})
 		const action = actions[0]
 		const actual = action?.data
 
@@ -577,12 +591,16 @@ async function startHmrMode(options: StartMockRoboOptions): Promise<MockRoboHand
 		registerTestFile(sessionId, options.testFilePath)
 	}
 
-	// Spawn robo dev --hmr
-	const devProcess = spawn('npx', ['robo', 'dev', '--hmr'], {
-		cwd: process.cwd(),
-		env: {
-			...process.env,
-			NODE_ENV: 'development',
+		// Spawn robo dev --hmr
+		const devArgs = ['robo', 'dev', '--hmr']
+		if (options.verbose) {
+			devArgs.push('--verbose')
+		}
+		const devProcess = spawn('npx', devArgs, {
+			cwd: process.cwd(),
+			env: {
+				...process.env,
+				NODE_ENV: 'development',
 			ROBO_MOCK_MODE: 'true',
 			ROBO_MOCK_PORT: String(port),
 			ROBO_MOCK_SESSION_ID: sessionId,
@@ -664,18 +682,38 @@ async function startHmrMode(options: StartMockRoboOptions): Promise<MockRoboHand
 
 	const waitForFullRestart = async (restartTimeout = 30000, fromCount?: number): Promise<void> => {
 		// Use provided count or capture current count
-		const startCount = fromCount ?? fullRestartCount
+		let startCount = fromCount ?? fullRestartCount
 		const startTime = Date.now()
 
+		// Restart log messages can be emitted without an actual disconnect/reconnect cycle
+		// (e.g. "Falling back to full restart..."). To avoid false positives, require the
+		// gateway connection count to drop to 0 and then recover.
 		while (Date.now() - startTime < restartTimeout) {
 			if (fullRestartCount > startCount) {
-				// Wait for ready after restart
-				await waitForBotConnection(sessionId, 30000)
+				startCount = fullRestartCount
+
+				// Give the process a chance to disconnect before considering it a restart.
+				// If we never observe a disconnect, keep waiting for the next restart signal.
+				const remaining = restartTimeout - (Date.now() - startTime)
+				const disconnectTimeout = Math.min(5000, Math.max(500, remaining))
+				const didDisconnect = await waitForBotDisconnect(sessionId, disconnectTimeout).then(
+					() => true,
+					() => false
+				)
+
+				if (!didDisconnect) {
+					await sleep(100)
+					continue
+				}
+
+				// Now wait for the bot to reconnect.
+				await waitForBotConnection(sessionId, Math.min(30000, Math.max(500, remaining)))
 				return
 			}
 			await sleep(100)
 		}
-		throw new Error(`Full restart not detected after ${restartTimeout}ms`)
+
+		throw new Error(`Full restart not detected after ${restartTimeout}ms (startCount=${fromCount ?? 'auto'}, currentCount=${fullRestartCount})`)
 	}
 
 	return {
@@ -976,4 +1014,31 @@ async function waitForBotConnection(
 	}
 
 	throw new Error(`Bot not connected after ${timeout}ms`)
+}
+
+/**
+ * Wait for the bot to disconnect from the gateway (connections count reaches 0).
+ */
+async function waitForBotDisconnect(sessionId: string, timeout: number): Promise<void> {
+	const startTime = Date.now()
+	const config = getMockConfig()
+	const url = `${config.controlUrl}/sessions/${sessionId}`
+
+	while (Date.now() - startTime < timeout) {
+		try {
+			const response = await fetch(url)
+			if (response.ok) {
+				const data = (await response.json()) as { connections?: number }
+				if (!data.connections || data.connections <= 0) {
+					return
+				}
+			}
+		} catch {
+			// Server not ready yet
+		}
+
+		await sleep(200)
+	}
+
+	throw new Error(`Bot did not disconnect after ${timeout}ms`)
 }
