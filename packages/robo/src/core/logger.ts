@@ -39,7 +39,7 @@ export interface LoggerOptions {
 	prefix?: string
 }
 
-export const DEBUG_MODE = env?.NODE_ENV !== 'production'
+export const DEBUG_MODE = env?.ROBO_DEV === 'true'
 
 // eslint-disable-next-line no-control-regex
 export const ANSI_REGEX = /\x1b\[.*?m/g

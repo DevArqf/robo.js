@@ -18,7 +18,7 @@ import { hasDependency } from '../core/runtime-utils.js'
 import { setConfig, setEngine } from '../core/server.js'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { color, Manifest } from 'robo.js'
+import { color, Manifest, Mode } from 'robo.js'
 import type { BaseEngine } from '../engines/base.js'
 import type { PrepareContext } from 'robo.js'
 import type { ViteDevServer } from 'vite'
@@ -100,10 +100,10 @@ export default async (context: PrepareContext<PluginConfig>) => {
 	let vite: ViteDevServer | undefined = pluginOptions.vite
 	await pluginOptions.engine.init({ vite })
 
-	// Set up Vite dev server if available and not in production
+	// Set up Vite dev server if available and running via robo dev
 	if (vite) {
 		logger.debug('Using Vite server specified in options.')
-	} else if (process.env.NODE_ENV !== 'production' && (await hasDependency('vite', true))) {
+	} else if (Mode.isDev() && (await hasDependency('vite', true))) {
 		try {
 			const { createServer: createViteServer } = await import('vite')
 			const viteConfigPathTs = path.join(process.cwd(), 'config', 'vite.ts')

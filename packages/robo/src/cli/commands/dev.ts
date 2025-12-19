@@ -71,6 +71,9 @@ interface DevCommandOptions {
 let spirits: Spirits | undefined
 
 async function devAction(context: CliContext) {
+	// Mark that we're running via robo dev (before any env loading)
+	process.env.ROBO_DEV = 'true'
+
 	const options = context.options as DevCommandOptions
 	// Create a logger
 	logger({
