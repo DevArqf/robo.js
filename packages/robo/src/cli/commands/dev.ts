@@ -270,9 +270,7 @@ async function devAction(context: CliContext) {
 	}
 
 	if (hmrEnabled) {
-		logger.log('')
-		logger.log(Indent, color.cyan('[HMR]'), 'Hot module replacement enabled for handlers')
-		logger.log('')
+		logger.debug(color.cyan('[HMR]'), 'Hot module replacement enabled for handlers')
 
 		// Load route definitions for HMR mapping
 		routeDefinitions = await tryLoadRouteDefinitions()

@@ -40,6 +40,12 @@ const DEFAULT_REGISTRATION_TIMEOUT = 30000
 export const FLASHCORE_KEY_COMMAND_REGISTER_ERROR = 'robo:discordjs:commandRegisterError'
 
 /**
+ * Flashcore key prefix for caching command hashes.
+ * Full key format: `robo:discordjs:commandHash:{scope}` where scope is 'global' or 'guild:{guildId}'
+ */
+export const FLASHCORE_KEY_COMMAND_HASH_PREFIX = 'robo:discordjs:commandHash:'
+
+/**
  * Mutable logger reference that can be swapped in dev mode.
  */
 let commandLogger: Logger = discordLogger
@@ -378,12 +384,16 @@ export async function registerCommandsToDiscord(
 	}
 
 	// Ensure entry command is added if already there (or if reset)
+	// IMPORTANT: Discord requires Entry Point commands to be included in bulk updates,
+	// so we must preserve existing entry commands even if the SDK isn't installed.
 	try {
-		if (entryCommand && !guildId && hasEmbeddedSdk) {
+		if (entryCommand && !guildId) {
 			commandData.push(entryCommand)
-			commandLogger.debug('Added entry command to registration batch as @discord/embedded-app-sdk is installed')
-		} else if (entryCommand && !guildId && !hasEmbeddedSdk) {
-			commandLogger.debug('Skipping entry command registration as @discord/embedded-app-sdk is not installed')
+			if (hasEmbeddedSdk) {
+				commandLogger.debug('Added entry command to registration batch as @discord/embedded-app-sdk is installed')
+			} else {
+				commandLogger.debug('Preserving existing entry command in registration batch (SDK not installed)')
+			}
 		}
 	} catch (e) {
 		commandLogger.debug('Error checking for @discord/embedded-app-sdk package:', e)

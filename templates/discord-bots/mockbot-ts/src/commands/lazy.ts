@@ -6,7 +6,7 @@ import type { ChatInputCommandInteraction } from 'discord.js'
  * Uses a literal dynamic import to load the lazy utility module.
  */
 export const config = createCommandConfig({
-	description: 'Tests lazy loading with dynamic imports'
+	description: 'Tests lazy loading with dynamic importz'
 } as const)
 
 export default async (interaction: ChatInputCommandInteraction) => {

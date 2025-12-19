@@ -9,7 +9,9 @@
  * The client instance is created in the prepare hook, allowing other plugins
  * to access it during their start hooks before the bot goes online.
  */
+import { color, portal } from 'robo.js'
 import { getClient } from '../core/client.js'
+import { checkIntents } from '../core/intents.js'
 import { discordLogger } from '../core/logger.js'
 
 /**
@@ -40,7 +42,15 @@ export default async function startHook(): Promise<void> {
 	// Login to Discord
 	discordLogger.debug('Logging in to Discord...')
 	await client.login(token)
-	discordLogger.debug('Successfully logged in to Discord')
+
+	// Log ready message and check intents once the client is fully ready
+	client.once('clientReady', () => {
+		discordLogger.ready(`On standby as ${color.bold(client.user?.tag ?? 'Unknown')}`)
+
+		// Check for missing intents based on registered event handlers
+		const eventsData = portal.getByType('discordjs:events') as Record<string, unknown[]>
+		checkIntents(client, eventsData)
+	})
 }
 
 /**
