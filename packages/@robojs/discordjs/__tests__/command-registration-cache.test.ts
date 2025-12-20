@@ -9,7 +9,7 @@
  * - Separate hashes for global vs guild-scoped registrations
  */
 
-import { describe, it, expect, beforeEach, jest } from '@jest/globals'
+import { describe, it, expect, beforeEach } from '@jest/globals'
 import {
 	createMockCommandEntry,
 	createMockBuildContext,
@@ -18,58 +18,13 @@ import {
 	getFlashcoreStorage
 } from './helpers/mocks.js'
 import { setEnvData } from '../__mocks__/robo.js.js'
+import { getRestMock, resetRestMock } from '../__mocks__/discord.js.js'
 import { FLASHCORE_KEY_COMMAND_HASH_PREFIX } from '../src/core/commands.js'
 
-// Helper for typed mocks
-const fn = jest.fn as any
+// Get the singleton REST mock - all code using `new REST()` shares this instance
+const restMock = getRestMock()
 
-// Mock discord.js REST
-const mockPut = fn().mockResolvedValue([])
-const mockGet = fn().mockResolvedValue([])
-
-jest.unstable_mockModule('discord.js', () => ({
-	REST: jest.fn().mockImplementation(() => ({
-		setToken: jest.fn().mockReturnThis(),
-		get: mockGet,
-		put: mockPut
-	})),
-	Routes: {
-		applicationCommands: (clientId: string) => `/applications/${clientId}/commands`,
-		applicationGuildCommands: (clientId: string, guildId: string) =>
-			`/applications/${clientId}/guilds/${guildId}/commands`
-	},
-	GatewayIntentBits: {
-		Guilds: 1,
-		GuildMessages: 512,
-		GuildMembers: 2,
-		GuildPresences: 256,
-		MessageContent: 32768
-	},
-	SlashCommandBuilder: jest.fn().mockImplementation(() => ({
-		setName: jest.fn().mockReturnThis(),
-		setDescription: jest.fn().mockReturnThis(),
-		setContexts: jest.fn().mockReturnThis(),
-		setIntegrationTypes: jest.fn().mockReturnThis(),
-		setNameLocalizations: jest.fn().mockReturnThis(),
-		setDescriptionLocalizations: jest.fn().mockReturnThis(),
-		setDefaultMemberPermissions: jest.fn().mockReturnThis(),
-		setDMPermission: jest.fn().mockReturnThis(),
-		setNSFW: jest.fn().mockReturnThis(),
-		toJSON: jest.fn().mockReturnValue({ name: 'test', description: 'test' })
-	})),
-	ContextMenuCommandBuilder: jest.fn().mockImplementation(() => ({
-		setName: jest.fn().mockReturnThis(),
-		setType: jest.fn().mockReturnThis(),
-		setContexts: jest.fn().mockReturnThis(),
-		setIntegrationTypes: jest.fn().mockReturnThis(),
-		setNameLocalizations: jest.fn().mockReturnThis(),
-		setDefaultMemberPermissions: jest.fn().mockReturnThis(),
-		setDMPermission: jest.fn().mockReturnThis(),
-		toJSON: jest.fn().mockReturnValue({ name: 'test', type: 2 })
-	}))
-}))
-
-// Import after mocking
+// Import after mock setup (moduleNameMapper handles the discord.js mock)
 const { default: buildCompleteHook, computeCommandHash } = await import('../src/robo/build/complete.js')
 
 describe('Command Registration Caching', () => {
@@ -79,10 +34,7 @@ describe('Command Registration Caching', () => {
 
 	beforeEach(() => {
 		resetAllMocks()
-		mockPut.mockClear()
-		mockGet.mockClear()
-		mockPut.mockResolvedValue([])
-		mockGet.mockResolvedValue([])
+		resetRestMock()
 
 		// Set environment data
 		setEnvData({
@@ -104,7 +56,7 @@ describe('Command Registration Caching', () => {
 			await buildCompleteHook(context as any)
 
 			// Should NOT call Discord API
-			expect(mockPut).not.toHaveBeenCalled()
+			expect(restMock.put).not.toHaveBeenCalled()
 		})
 
 		it('should register when cached hash differs (cache miss)', async () => {
@@ -118,7 +70,7 @@ describe('Command Registration Caching', () => {
 			await buildCompleteHook(context as any)
 
 			// Should call Discord API
-			expect(mockPut).toHaveBeenCalled()
+			expect(restMock.put).toHaveBeenCalled()
 		})
 
 		it('should register when no cached hash exists (first build)', async () => {
@@ -130,7 +82,7 @@ describe('Command Registration Caching', () => {
 			await buildCompleteHook(context as any)
 
 			// Should call Discord API
-			expect(mockPut).toHaveBeenCalled()
+			expect(restMock.put).toHaveBeenCalled()
 		})
 
 		it('should store hash after successful registration', async () => {
@@ -152,7 +104,7 @@ describe('Command Registration Caching', () => {
 			const context = createMockBuildContext({ commandEntries: commands })
 
 			// Make registration fail
-			mockPut.mockRejectedValueOnce(new Error('Discord API error'))
+			restMock.put.mockRejectedValueOnce(new Error('Discord API error'))
 
 			await buildCompleteHook(context as any)
 
@@ -178,7 +130,7 @@ describe('Command Registration Caching', () => {
 			// Test guild registration
 			setEnvData({ DISCORD_CLIENT_ID: clientId, DISCORD_TOKEN: token, DISCORD_GUILD_ID: guildId })
 			resetAllMocks()
-			mockPut.mockResolvedValue([])
+			restMock.put.mockResolvedValue([])
 
 			const guildContext = createMockBuildContext({ commandEntries: commands })
 			await buildCompleteHook(guildContext as any)
@@ -205,7 +157,7 @@ describe('Command Registration Caching', () => {
 
 			await buildCompleteHook(context as any)
 
-			expect(mockPut).not.toHaveBeenCalled()
+			expect(restMock.put).not.toHaveBeenCalled()
 		})
 
 		it('should skip registration when mode not in autoRegisterCommands array', async () => {
@@ -218,7 +170,7 @@ describe('Command Registration Caching', () => {
 
 			await buildCompleteHook(context as any)
 
-			expect(mockPut).not.toHaveBeenCalled()
+			expect(restMock.put).not.toHaveBeenCalled()
 		})
 
 		it('should register when mode is in autoRegisterCommands array', async () => {
@@ -231,7 +183,7 @@ describe('Command Registration Caching', () => {
 
 			await buildCompleteHook(context as any)
 
-			expect(mockPut).toHaveBeenCalled()
+			expect(restMock.put).toHaveBeenCalled()
 		})
 	})
 
@@ -245,7 +197,7 @@ describe('Command Registration Caching', () => {
 
 			await buildCompleteHook(context as any)
 
-			expect(mockPut).not.toHaveBeenCalled()
+			expect(restMock.put).not.toHaveBeenCalled()
 		})
 
 		it('should skip registration when missing clientId', async () => {
@@ -257,7 +209,7 @@ describe('Command Registration Caching', () => {
 
 			await buildCompleteHook(context as any)
 
-			expect(mockPut).not.toHaveBeenCalled()
+			expect(restMock.put).not.toHaveBeenCalled()
 		})
 	})
 
@@ -268,7 +220,7 @@ describe('Command Registration Caching', () => {
 			await buildCompleteHook(context as any)
 
 			// API should not be called for empty commands
-			expect(mockPut).not.toHaveBeenCalled()
+			expect(restMock.put).not.toHaveBeenCalled()
 		})
 
 		it('should store hash even with no commands for cache consistency', async () => {
@@ -282,13 +234,13 @@ describe('Command Registration Caching', () => {
 			expect(getFlashcoreStorage().has(hashKey)).toBe(true)
 
 			// Reset mock call counts
-			mockPut.mockClear()
+			restMock.put.mockClear()
 
 			// Second build with same empty commands - should hit cache
 			await buildCompleteHook(context as any)
 
 			// API still shouldn't be called (empty commands)
-			expect(mockPut).not.toHaveBeenCalled()
+			expect(restMock.put).not.toHaveBeenCalled()
 		})
 	})
 
@@ -299,12 +251,12 @@ describe('Command Registration Caching', () => {
 
 			// First build - registers and stores hash
 			await buildCompleteHook(context as any)
-			expect(mockPut).toHaveBeenCalledTimes(1)
-			mockPut.mockClear()
+			expect(restMock.put).toHaveBeenCalledTimes(1)
+			restMock.put.mockClear()
 
 			// Second build without force - should skip (cache hit)
 			await buildCompleteHook(context as any)
-			expect(mockPut).not.toHaveBeenCalled()
+			expect(restMock.put).not.toHaveBeenCalled()
 
 			// Third build with DISCORD_FORCE_REGISTER env - should register
 			const originalEnv = process.env.DISCORD_FORCE_REGISTER
@@ -312,7 +264,7 @@ describe('Command Registration Caching', () => {
 
 			try {
 				await buildCompleteHook(context as any)
-				expect(mockPut).toHaveBeenCalledTimes(1)
+				expect(restMock.put).toHaveBeenCalledTimes(1)
 			} finally {
 				process.env.DISCORD_FORCE_REGISTER = originalEnv
 			}
@@ -330,7 +282,7 @@ describe('Command Registration Caching', () => {
 
 				await buildCompleteHook(context as any)
 
-				expect(mockPut).not.toHaveBeenCalled()
+				expect(restMock.put).not.toHaveBeenCalled()
 			} finally {
 				process.env.ROBO_MOCK_MODE = originalEnv
 			}

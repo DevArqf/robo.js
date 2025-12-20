@@ -14,7 +14,11 @@ const config: Config = {
 					module: 'ESNext',
 					moduleResolution: 'bundler',
 					esModuleInterop: true,
-					allowSyntheticDefaultImports: true
+					allowSyntheticDefaultImports: true,
+					baseUrl: '.',
+					paths: {
+						'@robojs/server': ['./__mocks__/@robojs/server.ts']
+					}
 				}
 			}
 		]
@@ -23,6 +27,10 @@ const config: Config = {
 		// Map robo.js imports to our mock
 		'^robo\\.js$': '<rootDir>/__mocks__/robo.js.ts',
 		'^robo\\.js/(.*)$': '<rootDir>/__mocks__/robo.js.ts',
+		// Map discord.js imports to our mock
+		'^discord\\.js$': '<rootDir>/__mocks__/discord.js.ts',
+		// Map @robojs/server imports to our mock
+		'^@robojs/server$': '<rootDir>/__mocks__/@robojs/server.ts',
 		// Strip .js extensions for TypeScript imports
 		'^(\\.{1,2}/.*)\\.js$': '$1'
 	},
