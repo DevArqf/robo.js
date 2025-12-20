@@ -5,6 +5,12 @@
 	"type": "module",
 	"main": ".robo/build/index.js",
 	"types": ".robo/build/index.d.ts",
+	"files": [
+		".robo/",
+		"src/",
+		"LICENSE",
+		"README.md"
+	],
 	"exports": {
 		".": {
 			"import": "./.robo/build/index.js",
