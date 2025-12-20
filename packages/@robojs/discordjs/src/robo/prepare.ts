@@ -10,7 +10,7 @@
  * This allows other plugins to access the client during their start hooks.
  */
 import { Client, Events } from 'discord.js'
-import { portal, color } from 'robo.js'
+import { Mode, portal, color } from 'robo.js'
 import { setClient, setPluginState } from '../core/client.js'
 import { discordLogger } from '../core/logger.js'
 import { getCommandKey } from '../core/utils.js'
@@ -23,7 +23,7 @@ import type { Event, HandlerRecord, PrepareContext } from 'robo.js'
  * Prepare hook - Creates and configures the Discord client (without logging in)
  */
 export default async function prepareHook(context: PrepareContext<DiscordConfig>): Promise<void> {
-	const { pluginConfig, logger, mode } = context
+	const { pluginConfig, logger } = context
 	const clientOptions = pluginConfig?.clientOptions ?? { intents: [] }
 
 	// Support mock server REST API override via environment variable
@@ -52,10 +52,10 @@ export default async function prepareHook(context: PrepareContext<DiscordConfig>
 	const client = new Client(clientOptions)
 	setClient(client)
 
-	// Production: eagerly load all routes for fastest runtime
+	// Non-dev: eagerly load all routes for fastest runtime
 	// Note: @robojs/mock runs Robo in-process with Jest ESM. Eager handler imports can
 	// trigger Jest VM module linking errors, so keep handlers lazy in mock mode.
-	if (mode === 'production' && process.env.ROBO_MOCK_MODE !== 'true') {
+	if (!Mode.isDev() && process.env.ROBO_MOCK_MODE !== 'true') {
 		await eagerLoadHandlers()
 	}
 
@@ -76,20 +76,27 @@ async function eagerLoadHandlers(): Promise<void> {
 	await Promise.all([
 		portal.ensureRoute('discordjs', 'commands'),
 		portal.ensureRoute('discordjs', 'context'),
-		portal.ensureRoute('discordjs', 'events')
+		portal.ensureRoute('discordjs', 'events'),
+		portal.ensureRoute('discordjs', 'middleware')
 	])
 
 	// Get all handler keys
 	const commands = Object.keys(portal.getByType('discordjs:commands'))
 	const contexts = Object.keys(portal.getByType('discordjs:context'))
+	const events = Object.keys(portal.getByType('discordjs:events'))
+	const middleware = Object.keys(portal.getByType('discordjs:middleware'))
 
 	// Import all handlers in parallel
 	await Promise.all([
 		...commands.map((k) => portal.importHandler('discordjs', 'commands', k)),
-		...contexts.map((k) => portal.importHandler('discordjs', 'context', k))
+		...contexts.map((k) => portal.importHandler('discordjs', 'context', k)),
+		...events.map((k) => portal.importHandler('discordjs', 'events', k)),
+		...middleware.map((k) => portal.importHandler('discordjs', 'middleware', k))
 	])
 
-	discordLogger.debug(`Pre-loaded ${commands.length} commands, ${contexts.length} context menus`)
+	discordLogger.debug(
+		`Pre-loaded ${commands.length} commands, ${contexts.length} context menus, ${events.length} events, ${middleware.length} middleware`
+	)
 }
 
 /**

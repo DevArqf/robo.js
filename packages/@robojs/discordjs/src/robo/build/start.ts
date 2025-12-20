@@ -37,7 +37,7 @@ export default function (context: BuildContext) {
 		discordLogger.warn('DISCORD_TOKEN is not set. Discord features will not work at runtime.')
 	}
 
-	if (!clientId && mode === 'production') {
+	if (!clientId && mode !== 'development') {
 		discordLogger.warn('DISCORD_CLIENT_ID is not set. Command registration will fail.')
 	}
 

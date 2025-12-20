@@ -623,8 +623,9 @@ class PortalImpl implements PortalAPI {
 	 * @throws If import fails (but old handler is preserved)
 	 */
 	private async atomicReloadRecord(record: HandlerRecord): Promise<void> {
-		// Store reference to old handler for rollback on failure
+		// Store references for rollback on failure
 		const oldHandler = record.handler
+		const oldMetadata = record.metadata
 
 		// Bust import cache so we get fresh code
 		this.bustImportCache(this.getImportPath(record))
@@ -655,11 +656,13 @@ class PortalImpl implements PortalAPI {
 				}
 			}
 
-			// Atomic swap: only update handler on success
+			// Atomic swap: only update handler and metadata on success
 			record.handler = newHandler
+			record.metadata = module.config ?? {}
 		} catch (error) {
-			// Preserve old handler on failure
+			// Preserve old handler and metadata on failure
 			record.handler = oldHandler
+			record.metadata = oldMetadata
 			logger.error(`Failed to reload handler, keeping previous version:`, error)
 			throw error
 		}
