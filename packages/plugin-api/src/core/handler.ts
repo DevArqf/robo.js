@@ -10,7 +10,7 @@ import { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import url from 'node:url'
-import { color } from 'robo.js'
+import { color, Mode } from 'robo.js'
 import type { Router } from './router.js'
 import type { NotFoundHandler, RoboReply } from './types.js'
 import type { UrlWithParsedQuery } from 'node:url'
@@ -69,7 +69,7 @@ export function createServerHandler(router: Router, vite?: ViteDevServer, onNotF
 						res.setHeader('Content-Type', mimeType)
 						res.setHeader('X-Content-Type-Options', 'nosniff')
 						// Prevent caching in development for hot reload
-						if (process.env.NODE_ENV !== 'production') {
+						if (Mode.isDev()) {
 							res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
 						}
 						res.writeHead(200)
@@ -182,7 +182,7 @@ export function createServerHandler(router: Router, vite?: ViteDevServer, onNotF
 				res.setHeader('Content-Type', mimeType)
 				res.setHeader('X-Content-Type-Options', 'nosniff')
 				// Prevent caching in development for hot reload
-				if (process.env.NODE_ENV !== 'production') {
+				if (Mode.isDev()) {
 					res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
 				}
 				res.writeHead(200)
@@ -447,10 +447,15 @@ export async function handlePluginStaticFile(
 			await callback(filePath, mimeType)
 			return { type: 'served' }
 		} else if (stats.isDirectory()) {
-			// If URL doesn't end with /, redirect to add trailing slash
+			// If URL path doesn't end with /, redirect to add trailing slash
 			// This ensures relative URLs in the served HTML resolve correctly
-			if (!originalUrl.endsWith('/')) {
-				const redirectUrl = originalUrl + '/'
+			// Parse URL to handle query strings correctly (don't append / after ?token=xxx)
+			const urlParts = originalUrl.split('?')
+			const urlPath = urlParts[0]
+			const queryString = urlParts.length > 1 ? '?' + urlParts.slice(1).join('?') : ''
+
+			if (!urlPath.endsWith('/')) {
+				const redirectUrl = urlPath + '/' + queryString
 				logger.debug(`Redirecting to add trailing slash: ${redirectUrl}`)
 				return { type: 'redirect', location: redirectUrl }
 			}

@@ -12,7 +12,7 @@
 import { logger } from '../core/logger.js'
 import { getPluginRouteRegistry } from '../core/plugin-routes.js'
 import { findAvailablePort, DEFAULT_MAX_PORT_ATTEMPTS } from '../core/port-utils.js'
-import { portal } from 'robo.js'
+import { Mode, portal } from 'robo.js'
 import { Nanocore } from 'robo.js/unstable.js'
 import type { StartContext, HandlerRecord } from 'robo.js'
 import type { TunnelConfig, TunnelInstance, TunnelProvider } from '../core/tunnel/types.js'
@@ -130,10 +130,16 @@ export default async (_context: StartContext<PluginConfig>) => {
 	const prefix = pluginOptions.prefix ?? ''
 	const paths: string[] = []
 
+	// Use lazy loading in dev mode for instant HMR updates
+	const isDev = Mode.isDev()
+
 	// Import all API handlers and register with the engine
 	for (const [routeKey, record] of Object.entries(apiRoutes)) {
-		// Import the handler if not already imported
-		await portal.importHandler('server', 'api', routeKey)
+		// In production, import handler eagerly for best performance
+		// In dev mode, skip eager import - lazy handler will import on first request
+		if (!isDev) {
+			await portal.importHandler('server', 'api', routeKey)
+		}
 
 		// Check if this route belongs to a plugin with exclusive prefix
 		const pluginName = record.plugin?.name
@@ -144,8 +150,10 @@ export default async (_context: StartContext<PluginConfig>) => {
 		// Base route key (standard API prefix + route)
 		const baseKey = prefix + '/' + routeKey.replace(PATH_REGEX, ':$1')
 
-		// Use method dispatcher to handle named HTTP method exports
-		const wrappedHandler = createMethodDispatcher(record)
+		// In dev mode, use lazy handler for instant HMR updates
+		// In production, use eager method dispatcher for best performance
+		const wrappedHandler = isDev ? createLazyHandler(routeKey) : createMethodDispatcher(record)
+
 		if (wrappedHandler) {
 			if (isExclusive && pluginPrefix) {
 				// Exclusive: register ONLY with plugin prefix
