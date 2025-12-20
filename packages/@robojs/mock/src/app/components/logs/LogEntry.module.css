@@ -1,0 +1,240 @@
+/* Entry container - table row style */
+.entry {
+	display: flex;
+	flex-direction: column;
+	font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', 'Menlo', monospace;
+	font-size: 11px;
+	line-height: 1.5;
+	border-bottom: 1px solid var(--background-modifier-accent);
+	transition: background 0.1s ease;
+}
+
+.entry:hover {
+	background: var(--background-modifier-hover);
+}
+
+/* Level-based background tint */
+.entry.warn {
+	background: rgba(245, 158, 11, 0.05);
+}
+
+.entry.warn:hover {
+	background: rgba(245, 158, 11, 0.1);
+}
+
+.entry.error {
+	background: rgba(239, 68, 68, 0.05);
+}
+
+.entry.error:hover {
+	background: rgba(239, 68, 68, 0.1);
+}
+
+.entry.expanded {
+	background: var(--background-secondary);
+}
+
+/* Table row layout */
+.row {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	padding: 6px 12px;
+	min-width: 0;
+}
+
+/* Time column */
+.time {
+	flex-shrink: 0;
+	color: var(--text-muted);
+	font-size: 10px;
+	white-space: nowrap;
+}
+
+/* Source column */
+.source {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-shrink: 0;
+	max-width: 120px;
+}
+
+.sourceIcon {
+	color: var(--text-muted);
+	flex-shrink: 0;
+}
+
+.sourceName {
+	color: var(--brand-500);
+	font-weight: 500;
+	font-size: 10px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Level column - dot + label */
+.level {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-shrink: 0;
+	min-width: 60px;
+}
+
+.levelDot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	flex-shrink: 0;
+}
+
+.levelLabel {
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+}
+
+/* Level colors */
+.level_trace .levelDot {
+	background: #808090;
+}
+.level_trace .levelLabel {
+	color: #808090;
+}
+
+.level_debug .levelDot {
+	background: #3b82f6;
+}
+.level_debug .levelLabel {
+	color: #3b82f6;
+}
+
+.level_info .levelDot {
+	background: #22c55e;
+}
+.level_info .levelLabel {
+	color: #22c55e;
+}
+
+.level_wait .levelDot {
+	background: #f59e0b;
+}
+.level_wait .levelLabel {
+	color: #f59e0b;
+}
+
+.level_event .levelDot {
+	background: #8b5cf6;
+}
+.level_event .levelLabel {
+	color: #8b5cf6;
+}
+
+.level_ready .levelDot {
+	background: #22c55e;
+}
+.level_ready .levelLabel {
+	color: #22c55e;
+}
+
+.level_warn .levelDot {
+	background: #f59e0b;
+}
+.level_warn .levelLabel {
+	color: #f59e0b;
+}
+
+.level_error .levelDot {
+	background: #ef4444;
+}
+.level_error .levelLabel {
+	color: #ef4444;
+}
+
+/* Message column */
+.message {
+	flex: 1;
+	min-width: 0;
+	color: var(--text-normal);
+	word-break: break-word;
+	white-space: pre-wrap;
+}
+
+/* Hover action buttons - hidden by default */
+.actions {
+	display: flex;
+	gap: 2px;
+	flex-shrink: 0;
+	opacity: 0;
+	transition: opacity 0.1s ease;
+}
+
+.entry:hover .actions {
+	opacity: 1;
+}
+
+.actionButton {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	border-radius: var(--radius-xs);
+	color: var(--text-muted);
+	transition: all 0.1s ease;
+}
+
+.actionButton:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.actionButton.active {
+	color: var(--brand-500);
+}
+
+.actionButton.copied {
+	color: #22c55e;
+}
+
+/* Expanded details */
+.details {
+	margin: 4px 12px 8px;
+	padding: 8px 12px;
+	background: var(--background-tertiary);
+	border-radius: var(--radius-sm);
+	border-left: 2px solid var(--brand-500);
+	overflow-x: auto;
+}
+
+.detailsCode {
+	margin: 0;
+	font-size: 10px;
+	color: var(--text-muted);
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+/* Date separator */
+.dateSeparator {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 12px 16px;
+	background: var(--background-secondary);
+}
+
+.dateSeparatorLine {
+	flex: 1;
+	height: 1px;
+	background: var(--background-modifier-accent);
+}
+
+.dateSeparatorLabel {
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
