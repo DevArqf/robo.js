@@ -82,8 +82,8 @@ async function run(message: SpiritMessage): Promise<unknown> {
 		}
 
 		const { Robo } = await import('../core/robo.js')
-		Robo.restart()
-		return 'ok'
+		await Robo.restart()
+		return 'exit'
 	} else if (message.event === 'set-state') {
 		const { loadState } = await import('../core/state.js')
 		loadState(message.state)
@@ -107,8 +107,8 @@ async function run(message: SpiritMessage): Promise<unknown> {
 		}
 
 		const { Robo } = await import('../core/robo.js')
-		Robo.stop()
-		return 'ok'
+		await Robo.stop()
+		return 'exit'
 	} else if (message.event === 'hmr-compile') {
 		// Compile specific files for HMR without running full build pipeline
 		const payload = message.payload as HmrCompilePayload

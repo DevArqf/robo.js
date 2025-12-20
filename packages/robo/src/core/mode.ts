@@ -31,7 +31,7 @@ let _modeColor: Styler | undefined
  *
  * [**Learn more:** Mode](https://robojs.dev/robojs/mode)
  */
-export const Mode = Object.freeze({ color: colorMode, get, is, isDev })
+export const Mode = Object.freeze({ color: colorMode, get: getMode, is, isDev })
 
 /**
  * @internal
@@ -152,8 +152,10 @@ export function colorMode(text: string) {
  * This is set by the `--mode` CLI flag.
  *
  * Defaults to `production` for `robo start` and `development` for `robo dev`.
+ *
+ * @internal - Use Mode.get() for public API
  */
-function get(): string {
+export function getMode(): string {
 	// Default to NODE_ENV
 	if (!_mode && process.env.NODE_ENV) {
 		_mode = process.env.NODE_ENV
@@ -169,7 +171,7 @@ function get(): string {
  * @returns `true` if the current mode matches the provided mode.
  */
 function is(mode: string) {
-	return get() === mode
+	return getMode() === mode
 }
 
 /**

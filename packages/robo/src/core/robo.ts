@@ -11,7 +11,7 @@ import { Manifest } from './manifest-api.js'
 import { Mode } from './mode.js'
 import { loadState } from './state.js'
 import { portal, populatePortal } from './portal.js'
-import { isMainThread, parentPort } from 'node:worker_threads'
+import { isMainThread } from 'node:worker_threads'
 import type { PluginData } from '../types/index.js'
 import type { BuildCommandOptions } from '../cli/commands/build/index.js'
 import type { CliContext } from '../types/cli.js'
@@ -235,10 +235,8 @@ async function stop(exitCode = 0, reason?: 'signal' | 'error' | 'restart') {
 		if (isMainThread) {
 			process.exit(exitCode)
 		} else {
+			// Flush logs before returning - spirit message handler will send 'exit' and exit
 			await logger.flush()
-			parentPort?.postMessage({ event: 'stop', payload: 'exit' })
-			parentPort?.close()
-			process.exit(exitCode)
 		}
 	}
 }
@@ -260,11 +258,9 @@ async function restart() {
 		if (isMainThread) {
 			process.exit(0)
 		} else {
+			// Update status and flush logs before returning - spirit message handler will send 'exit' and exit
 			await Nanocore.update('watch', { status: 'restarting' })
 			await logger.flush()
-			parentPort?.postMessage({ event: 'stop', payload: 'exit' })
-			parentPort?.close()
-			process.exit()
 		}
 	}
 }

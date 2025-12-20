@@ -156,6 +156,17 @@ async function devAction(context: CliContext) {
 
 		isStopping = true
 		await spirits.stopAll()
+
+		// Ensure stdout/stderr are fully flushed before exiting
+		// This prevents logs from appearing after the terminal prompt
+		await new Promise<void>((resolve) => {
+			if (process.stdout.write('')) {
+				resolve()
+			} else {
+				process.stdout.once('drain', resolve)
+			}
+		})
+
 		process.exit(0)
 	}
 	process.on('SIGINT', () => callback('SIGINT'))
