@@ -15,6 +15,13 @@
 	padding-left: 70px;
 }
 
+/* Message that mentions the current user - Discord-like gold/orange styling */
+.mentioned {
+	background: linear-gradient(to right, rgba(250, 168, 26, 0.1), transparent);
+	border-left: 2px solid #faa61a;
+	padding-left: 70px;
+}
+
 .avatar {
 	position: absolute;
 	left: 16px;

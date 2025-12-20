@@ -85,6 +85,7 @@ import type {
 import { AuditLogEvent, AuditLogLimits } from '../types/index.js'
 import { ComponentLimits, ComponentsV2Limits, ComponentTypeV2, PollLayoutType, ForumLayoutType, ForumSortOrderType, StickerType, StickerFormatType, StickerLimits, WebhookType, WebhookLimits, EmojiLimits, RoleLimits, BanLimits, ApplicationCommandType, CommandLimits, InviteLimits, ScheduledEventLimits, GuildScheduledEventStatus, GuildScheduledEventEntityType, AutoModLimits, StageInstancePrivacyLevel } from '../types/index.js'
 import { generateSnowflake } from '../utils/snowflake.js'
+import { MentionParser } from '../utils/mention-parser.js'
 import { MemoryAttachmentStorage, type StorageConfig } from '../storage/attachment-storage.js'
 
 // Default limits for memory management
@@ -3806,6 +3807,10 @@ export function createMockForumChannel(config?: MockForumChannelConfig): MockFor
  */
 export function createMockMessage(config: MockMessageConfig): MockMessage {
 	const content = config.content ?? ''
+
+	// Auto-parse mentions from content if not explicitly provided
+	const parsed = MentionParser.parse(content)
+
 	const message: MockMessage = {
 		id: config.id ?? generateSnowflake(),
 		channelId: config.channelId,
@@ -3815,9 +3820,9 @@ export function createMockMessage(config: MockMessageConfig): MockMessage {
 		timestamp: new Date().toISOString(),
 		editedTimestamp: null,
 		tts: config.tts ?? false,
-		mentionEveryone: content.includes('@everyone'),
-		mentions: config.mentions ?? [],
-		mentionRoles: [],
+		mentionEveryone: parsed.everyone || parsed.here,
+		mentions: config.mentions ?? parsed.users,
+		mentionRoles: parsed.roles,
 		attachments: config.attachments ?? [],
 		embeds: config.embeds ?? [],
 		pinned: false,

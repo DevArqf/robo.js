@@ -2,25 +2,40 @@ import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../../core/manager.js'
 import { validateMethod, notFound, badRequest } from '../../utils.js'
 
+type RateLimitScope = 'all' | 'messages' | 'interactions' | 'guilds' | 'channels'
+
 /**
- * POST /api/control/sessions/:id/rate-limit - Enable rate limit simulation
+ * GET/POST /api/control/sessions/:id/rate-limit - Rate limit simulation control
  *
- * Request body:
+ * GET Response:
  * {
- *   enabled: boolean      // Whether to enable rate limit simulation
- *   retry_after?: number  // Retry-After value in seconds (default: 1)
+ *   enabled: boolean,
+ *   retry_after: number,
+ *   persistent: boolean,
+ *   scope: 'all' | 'messages' | 'interactions' | 'guilds' | 'channels',
+ *   triggered_count: number
  * }
  *
- * Response:
+ * POST Request body:
+ * {
+ *   enabled?: boolean       // Whether to enable rate limit simulation (default: true)
+ *   retry_after?: number    // Retry-After value in seconds (default: 1)
+ *   persistent?: boolean    // If true, doesn't auto-disable after triggering (default: false)
+ *   scope?: string          // Which endpoints to affect: 'all', 'messages', 'interactions', 'guilds', 'channels'
+ * }
+ *
+ * POST Response:
  * {
  *   success: true,
  *   enabled: boolean,
- *   retry_after: number
+ *   retry_after: number,
+ *   persistent: boolean,
+ *   scope: string
  * }
  *
- * When enabled, the next API request will return a 429 Too Many Requests
- * response with the specified Retry-After header. The simulation is one-shot
- * and automatically disables after returning the 429 response.
+ * In one-shot mode (persistent: false), the rate limit automatically disables after
+ * returning the first 429 response. In persistent mode, it continues returning 429
+ * until manually disabled.
  */
 export default async (request: RoboRequest) => {
 	validateMethod(request, ['POST', 'GET'])
@@ -31,7 +46,7 @@ export default async (request: RoboRequest) => {
 		return notFound('Session ID required')
 	}
 
-	const session = sessionManager.get(id)
+	const session = sessionManager.get(id) ?? sessionManager.getByToken(id)
 
 	if (!session) {
 		return notFound('Session not found')
@@ -39,8 +54,13 @@ export default async (request: RoboRequest) => {
 
 	// GET - Check current rate limit simulation status
 	if (request.method === 'GET') {
+		const config = session.rateLimitConfig
 		return {
-			enabled: session.isRateLimitSimulationActive
+			enabled: config.enabled,
+			retry_after: config.retryAfter,
+			persistent: config.persistent,
+			scope: config.scope,
+			triggered_count: config.triggeredCount
 		}
 	}
 
@@ -48,6 +68,8 @@ export default async (request: RoboRequest) => {
 	let body: {
 		enabled?: boolean
 		retry_after?: number
+		persistent?: boolean
+		scope?: RateLimitScope
 	}
 
 	try {
@@ -58,16 +80,30 @@ export default async (request: RoboRequest) => {
 
 	const enabled = body.enabled ?? true
 	const retryAfter = body.retry_after ?? 1
+	const persistent = body.persistent ?? false
+	const scope = body.scope ?? 'all'
 
 	if (typeof retryAfter !== 'number' || retryAfter < 0) {
 		return badRequest('retry_after must be a non-negative number')
 	}
 
-	session.setRateLimitSimulation(enabled, retryAfter)
+	const validScopes: RateLimitScope[] = ['all', 'messages', 'interactions', 'guilds', 'channels']
+	if (!validScopes.includes(scope)) {
+		return badRequest(`scope must be one of: ${validScopes.join(', ')}`)
+	}
+
+	session.setRateLimitSimulation({
+		enabled,
+		retryAfter,
+		persistent,
+		scope
+	})
 
 	return {
 		success: true,
 		enabled,
-		retry_after: retryAfter
+		retry_after: retryAfter,
+		persistent,
+		scope
 	}
 }

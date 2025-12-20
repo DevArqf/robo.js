@@ -215,6 +215,23 @@
 	font-weight: 600;
 }
 
+/* Mention badge styles - Discord-like red badge */
+.mentionBadge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 4px;
+	margin-left: auto;
+	background: var(--status-danger);
+	color: white;
+	font-size: 11px;
+	font-weight: 700;
+	border-radius: 8px;
+	flex-shrink: 0;
+}
+
 /* Voice channel styles */
 .voiceChannel {
 	margin: 1px 0;

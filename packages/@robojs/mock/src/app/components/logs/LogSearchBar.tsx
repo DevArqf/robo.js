@@ -17,7 +17,7 @@ interface LogSearchBarProps {
 }
 
 export function LogSearchBar({ className }: LogSearchBarProps) {
-	const { filters, setSearchFilter, setLevelFilter } = useLogsFilters()
+	const { filters, setSearchFilter, setLevelFilter, setSessionFilter } = useLogsFilters()
 	const [isDropdownOpen, setIsDropdownOpen] = useState(false)
 	const [inputValue, setInputValue] = useState('')
 	const dropdownRef = useRef<HTMLDivElement>(null)
@@ -48,6 +48,17 @@ export function LogSearchBar({ className }: LogSearchBarProps) {
 			const value = e.target.value
 			setInputValue(value)
 
+			// Parse query syntax: session:xxx
+			const sessionMatch = value.match(/session:(\S+)/i)
+			if (sessionMatch) {
+				const sessionId = sessionMatch[1]
+				setSessionFilter(sessionId)
+				const remainingText = value.replace(/session:\S+\s*/i, '').trim()
+				setSearchFilter(remainingText)
+				setInputValue(remainingText)
+				return
+			}
+
 			// Parse query syntax: level=info, level=debug, etc.
 			const levelMatch = value.match(/level=(\w+)/i)
 			if (levelMatch) {
@@ -65,7 +76,7 @@ export function LogSearchBar({ className }: LogSearchBarProps) {
 
 			setSearchFilter(value)
 		},
-		[setSearchFilter, setLevelFilter]
+		[setSearchFilter, setLevelFilter, setSessionFilter]
 	)
 
 	const handleInputFocus = useCallback(() => {
@@ -76,8 +87,9 @@ export function LogSearchBar({ className }: LogSearchBarProps) {
 		setInputValue('')
 		setSearchFilter('')
 		setLevelFilter(new Set())
+		setSessionFilter(null)
 		inputRef.current?.focus()
-	}, [setSearchFilter, setLevelFilter])
+	}, [setSearchFilter, setLevelFilter, setSessionFilter])
 
 	const handleLevelSelect = useCallback(
 		(level: SessionLogLevel) => {
@@ -104,16 +116,37 @@ export function LogSearchBar({ className }: LogSearchBarProps) {
 		[filters.levels, setLevelFilter]
 	)
 
-	const hasActiveFilters = filters.levels.size > 0 || filters.search.length > 0
+	const handleRemoveSessionChip = useCallback(() => {
+		setSessionFilter(null)
+	}, [setSessionFilter])
+
+	const hasActiveFilters = filters.levels.size > 0 || filters.search.length > 0 || filters.sessionId !== null
 
 	return (
 		<div className={`${styles.container} ${className || ''}`} ref={dropdownRef}>
 			<div className={styles.searchBox}>
 				<SearchIcon />
 
-				{/* Active level chips */}
-				{filters.levels.size > 0 && (
+				{/* Active filter chips */}
+				{(filters.levels.size > 0 || filters.sessionId) && (
 					<div className={styles.chips}>
+						{/* Session chip */}
+						{filters.sessionId && (
+							<span
+								className={styles.chip}
+								style={{ '--chip-color': '#7289da' } as React.CSSProperties}
+							>
+								session:{filters.sessionId.length > 12 ? filters.sessionId.slice(0, 12) + '...' : filters.sessionId}
+								<button
+									className={styles.chipRemove}
+									onClick={handleRemoveSessionChip}
+									aria-label="Remove session filter"
+								>
+									<CloseIcon />
+								</button>
+							</span>
+						)}
+						{/* Level chips */}
 						{Array.from(filters.levels).map((level) => {
 							const meta = LOG_LEVELS.find((l) => l.level === level)
 							return (
@@ -140,7 +173,7 @@ export function LogSearchBar({ className }: LogSearchBarProps) {
 					ref={inputRef}
 					type="text"
 					className={styles.input}
-					placeholder={filters.levels.size > 0 ? 'Search...' : 'Search logs or type level=info...'}
+					placeholder={filters.levels.size > 0 || filters.sessionId ? 'Search...' : 'Search logs or type level=info, session:xxx...'}
 					value={inputValue}
 					onChange={handleInputChange}
 					onFocus={handleInputFocus}
@@ -175,7 +208,7 @@ export function LogSearchBar({ className }: LogSearchBarProps) {
 					</div>
 
 					<div className={styles.dropdownHint}>
-						Tip: Type <code>level=info</code> to filter by level
+						Tip: Type <code>level=info</code> or <code>session:xxx</code> to filter
 					</div>
 				</div>
 			)}

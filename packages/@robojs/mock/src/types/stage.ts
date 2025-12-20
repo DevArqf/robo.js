@@ -61,6 +61,9 @@ export type StageEventType =
 	// Logs Panel
 	| 'log_entry'              // Log entry from connected bot
 
+	// Permissions (Phase 3 - Permissions Admin UI)
+	| 'permission_denied'      // Permission check failed
+
 /**
  * Command types sent from stage clients to server
  */
@@ -307,11 +310,29 @@ export interface StageApplicationCommand {
 export type StageMessageSource = 'bot' | 'injected' | 'system'
 
 /**
+ * Mention metadata for a message
+ */
+export interface StageMentionData {
+	/** Whether this message mentions the current Stage UI user */
+	mentionsCurrentUser: boolean
+	/** Whether @everyone was used */
+	mentionsEveryone: boolean
+	/** Whether @here was used */
+	mentionsHere: boolean
+	/** Role IDs mentioned */
+	mentionedRoles: Snowflake[]
+	/** Channel IDs mentioned */
+	mentionedChannels: Snowflake[]
+}
+
+/**
  * Data payload for message_create events
  */
 export interface StageMessageCreateData {
 	source: StageMessageSource
 	message: StageMessage
+	/** Mention metadata for notification tracking (optional for backward compat) */
+	mentions?: StageMentionData
 }
 
 /**

@@ -28,7 +28,9 @@ import type {
 	SessionConfig,
 	SeedMessageConfig,
 	VoiceServerState,
-	SessionLogEntry
+	SessionLogEntry,
+	PermissionOverride,
+	PermissionDeniedEvent
 } from '../types/index.js'
 import { AutoModerationTriggerType } from '../types/index.js'
 import { generateSessionId, createMockToken, generateInteractionToken } from '../utils/id.js'
@@ -110,6 +112,9 @@ export class Session implements ISession {
 	// Rate limit simulation state
 	private _simulateRateLimit = false
 	private _rateLimitRetryAfter = 1 // seconds
+	private _rateLimitPersistent = false // If true, doesn't auto-disable after triggering
+	private _rateLimitScope: 'all' | 'messages' | 'interactions' | 'guilds' | 'channels' = 'all'
+	private _rateLimitTriggeredCount = 0 // Track how many times rate limit has been triggered
 
 	// Loop detection state
 	private messageCreateTimestamps: number[] = []
@@ -119,6 +124,12 @@ export class Session implements ISession {
 
 	// Heartbeat interval (per-session, default matches Discord's standard interval)
 	private _heartbeatInterval: number | null = null
+
+	// Permission enforcement state (runtime changeable)
+	private _permissionEnforcement: 'none' | 'basic' | 'strict' | null = null
+	private _permissionOverrides: Map<string, PermissionOverride> = new Map()
+	private _permissionDeniedEvents: PermissionDeniedEvent[] = []
+	private static readonly MAX_PERMISSION_DENIED_EVENTS = 100
 
 	// Loop detection constants
 	private static readonly LOOP_THRESHOLD = 10 // events
@@ -2189,25 +2200,79 @@ export class Session implements ISession {
 
 	/**
 	 * Enable rate limit simulation for testing
-	 * When enabled, the next API request will return a 429 response
+	 * When enabled, matching API requests will return a 429 response
+	 *
+	 * @param config - Rate limit configuration or simple enabled boolean for backward compatibility
+	 * @param retryAfter - Retry-After value in seconds (only used when config is boolean)
 	 */
-	setRateLimitSimulation(enabled: boolean, retryAfter = 1): void {
-		this._simulateRateLimit = enabled
-		this._rateLimitRetryAfter = retryAfter
+	setRateLimitSimulation(
+		config: boolean | { enabled: boolean; retryAfter?: number; persistent?: boolean; scope?: 'all' | 'messages' | 'interactions' | 'guilds' | 'channels' },
+		retryAfter = 1
+	): void {
+		if (typeof config === 'boolean') {
+			// Backward compatibility: simple boolean + retryAfter
+			this._simulateRateLimit = config
+			this._rateLimitRetryAfter = retryAfter
+		} else {
+			// Full config object
+			this._simulateRateLimit = config.enabled
+			this._rateLimitRetryAfter = config.retryAfter ?? 1
+			this._rateLimitPersistent = config.persistent ?? false
+			this._rateLimitScope = config.scope ?? 'all'
+		}
+
+		// Reset triggered count when enabling
+		if (this._simulateRateLimit) {
+			this._rateLimitTriggeredCount = 0
+		}
 	}
 
 	/**
-	 * Check if rate limit simulation is enabled
-	 * If enabled, returns the retry-after value and disables simulation
-	 * Returns null if not simulating rate limit
+	 * Check if rate limit simulation should trigger for a given endpoint
+	 * If triggered, returns the retry-after value and optionally disables simulation
+	 * Returns null if not simulating rate limit or endpoint doesn't match scope
+	 *
+	 * @param endpoint - Optional endpoint path to check against scope
 	 */
-	checkRateLimit(): { retryAfter: number } | null {
-		if (this._simulateRateLimit) {
-			const retryAfter = this._rateLimitRetryAfter
-			this._simulateRateLimit = false // One-shot simulation
-			return { retryAfter }
+	checkRateLimit(endpoint?: string): { retryAfter: number } | null {
+		if (!this._simulateRateLimit) {
+			return null
 		}
-		return null
+
+		// Check if endpoint matches the configured scope
+		if (endpoint && !this.matchesRateLimitScope(endpoint)) {
+			return null
+		}
+
+		const retryAfter = this._rateLimitRetryAfter
+		this._rateLimitTriggeredCount++
+
+		// Only auto-disable if NOT in persistent mode
+		if (!this._rateLimitPersistent) {
+			this._simulateRateLimit = false
+		}
+
+		return { retryAfter }
+	}
+
+	/**
+	 * Check if an endpoint matches the configured rate limit scope
+	 */
+	private matchesRateLimitScope(endpoint: string): boolean {
+		switch (this._rateLimitScope) {
+			case 'all':
+				return true
+			case 'messages':
+				return endpoint.includes('/messages')
+			case 'interactions':
+				return endpoint.includes('/interactions')
+			case 'guilds':
+				return endpoint.includes('/guilds')
+			case 'channels':
+				return endpoint.includes('/channels')
+			default:
+				return true
+		}
 	}
 
 	/**
@@ -2215,6 +2280,25 @@ export class Session implements ISession {
 	 */
 	get isRateLimitSimulationActive(): boolean {
 		return this._simulateRateLimit
+	}
+
+	/**
+	 * Get the current rate limit configuration
+	 */
+	get rateLimitConfig(): {
+		enabled: boolean
+		retryAfter: number
+		persistent: boolean
+		scope: 'all' | 'messages' | 'interactions' | 'guilds' | 'channels'
+		triggeredCount: number
+	} {
+		return {
+			enabled: this._simulateRateLimit,
+			retryAfter: this._rateLimitRetryAfter,
+			persistent: this._rateLimitPersistent,
+			scope: this._rateLimitScope,
+			triggeredCount: this._rateLimitTriggeredCount
+		}
 	}
 
 	// ============================================================================
@@ -2278,6 +2362,135 @@ export class Session implements ISession {
 	 */
 	get heartbeatInterval(): number | null {
 		return this._heartbeatInterval
+	}
+
+	// ============================================================================
+	// Permission Enforcement (Phase 3 - Permissions Admin UI)
+	// ============================================================================
+
+	/**
+	 * Get the current permission enforcement level.
+	 * Falls back to config value if not set at runtime.
+	 */
+	get permissionEnforcement(): 'none' | 'basic' | 'strict' {
+		return this._permissionEnforcement ?? this.config?.permissionEnforcement ?? 'none'
+	}
+
+	/**
+	 * Set the permission enforcement level at runtime.
+	 * Set to null to use the config default.
+	 */
+	set permissionEnforcement(level: 'none' | 'basic' | 'strict' | null) {
+		this._permissionEnforcement = level
+		mockLogger.debug(`Session ${this.id}: Permission enforcement set to ${level ?? 'config default'}`)
+	}
+
+	/**
+	 * Get all permission overrides
+	 */
+	getPermissionOverrides(): PermissionOverride[] {
+		// Clean up expired overrides first
+		const now = Date.now()
+		for (const [id, override] of this._permissionOverrides) {
+			if (override.expiresAt && override.expiresAt < now) {
+				this._permissionOverrides.delete(id)
+			}
+		}
+		return Array.from(this._permissionOverrides.values())
+	}
+
+	/**
+	 * Get a specific permission override by ID
+	 */
+	getPermissionOverride(id: string): PermissionOverride | undefined {
+		const override = this._permissionOverrides.get(id)
+		if (override?.expiresAt && override.expiresAt < Date.now()) {
+			this._permissionOverrides.delete(id)
+			return undefined
+		}
+		return override
+	}
+
+	/**
+	 * Add a new permission override
+	 * @param override - The override to add (id will be generated if not provided)
+	 * @returns The added override with generated ID
+	 */
+	addPermissionOverride(override: Omit<PermissionOverride, 'id' | 'createdAt'> & { id?: string }): PermissionOverride {
+		const newOverride: PermissionOverride = {
+			id: override.id ?? generateSnowflake(),
+			userId: override.userId,
+			channelId: override.channelId ?? null,
+			guildId: override.guildId ?? null,
+			permissions: override.permissions,
+			expiresAt: override.expiresAt ?? null,
+			createdAt: Date.now(),
+			reason: override.reason
+		}
+		this._permissionOverrides.set(newOverride.id, newOverride)
+		mockLogger.debug(`Session ${this.id}: Added permission override ${newOverride.id} for user ${newOverride.userId}`)
+		return newOverride
+	}
+
+	/**
+	 * Remove a permission override by ID
+	 * @returns true if the override was removed, false if not found
+	 */
+	removePermissionOverride(id: string): boolean {
+		const removed = this._permissionOverrides.delete(id)
+		if (removed) {
+			mockLogger.debug(`Session ${this.id}: Removed permission override ${id}`)
+		}
+		return removed
+	}
+
+	/**
+	 * Clear all permission overrides
+	 */
+	clearPermissionOverrides(): void {
+		const count = this._permissionOverrides.size
+		this._permissionOverrides.clear()
+		mockLogger.debug(`Session ${this.id}: Cleared ${count} permission overrides`)
+	}
+
+	/**
+	 * Record a permission denied event (for Stage UI display)
+	 */
+	recordPermissionDenied(event: Omit<PermissionDeniedEvent, 'sessionId' | 'timestamp'>): PermissionDeniedEvent {
+		const fullEvent: PermissionDeniedEvent = {
+			...event,
+			sessionId: this.id,
+			timestamp: Date.now()
+		}
+
+		// Add to the beginning and trim to max size
+		this._permissionDeniedEvents.unshift(fullEvent)
+		if (this._permissionDeniedEvents.length > Session.MAX_PERMISSION_DENIED_EVENTS) {
+			this._permissionDeniedEvents.pop()
+		}
+
+		// Notify Stage UI
+		try {
+			getStageBridge().onPermissionDenied(this.id, fullEvent)
+		} catch {
+			// Stage bridge may not be initialized in some contexts
+		}
+
+		return fullEvent
+	}
+
+	/**
+	 * Get recent permission denied events
+	 */
+	getPermissionDeniedEvents(): PermissionDeniedEvent[] {
+		return [...this._permissionDeniedEvents]
+	}
+
+	/**
+	 * Clear permission denied events history
+	 */
+	clearPermissionDeniedEvents(): void {
+		this._permissionDeniedEvents = []
 	}
 
 	/**

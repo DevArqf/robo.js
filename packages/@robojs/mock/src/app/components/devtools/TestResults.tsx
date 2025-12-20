@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { usePlaybackStore } from '../../stores/playbackStore'
 import { useWebSocket } from '../../stores/sessionStore'
+import { useLogsPanel } from '../../stores/logsStore'
 import { loadRecordingToPlayback } from '../../utils/loadRecordingToPlayback'
 import { apiFetch } from '../../utils/api'
 import { useToaster } from '../common/Toaster'
@@ -56,136 +57,6 @@ function formatDuration(ms: number): string {
 	if (ms < 1000) return `${ms}ms`
 	if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
 	return `${(ms / 60000).toFixed(1)}m`
-}
-
-// Log level type
-type LogLevel = 'all' | 'error' | 'warn' | 'info' | 'debug'
-
-// Log viewer sub-component with filtering
-function LogViewer({ testFile }: { testFile: string }) {
-	const [content, setContent] = useState<string>('')
-	const [loading, setLoading] = useState(true)
-	const [error, setError] = useState<string | null>(null)
-	const [searchQuery, setSearchQuery] = useState('')
-	const [levelFilter, setLevelFilter] = useState<LogLevel>('all')
-
-	useEffect(() => {
-		const logName = testFile.split('/').pop()?.replace(/\.test\.(ts|js|tsx|jsx)$/, '.log') || ''
-		if (!logName) {
-			setLoading(false)
-			setError('Could not determine log file name')
-			return
-		}
-
-		apiFetch(`/control/tests/logs?file=${encodeURIComponent(logName)}`)
-			.then((res) => res.json())
-			.then((data) => {
-				if (data.exists) {
-					setContent(data.content)
-				} else {
-					setError('Log file not found')
-				}
-				setLoading(false)
-			})
-			.catch((err) => {
-				setError(err.message)
-				setLoading(false)
-			})
-	}, [testFile])
-
-	// Filter and search logs
-	// Robo.js logger format: "prefix: level - message" where level is padded to 5 chars
-	// Examples: "mock: error -", "mock: debug -", "mock: info  -", "mock: warn  -"
-	const filteredLines = content.split('\n').filter((line) => {
-		// Apply level filter
-		if (levelFilter !== 'all') {
-			const lowerLine = line.toLowerCase()
-			// Match Robo.js logger format: "level -" or "level  -" (with padding)
-			const isError = /\berror\s+-/.test(lowerLine)
-			const isWarn = /\bwarn\s+-/.test(lowerLine)
-			const isDebug = /\bdebug\s+-/.test(lowerLine)
-			const isTrace = /\btrace\s+-/.test(lowerLine)
-			const isInfo = /\binfo\s+-/.test(lowerLine) || (!isError && !isWarn && !isDebug && !isTrace)
-
-			if (levelFilter === 'error' && !isError) return false
-			if (levelFilter === 'warn' && !isWarn) return false
-			if (levelFilter === 'info' && !isInfo) return false
-			if (levelFilter === 'debug' && !(isDebug || isTrace)) return false
-		}
-
-		// Apply search filter
-		if (searchQuery && !line.toLowerCase().includes(searchQuery.toLowerCase())) {
-			return false
-		}
-
-		return true
-	})
-
-	if (loading) return <div className={styles.logLoading}>Loading logs...</div>
-	if (error) return <div className={styles.logError}>{error}</div>
-	if (!content) return <div className={styles.logEmpty}>No logs available</div>
-
-	return (
-		<div className={styles.logViewerContainer}>
-			<div className={styles.logFilters}>
-				<input
-					type="text"
-					className={styles.logSearchInput}
-					placeholder="Search logs..."
-					value={searchQuery}
-					onChange={(e) => setSearchQuery(e.target.value)}
-				/>
-				<div className={styles.logLevelFilters}>
-					{(['all', 'error', 'warn', 'info', 'debug'] as LogLevel[]).map((level) => (
-						<button
-							key={level}
-							className={`${styles.logLevelButton} ${levelFilter === level ? styles.active : ''} ${styles[level]}`}
-							onClick={() => setLevelFilter(level)}
-						>
-							{level.toUpperCase()}
-						</button>
-					))}
-				</div>
-				<span className={styles.logCount}>
-					{filteredLines.length} / {content.split('\n').length} lines
-				</span>
-			</div>
-			<pre className={styles.logContent}>
-				{filteredLines.map((line, i) => {
-					let lineClass = styles.logLine
-					const lowerLine = line.toLowerCase()
-					if (/\berror\s+-/.test(lowerLine)) lineClass += ` ${styles.logLineError}`
-					else if (/\bwarn\s+-/.test(lowerLine)) lineClass += ` ${styles.logLineWarn}`
-					else if (/\b(debug|trace)\s+-/.test(lowerLine)) lineClass += ` ${styles.logLineDebug}`
-
-					// Highlight search matches
-					if (searchQuery) {
-						const regex = new RegExp(`(${searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
-						const parts = line.split(regex)
-						return (
-							<div key={i} className={lineClass}>
-								{parts.map((part, j) =>
-									regex.test(part) ? (
-										<mark key={j} className={styles.logHighlight}>
-											{part}
-										</mark>
-									) : (
-										part
-									)
-								)}
-							</div>
-						)
-					}
-
-					return (
-						<div key={i} className={lineClass}>
-							{line}
-						</div>
-					)
-				})}
-			</pre>
-		</div>
-	)
 }
 
 // Assertion detail component
@@ -267,15 +138,15 @@ function CompactDetailView({
 	file,
 	onReplay,
 	onCopySessionId,
+	onViewLogs,
 	replayLoading
 }: {
 	file: TestFileEntry
 	onReplay: (sessionId: string) => void
 	onCopySessionId: (sessionId: string) => void
+	onViewLogs: (sessionId: string) => void
 	replayLoading?: boolean
 }) {
-	const [activeSection, setActiveSection] = useState<'tests' | 'logs'>('tests')
-
 	return (
 		<div className={styles.compactDetailView}>
 			<div className={styles.compactDetailHeader}>
@@ -301,78 +172,79 @@ function CompactDetailView({
 						{file.sessionId.slice(0, 8)}...
 					</span>
 				</div>
-				<button
-					className={`${styles.replaySessionButton} ${!file.recordingPath ? styles.disabled : ''}`}
-					onClick={() => onReplay(file.sessionId)}
-					disabled={replayLoading || !file.recordingPath}
-					title={file.recordingPath ? 'Play back this test session in the Stage view above' : 'No recording available for this session'}
-				>
-					{replayLoading ? (
-						<>
-							<span className={styles.replaySpinner} />
-							Loading...
-						</>
-					) : (
-						<>
-							<span className={styles.replayIcon}>▶</span>
-							Replay
-						</>
-					)}
-				</button>
-			</div>
-
-			<div className={styles.compactSectionTabs}>
-				<button
-					className={`${styles.compactSectionTab} ${activeSection === 'tests' ? styles.active : ''}`}
-					onClick={() => setActiveSection('tests')}
-				>
-					Tests ({file.tests.length})
-				</button>
-				<button
-					className={`${styles.compactSectionTab} ${activeSection === 'logs' ? styles.active : ''}`}
-					onClick={() => setActiveSection('logs')}
-				>
-					Logs
-				</button>
+				<div className={styles.compactDetailActions}>
+					<button
+						className={styles.viewLogsButton}
+						onClick={() => onViewLogs(file.sessionId)}
+						title="View session logs in the Logs panel"
+					>
+						<LogsIcon />
+						View Logs
+					</button>
+					<button
+						className={`${styles.replaySessionButton} ${!file.recordingPath ? styles.disabled : ''}`}
+						onClick={() => onReplay(file.sessionId)}
+						disabled={replayLoading || !file.recordingPath}
+						title={file.recordingPath ? 'Play back this test session in the Stage view above' : 'No recording available for this session'}
+					>
+						{replayLoading ? (
+							<>
+								<span className={styles.replaySpinner} />
+								Loading...
+							</>
+						) : (
+							<>
+								<span className={styles.replayIcon}>▶</span>
+								Replay
+							</>
+						)}
+					</button>
+				</div>
 			</div>
 
 			<div className={styles.compactSectionContent}>
-				{activeSection === 'tests' && (
-					<div className={styles.compactTestsList}>
-						{file.tests.length === 0 && (
-							<div className={styles.emptyState}>No test results recorded</div>
-						)}
-						{file.tests.map((test, i) => (
-							<div key={i} className={`${styles.compactTestItem} ${styles[test.status]}`}>
-								<div className={styles.compactTestHeader}>
-									<span className={styles.compactTestIcon}>
-										{test.status === 'passed' ? '✓' : test.status === 'failed' ? '✗' : '○'}
-									</span>
-									<span className={styles.compactTestName}>{test.name}</span>
-									<span className={styles.compactTestDuration}>{formatDuration(test.duration)}</span>
-								</div>
-								{test.error && (
-									<div className={styles.compactTestError}>
-										{test.error.message}
-										{test.error.stack && (
-											<pre className={styles.compactErrorStack}>{test.error.stack}</pre>
-										)}
-									</div>
-								)}
-								{test.assertions.length > 0 && (
-									<div className={styles.compactAssertionsList}>
-										{test.assertions.map((assertion, j) => (
-											<AssertionDetail key={j} assertion={assertion} />
-										))}
-									</div>
-								)}
+				<div className={styles.compactTestsList}>
+					{file.tests.length === 0 && (
+						<div className={styles.emptyState}>No test results recorded</div>
+					)}
+					{file.tests.map((test, i) => (
+						<div key={i} className={`${styles.compactTestItem} ${styles[test.status]}`}>
+							<div className={styles.compactTestHeader}>
+								<span className={styles.compactTestIcon}>
+									{test.status === 'passed' ? '✓' : test.status === 'failed' ? '✗' : '○'}
+								</span>
+								<span className={styles.compactTestName}>{test.name}</span>
+								<span className={styles.compactTestDuration}>{formatDuration(test.duration)}</span>
 							</div>
-						))}
-					</div>
-				)}
-				{activeSection === 'logs' && <LogViewer testFile={file.path} />}
+							{test.error && (
+								<div className={styles.compactTestError}>
+									{test.error.message}
+									{test.error.stack && (
+										<pre className={styles.compactErrorStack}>{test.error.stack}</pre>
+									)}
+								</div>
+							)}
+							{test.assertions.length > 0 && (
+								<div className={styles.compactAssertionsList}>
+									{test.assertions.map((assertion, j) => (
+										<AssertionDetail key={j} assertion={assertion} />
+									))}
+								</div>
+							)}
+						</div>
+					))}
+				</div>
 			</div>
 		</div>
+	)
+}
+
+// Icons
+function LogsIcon() {
+	return (
+		<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+			<path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h11A1.5 1.5 0 0 1 15 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 13.5v-11zM3 4v1h10V4H3zm0 3v1h10V7H3zm0 3v1h5v-1H3z" />
+		</svg>
 	)
 }
 
@@ -384,6 +256,7 @@ export function TestResults() {
 	const [selectedFile, setSelectedFile] = useState<TestFileEntry | null>(null)
 	const [summaryCollapsed, setSummaryCollapsed] = useState(false)
 	const { showToast } = useToaster()
+	const { openWithSessionFilter } = useLogsPanel()
 
 	const fetchRegistry = useCallback(() => {
 		setLoading(true)
@@ -448,6 +321,13 @@ export function TestResults() {
 			showToast('Playback loaded - use timeline to navigate', 'success', 3000)
 		},
 		[playbackDispatch, disconnect, showToast]
+	)
+
+	const handleViewLogs = useCallback(
+		(sessionId: string) => {
+			openWithSessionFilter(sessionId)
+		},
+		[openWithSessionFilter]
 	)
 
 	if (loading && !registry) {
@@ -537,6 +417,7 @@ export function TestResults() {
 							file={selectedFile}
 							onReplay={handleReplay}
 							onCopySessionId={(id) => showToast(`Session ID copied: ${id}`, 'success', 2000)}
+							onViewLogs={handleViewLogs}
 							replayLoading={replayLoading}
 						/>
 					) : (

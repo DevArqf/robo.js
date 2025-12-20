@@ -421,6 +421,53 @@ export interface SessionConfig {
 }
 
 /**
+ * Permission override for testing permission scenarios
+ * Allows granting or denying specific permissions to users/roles
+ */
+export interface PermissionOverride {
+	/** Unique identifier for this override */
+	id: string
+	/** User ID to apply override to, or '*' for all users */
+	userId: string
+	/** Optional channel ID scope (null = guild-wide) */
+	channelId?: string | null
+	/** Optional guild ID scope */
+	guildId?: string | null
+	/** Permission values: 'grant' | 'deny' | 'inherit' */
+	permissions: Record<string, 'grant' | 'deny' | 'inherit'>
+	/** Optional TTL timestamp for auto-cleanup */
+	expiresAt?: number | null
+	/** When the override was created */
+	createdAt: number
+	/** Optional note explaining why the override exists */
+	reason?: string
+}
+
+/**
+ * Permission denied event data for Stage UI
+ */
+export interface PermissionDeniedEvent {
+	/** Session ID */
+	sessionId: string
+	/** Timestamp of the denial */
+	timestamp: number
+	/** HTTP method */
+	method: string
+	/** Request path */
+	path: string
+	/** Missing permission name(s) */
+	missingPermissions: string[]
+	/** Discord error code */
+	code: number
+	/** Error message */
+	message: string
+	/** Channel ID context (if applicable) */
+	channelId?: string
+	/** Guild ID context (if applicable) */
+	guildId?: string
+}
+
+/**
  * Options for SessionManager
  */
 export interface SessionManagerOptions {

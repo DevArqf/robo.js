@@ -92,6 +92,8 @@ export interface LogFilters {
 	timestampEnd: number | null
 	/** Whether to sync with playback time */
 	usePlaybackRange: boolean
+	/** Filter by session ID */
+	sessionId: string | null
 }
 
 interface LogsContextValue {
@@ -127,6 +129,10 @@ interface LogsContextValue {
 	setTimestampRange: (start: number | null, end: number | null) => void
 	/** Toggle playback sync */
 	setUsePlaybackRange: (use: boolean) => void
+	/** Set session ID filter */
+	setSessionFilter: (sessionId: string | null) => void
+	/** Open the logs panel with a session filter pre-applied */
+	openWithSessionFilter: (sessionId: string) => void
 	/** Filtered logs based on current filters */
 	filteredLogs: SessionLogEntry[]
 	/** Get log density for timeline markers (returns array of counts per bucket) */
@@ -181,7 +187,8 @@ export function LogsProvider({ children }: LogsProviderProps) {
 		search: '',
 		timestampStart: null,
 		timestampEnd: null,
-		usePlaybackRange: false
+		usePlaybackRange: false,
+		sessionId: null
 	})
 
 	// Time range state (Better Stack style)
@@ -294,6 +301,16 @@ export function LogsProvider({ children }: LogsProviderProps) {
 		setFilters((prev) => ({ ...prev, usePlaybackRange: use }))
 	}, [])
 
+	const setSessionFilter = useCallback((sessionId: string | null) => {
+		setFilters((prev) => ({ ...prev, sessionId }))
+	}, [])
+
+	const openWithSessionFilter = useCallback((sessionId: string) => {
+		setFilters((prev) => ({ ...prev, sessionId }))
+		setIsOpen(true)
+		localStorage.setItem(STORAGE_KEY, 'true')
+	}, [])
+
 	// Time range management
 	const setTimeRange = useCallback((range: TimeRange) => {
 		setTimeRangeState(range)
@@ -387,6 +404,11 @@ export function LogsProvider({ children }: LogsProviderProps) {
 	const filteredLogs = useMemo(() => {
 		let result = logs
 
+		// Filter by session ID
+		if (filters.sessionId) {
+			result = result.filter((log) => log.source?.sessionId === filters.sessionId)
+		}
+
 		// Filter by levels
 		if (filters.levels.size > 0) {
 			result = result.filter((log) => filters.levels.has(log.level))
@@ -478,6 +500,8 @@ export function LogsProvider({ children }: LogsProviderProps) {
 		setSearchFilter,
 		setTimestampRange,
 		setUsePlaybackRange,
+		setSessionFilter,
+		openWithSessionFilter,
 		filteredLogs,
 		getLogDensity,
 		timeRange,
@@ -508,8 +532,8 @@ export function useLogs(): LogsContextValue {
  * Hook for just the panel state (open/close/width)
  */
 export function useLogsPanel() {
-	const { isOpen, toggle, open, close, width, setWidth } = useLogs()
-	return { isOpen, toggle, open, close, width, setWidth }
+	const { isOpen, toggle, open, close, width, setWidth, openWithSessionFilter } = useLogs()
+	return { isOpen, toggle, open, close, width, setWidth, openWithSessionFilter }
 }
 
 /**
@@ -523,7 +547,8 @@ export function useLogsFilters() {
 		toggleLevelFilter,
 		setSearchFilter,
 		setTimestampRange,
-		setUsePlaybackRange
+		setUsePlaybackRange,
+		setSessionFilter
 	} = useLogs()
 	return {
 		filters,
@@ -532,7 +557,8 @@ export function useLogsFilters() {
 		toggleLevelFilter,
 		setSearchFilter,
 		setTimestampRange,
-		setUsePlaybackRange
+		setUsePlaybackRange,
+		setSessionFilter
 	}
 }
 

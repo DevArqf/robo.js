@@ -35,7 +35,8 @@ export function AppShell() {
 		currentUser,
 		sessionId,
 		joinVoice,
-		leaveVoice
+		leaveVoice,
+		unreadMentions
 	} = useStageData()
 
 	// Home view toggle (Friends UI) via the top-left Home button in the server list.
@@ -178,6 +179,7 @@ export function AppShell() {
 										channels={channels}
 										selectedId={selectedChannelId}
 										onSelect={handleChannelSelect}
+										mentionCounts={unreadMentions}
 										voiceStates={voiceStates}
 										users={allUsers}
 										onJoinVoice={joinVoice}

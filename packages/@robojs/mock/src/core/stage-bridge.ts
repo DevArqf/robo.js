@@ -1,4 +1,6 @@
 import { getStageServer } from './stage.js'
+import { sessionManager } from './manager.js'
+import { NotificationResolver } from '../utils/notification-resolver.js'
 import type {
 	StageEventType,
 	StageMessageCreateData,
@@ -9,9 +11,10 @@ import type {
 	StageRESTCallData,
 	StageEventFilteredData,
 	StageLoopDetectedData,
-	StageUser
+	StageUser,
+	StageMentionData
 } from '../types/stage.js'
-import type { MockUser, SessionLogEntry } from '../types/index.js'
+import type { MockUser, MockMessage, SessionLogEntry, PermissionDeniedEvent } from '../types/index.js'
 
 /**
  * Bridge between Session events and the Stage WebSocket server.
@@ -35,7 +38,7 @@ export class StageBridge {
 			return
 		}
 
-		const stageData = this.transformEventData(event, data)
+		const stageData = this.transformEventData(event, data, sessionId)
 		const stageServer = getStageServer()
 		stageServer.broadcastToSession(sessionId, {
 			type: stageEventType,
@@ -266,6 +269,21 @@ export class StageBridge {
 	}
 
 	/**
+	 * Called when a permission check fails.
+	 * Broadcasts to Stage UI for display in the Permissions Panel.
+	 *
+	 * @param sessionId - The session
+	 * @param event - The permission denied event details
+	 */
+	onPermissionDenied(sessionId: string, event: PermissionDeniedEvent): void {
+		const stageServer = getStageServer()
+		stageServer.broadcastToSession(sessionId, {
+			type: 'permission_denied',
+			data: event
+		})
+	}
+
+	/**
 	 * Map Discord event names to Stage event types.
 	 * Returns null for events that shouldn't be forwarded to stage.
 	 */
@@ -307,14 +325,51 @@ export class StageBridge {
 	 * Transform Discord event data to Stage format.
 	 * Adds source information and simplifies where needed.
 	 */
-	private transformEventData(event: string, data: unknown): unknown {
+	private transformEventData(event: string, data: unknown, sessionId?: string): unknown {
 		switch (event) {
 			case 'MESSAGE_CREATE': {
-				const messageData = data as { author?: { bot?: boolean }; [key: string]: unknown }
+				const messageData = data as { author?: { id?: string; bot?: boolean }; mentions?: Array<{ id: string }>; mention_roles?: string[]; mention_everyone?: boolean; content?: string; [key: string]: unknown }
 				const source = messageData.author?.bot ? 'bot' : 'injected'
+
+				// Compute mention metadata for Stage UI
+				let mentions: StageMentionData | undefined
+				if (sessionId) {
+					const session = sessionManager.get(sessionId)
+					if (session) {
+						const currentUser = session.state.currentUser
+						// Build a minimal MockMessage for NotificationResolver
+						const mockMessage: MockMessage = {
+							id: (messageData.id as string) ?? '',
+							channelId: (messageData.channel_id as string) ?? '',
+							authorId: (messageData.author?.id as string) ?? '',
+							content: messageData.content ?? '',
+							timestamp: new Date().toISOString(),
+							editedTimestamp: null,
+							tts: false,
+							mentionEveryone: messageData.mention_everyone ?? false,
+							mentions: (messageData.mentions as Array<{ id: string }> ?? []).map(m => m.id),
+							mentionRoles: (messageData.mention_roles as string[]) ?? [],
+							attachments: [],
+							embeds: [],
+							pinned: false,
+							type: 0
+						}
+
+						const notificationResult = NotificationResolver.resolve(mockMessage, session.state, currentUser?.id)
+						mentions = {
+							mentionsCurrentUser: notificationResult.mentionsCurrentUser,
+							mentionsEveryone: notificationResult.mentionsEveryone,
+							mentionsHere: notificationResult.mentionsHere,
+							mentionedRoles: notificationResult.mentionedRoles,
+							mentionedChannels: notificationResult.mentionedChannels
+						}
+					}
+				}
+
 				return {
 					source,
-					message: data
+					message: data,
+					mentions
 				} as StageMessageCreateData
 			}
 

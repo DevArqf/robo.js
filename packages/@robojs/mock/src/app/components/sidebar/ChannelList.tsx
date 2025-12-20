@@ -12,6 +12,7 @@ interface ChannelListProps {
 	selectedId: string | null
 	onSelect: (id: string | null) => void
 	unreadChannelIds?: Set<string>
+	mentionCounts?: Record<string, number>
 	voiceStates?: StageVoiceState[]
 	users?: StageUser[]
 	onJoinVoice?: (channelId: string, guildId: string) => void
@@ -43,6 +44,7 @@ export function ChannelList({
 	selectedId,
 	onSelect,
 	unreadChannelIds,
+	mentionCounts = {},
 	voiceStates = [],
 	users = [],
 	onJoinVoice,
@@ -126,6 +128,7 @@ export function ChannelList({
 					threads={getThreadsForChannel(channel.id)}
 					isSelected={selectedId === channel.id}
 					isUnread={unreadChannelIds?.has(channel.id)}
+					mentionCount={mentionCounts[channel.id]}
 					selectedThreadId={selectedId}
 					onClick={() => onSelect(channel.id)}
 					onThreadSelect={onSelect}
@@ -227,12 +230,14 @@ interface ChannelItemProps {
 	channel: StageChannel
 	isSelected: boolean
 	isUnread?: boolean
+	mentionCount?: number
 	onClick: () => void
 }
 
-function ChannelItem({ channel, isSelected, isUnread, onClick }: ChannelItemProps) {
+function ChannelItem({ channel, isSelected, isUnread, mentionCount, onClick }: ChannelItemProps) {
 	const Icon = getChannelIcon(channel.type)
 	const hasUnread = isUnread && !isSelected
+	const hasMentions = mentionCount && mentionCount > 0 && !isSelected
 	const isVoice = channel.type === ChannelType.GUILD_VOICE || channel.type === ChannelType.GUILD_STAGE_VOICE
 
 	// Voice channels have a different appearance - show empty state
@@ -249,13 +254,14 @@ function ChannelItem({ channel, isSelected, isUnread, onClick }: ChannelItemProp
 
 	return (
 		<button
-			className={`${styles.channel} ${isSelected ? styles.selected : ''} ${hasUnread ? styles.unread : ''}`}
+			className={`${styles.channel} ${isSelected ? styles.selected : ''} ${hasUnread || hasMentions ? styles.unread : ''}`}
 			onClick={onClick}
 			aria-current={isSelected ? 'page' : undefined}
-			aria-label={`${channel.name}${hasUnread ? ' (unread messages)' : ''}`}
+			aria-label={`${channel.name}${hasMentions ? ` (${mentionCount} mentions)` : hasUnread ? ' (unread messages)' : ''}`}
 		>
 			<Icon className={styles.channelIcon} aria-hidden="true" />
 			<span className={styles.channelName}>{channel.name}</span>
+			{hasMentions && <span className={styles.mentionBadge}>{mentionCount}</span>}
 		</button>
 	)
 }
@@ -366,6 +372,7 @@ interface ChannelItemWithThreadsProps {
 	threads: StageChannel[]
 	isSelected: boolean
 	isUnread?: boolean
+	mentionCount?: number
 	selectedThreadId: string | null
 	onClick: () => void
 	onThreadSelect: (id: string | null) => void
@@ -376,13 +383,14 @@ function ChannelItemWithThreads({
 	threads,
 	isSelected,
 	isUnread,
+	mentionCount,
 	selectedThreadId,
 	onClick,
 	onThreadSelect
 }: ChannelItemWithThreadsProps) {
 	return (
 		<>
-			<ChannelItem channel={channel} isSelected={isSelected} isUnread={isUnread} onClick={onClick} />
+			<ChannelItem channel={channel} isSelected={isSelected} isUnread={isUnread} mentionCount={mentionCount} onClick={onClick} />
 
 			{threads.length > 0 && (
 				<div className={styles.threadList}>

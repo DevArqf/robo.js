@@ -76,6 +76,9 @@ export interface StageDataResult {
 	eventCount: number
 	lastHeartbeat: number | null
 
+	// === Mention Tracking ===
+	unreadMentions: Record<string, number>
+
 	// === Selection Actions (work in both modes) ===
 	selectGuild: (guildId: string | null) => void
 	selectChannel: (channelId: string | null) => void
@@ -597,6 +600,9 @@ export function useStageData(options?: UseStageDataOptions): StageDataResult {
 		loopWarning: sessionState.loopWarning,
 		eventCount: sessionState.eventCount,
 		lastHeartbeat: sessionState.lastHeartbeat,
+
+		// Mention Tracking
+		unreadMentions: sessionState.unreadMentions,
 
 		// Selection Actions
 		selectGuild,

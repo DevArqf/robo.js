@@ -123,8 +123,8 @@ export function enforcePermissions(
 	guildId?: string,
 	options?: EnforcePermissionsOptions
 ): Response | null {
-	// Get enforcement level from session config
-	const level: PermissionEnforcementLevel = session.config?.permissionEnforcement ?? 'none'
+	// Get enforcement level from session (uses runtime value if set, else config default)
+	const level: PermissionEnforcementLevel = session.permissionEnforcement
 
 	// 'none' level: skip all checks
 	if (level === 'none') {
@@ -153,13 +153,56 @@ export function enforcePermissions(
 	// Check permissions
 	const result = checkEndpointPermissionWithEnforcement(context, method, path, enforcementOptions)
 
-	// If denied, return error response
+	// If denied, record the event and return error response
 	if (!result.allowed) {
+		// Extract missing permissions from message (format: "Missing Permission: PermName")
+		const missingPermissions = extractMissingPermissions(result.message || '')
+
+		// Record the denied event for Stage UI display
+		session.recordPermissionDenied({
+			method,
+			path,
+			missingPermissions,
+			code: result.code || 50013,
+			message: result.message || 'Missing Permissions',
+			channelId,
+			guildId: context.guildId
+		})
+
 		return createPermissionErrorResponse(result)
 	}
 
 	// Permission granted
 	return null
+}
+
+/**
+ * Extract permission names from error message
+ * Handles formats like "Missing Permission: SendMessages" or "Missing Permissions"
+ */
+function extractMissingPermissions(message: string): string[] {
+	// Try to extract specific permission name from message
+	const match = message.match(/Missing Permission: (\w+)/)
+	if (match) {
+		return [match[1]]
+	}
+
+	// Check for generic "Missing Permissions" message
+	if (message.includes('Missing Permissions')) {
+		return ['Unknown']
+	}
+
+	// Check for other error types like "Invalid Role"
+	if (message.includes('Invalid Role')) {
+		return ['ManageRoles']
+	}
+
+	// Check for message editing errors
+	if (message.includes('Cannot edit a message authored by another user')) {
+		return ['ManageMessages']
+	}
+
+	return ['Unknown']
 }
 
 /**
@@ -169,5 +212,5 @@ export function enforcePermissions(
  * @returns The enforcement level ('none', 'basic', or 'strict')
  */
 export function getEnforcementLevel(session: Session): PermissionEnforcementLevel {
-	return session.config?.permissionEnforcement ?? 'none'
+	return session.permissionEnforcement
 }

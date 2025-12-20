@@ -59,6 +59,7 @@ interface MessageProps {
 	message: StageMessage
 	isFirstInGroup: boolean
 	isHighlighted?: boolean
+	isMentioned?: boolean
 	onButtonClick?: (messageId: string, customId: string) => Promise<void>
 	onSelectOption?: (messageId: string, customId: string, values: string[]) => Promise<void>
 	onAddReaction?: (messageId: string, emoji: string) => Promise<void>
@@ -71,6 +72,7 @@ export function Message({
 	message,
 	isFirstInGroup,
 	isHighlighted,
+	isMentioned,
 	onButtonClick,
 	onSelectOption,
 	onAddReaction,
@@ -122,7 +124,7 @@ export function Message({
 
 	return (
 		<div
-			className={`${styles.message} ${isHighlighted ? styles.highlighted : ''} ${isEphemeral ? styles.ephemeral : ''}`}
+			className={`${styles.message} ${isHighlighted ? styles.highlighted : ''} ${isMentioned ? styles.mentioned : ''} ${isEphemeral ? styles.ephemeral : ''}`}
 			onContextMenu={onContextMenu ? (e) => onContextMenu(e, message) : undefined}
 		>
 			{/* Reply reference indicator */}

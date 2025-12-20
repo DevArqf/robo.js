@@ -106,6 +106,9 @@ export interface SessionState {
 	// Loop detection warning
 	loopWarning: LoopWarning | null
 
+	// Mention tracking - count of unread mentions per channel
+	unreadMentions: Record<string, number>
+
 	// Stats
 	eventCount: number
 	lastHeartbeat: number | null
@@ -150,6 +153,8 @@ type SessionAction =
 	| { type: 'CLEAR_LOOP_WARNING' }
 	| { type: 'SET_CURRENT_USER'; payload: StageUser }
 	| { type: 'UPDATE_CURRENT_USER'; payload: Partial<StageUser> }
+	| { type: 'INCREMENT_UNREAD_MENTIONS'; payload: { channelId: string; count: number } }
+	| { type: 'CLEAR_UNREAD_MENTIONS'; payload: string }
 
 // Initial state
 const initialState: SessionState = {
@@ -177,6 +182,7 @@ const initialState: SessionState = {
 	replyingTo: null,
 	filteredEvents: [],
 	loopWarning: null,
+	unreadMentions: {},
 	eventCount: 0,
 	lastHeartbeat: null
 }
@@ -404,8 +410,15 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 			}
 		}
 
-		case 'SELECT_CHANNEL':
-			return { ...state, selectedChannelId: action.payload }
+		case 'SELECT_CHANNEL': {
+			const channelId = action.payload
+			// Clear unread mentions for the selected channel
+			if (channelId && state.unreadMentions[channelId]) {
+				const { [channelId]: _, ...remainingMentions } = state.unreadMentions
+				return { ...state, selectedChannelId: channelId, unreadMentions: remainingMentions }
+			}
+			return { ...state, selectedChannelId: channelId }
+		}
 
 		case 'TOGGLE_MEMBERS':
 			return { ...state, showMembers: !state.showMembers }
@@ -596,6 +609,34 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 			}
 		}
 
+		case 'INCREMENT_UNREAD_MENTIONS': {
+			const { channelId, count } = action.payload
+			// Don't increment for the currently selected channel
+			if (channelId === state.selectedChannelId) {
+				return state
+			}
+			const currentCount = state.unreadMentions[channelId] || 0
+			return {
+				...state,
+				unreadMentions: {
+					...state.unreadMentions,
+					[channelId]: currentCount + count
+				}
+			}
+		}
+
+		case 'CLEAR_UNREAD_MENTIONS': {
+			const channelId = action.payload
+			if (!state.unreadMentions[channelId]) {
+				return state
+			}
+			const { [channelId]: _, ...remainingMentions } = state.unreadMentions
+			return {
+				...state,
+				unreadMentions: remainingMentions
+			}
+		}
+
 		default:
 			return state
 	}
@@ -726,6 +767,17 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 							payload: {
 								channelId: msgData.message.channel_id,
 								botId: msgData.message.author.id
+							}
+						})
+					}
+
+					// Track unread mentions if the message mentions the current user
+					if (msgData.mentions?.mentionsCurrentUser || msgData.mentions?.mentionsEveryone || msgData.mentions?.mentionsHere) {
+						dispatch({
+							type: 'INCREMENT_UNREAD_MENTIONS',
+							payload: {
+								channelId: msgData.message.channel_id,
+								count: 1
 							}
 						})
 					}
