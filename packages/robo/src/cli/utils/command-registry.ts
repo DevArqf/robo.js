@@ -247,8 +247,11 @@ export function createLazyCommand(meta: CommandMetadata): Command {
 			// Load environment variables before running extension hooks
 			// This ensures plugins can access env vars like DISCORD_TOKEN in their before hooks
 			const { Env } = await import('../../core/env.js')
-			const { Mode, resolveCliMode } = await import('../../core/mode.js')
-			const envMode = resolveCliMode((context.options as Record<string, unknown>).mode as string | undefined) ?? Mode.get()
+			const { resolveCliMode } = await import('../../core/mode.js')
+			// Infer default mode from command name - dev uses development, others use production
+			// This ensures the correct .env.{mode} file is loaded before the command handler runs
+			const inferredMode = meta.name === 'dev' ? 'development' : 'production'
+			const envMode = resolveCliMode((context.options as Record<string, unknown>).mode as string | undefined) ?? inferredMode
 			await Env.load({ mode: envMode })
 
 			// Run before hooks (highest priority first, already sorted)
