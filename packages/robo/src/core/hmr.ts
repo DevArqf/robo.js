@@ -42,6 +42,68 @@ export interface HotModule {
 }
 
 /**
+ * Callback function for HMR event subscriptions.
+ */
+export type HmrCallback = (context: HmrEventContext) => void | Promise<void>
+
+/**
+ * Options for filtering HMR events when subscribing.
+ */
+export interface HmrSubscribeOptions {
+	/**
+	 * Only receive events for these namespaces.
+	 * If not specified, receives all namespaces.
+	 */
+	namespaces?: string[]
+
+	/**
+	 * Only receive events for these route types.
+	 * If not specified, receives all routes.
+	 */
+	routes?: string[]
+
+	/**
+	 * Only receive events for these change types.
+	 * If not specified, receives all change types.
+	 */
+	changeTypes?: Array<'change' | 'add' | 'remove'>
+}
+
+/**
+ * Subscription handle returned by `hmr.subscribe()`.
+ */
+export interface HmrSubscription {
+	/**
+	 * Unsubscribe from HMR events.
+	 * After calling this, the callback will no longer be invoked.
+	 */
+	unsubscribe(): void
+}
+
+/**
+ * Route info included in HMR event context.
+ */
+export interface HmrEventRouteInfo {
+	namespace: string
+	route: string
+	handlers: Array<{
+		key: string
+		path: string
+		plugin?: { name: string; version: string }
+	}>
+}
+
+/**
+ * Context passed to HMR event subscribers.
+ */
+export interface HmrEventContext {
+	changeType: 'change' | 'add' | 'remove'
+	files: string[]
+	routes: HmrEventRouteInfo[]
+	mode: string
+}
+
+/**
  * HMR API interface.
  */
 export interface HMR {
@@ -62,6 +124,38 @@ export interface HMR {
 	 * @returns A HotModule instance for registering cleanup callbacks
 	 */
 	module(metaUrl: string): HotModule
+
+	/**
+	 * Subscribe to HMR events.
+	 * Callbacks are invoked after handlers are reloaded in the portal.
+	 *
+	 * @param callback - Function to call when HMR events occur
+	 * @param options - Optional filters for events
+	 * @returns Subscription handle with unsubscribe method
+	 *
+	 * @example
+	 * ```ts
+	 * import { hmr } from 'robo.js/hmr'
+	 *
+	 * const sub = hmr.subscribe((ctx) => {
+	 *   console.log('Routes reloaded:', ctx.routes)
+	 * }, {
+	 *   namespaces: ['server'],
+	 *   routes: ['api']
+	 * })
+	 *
+	 * // Later: sub.unsubscribe()
+	 * ```
+	 */
+	subscribe(callback: HmrCallback, options?: HmrSubscribeOptions): HmrSubscription
+}
+
+/**
+ * Internal subscriber entry with callback and filter options.
+ */
+interface HmrSubscriberEntry {
+	callback: HmrCallback
+	options?: HmrSubscribeOptions
 }
 
 /**
@@ -74,6 +168,8 @@ interface HMRState {
 	data: Map<string, Record<string, unknown>>
 	// Counter for debugging
 	reloadCount: number
+	// Set of HMR event subscribers
+	subscribers: Set<HmrSubscriberEntry>
 }
 
 declare global {
@@ -114,8 +210,13 @@ function getState(): HMRState {
 		globalThis.__robo_hmr__ = {
 			disposers: new Map(),
 			data: new Map(),
-			reloadCount: 0
+			reloadCount: 0,
+			subscribers: new Set()
 		}
+	}
+	// Ensure subscribers exists for older state objects
+	if (!globalThis.__robo_hmr__.subscribers) {
+		globalThis.__robo_hmr__.subscribers = new Set()
 	}
 	return globalThis.__robo_hmr__
 }
@@ -197,6 +298,119 @@ function isHmrEnabled(): boolean {
 }
 
 /**
+ * Filter context for a subscriber based on their options.
+ * Returns null if no routes match the filter (subscriber should be skipped).
+ */
+function filterContextForSubscriber(
+	context: HmrEventContext,
+	options?: HmrSubscribeOptions
+): HmrEventContext | null {
+	if (!options) {
+		return context
+	}
+
+	// Check changeType filter
+	if (options.changeTypes && !options.changeTypes.includes(context.changeType)) {
+		return null
+	}
+
+	// Filter routes by namespace and route
+	let filteredRoutes = context.routes
+
+	if (options.namespaces) {
+		filteredRoutes = filteredRoutes.filter((r) => options.namespaces!.includes(r.namespace))
+	}
+
+	if (options.routes) {
+		filteredRoutes = filteredRoutes.filter((r) => options.routes!.includes(r.route))
+	}
+
+	// If no routes match, skip this subscriber
+	if (filteredRoutes.length === 0) {
+		return null
+	}
+
+	// Return context with filtered routes
+	return {
+		...context,
+		routes: filteredRoutes
+	}
+}
+
+/**
+ * Subscribe to HMR events (development mode).
+ */
+function subscribe(callback: HmrCallback, options?: HmrSubscribeOptions): HmrSubscription {
+	const state = getState()
+	const entry: HmrSubscriberEntry = { callback, options }
+	state.subscribers.add(entry)
+
+	return {
+		unsubscribe(): void {
+			state.subscribers.delete(entry)
+		}
+	}
+}
+
+/**
+ * No-op subscription for production mode.
+ */
+const noopSubscription: HmrSubscription = {
+	unsubscribe: () => {
+		// No-op in production
+	}
+}
+
+/**
+ * Dispatch an HMR event to all subscribers.
+ * Called by executeHmrHooks() after handlers are reloaded.
+ * Errors are caught and logged but never thrown.
+ *
+ * @internal
+ */
+export async function dispatchHmrEvent(context: HmrEventContext): Promise<void> {
+	if (!isHmrEnabled()) {
+		return
+	}
+
+	const state = getState()
+
+	for (const entry of state.subscribers) {
+		try {
+			const filteredContext = filterContextForSubscriber(context, entry.options)
+			if (!filteredContext) {
+				continue
+			}
+
+			const result = entry.callback(filteredContext)
+			if (result instanceof Promise) {
+				await result.catch((err) => {
+					console.error('[HMR] Subscriber error:', err)
+				})
+			}
+		} catch (err) {
+			console.error('[HMR] Subscriber error:', err)
+		}
+	}
+}
+
+/**
+ * Get the number of active subscribers.
+ * @internal - For testing only
+ */
+export function getSubscriberCount(): number {
+	return getState().subscribers.size
+}
+
+/**
+ * Clear all subscribers.
+ * @internal - For testing only
+ */
+export function clearHmrSubscribers(): void {
+	getState().subscribers.clear()
+}
+
+/**
  * HMR API implementation for development mode.
  */
 const devHmr: HMR = {
@@ -212,7 +426,9 @@ const devHmr: HMR = {
 
 		// Return a fresh HotModule for the new instance
 		return createHotModule(normalizedUrl)
-	}
+	},
+
+	subscribe
 }
 
 /**
@@ -225,6 +441,10 @@ const prodHmr: HMR = {
 
 	module(): HotModule {
 		return noopModule
+	},
+
+	subscribe(): HmrSubscription {
+		return noopSubscription
 	}
 }
 

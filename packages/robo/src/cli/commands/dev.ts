@@ -968,6 +968,46 @@ async function handleHmrChanges(
 		)
 	}
 
+	// Send HMR notification to execute hooks and subscribers
+	const affectedMappings = [...added, ...removed, ...allModified]
+	if (affectedMappings.length > 0) {
+		try {
+			// Determine primary change type
+			const changeType: 'change' | 'add' | 'remove' =
+				added.length > 0 ? 'add' : removed.length > 0 ? 'remove' : 'change'
+
+			// Collect source files
+			const files = affectedMappings.map((m) => m.filePath)
+
+			// Group handlers by namespace:route
+			const routeMap = new Map<string, Array<{ key: string; path: string }>>()
+			for (const m of affectedMappings) {
+				const routeKey = `${m.namespace}:${m.route}`
+				if (!routeMap.has(routeKey)) {
+					routeMap.set(routeKey, [])
+				}
+				routeMap.get(routeKey)!.push({
+					key: m.key,
+					path: m.filePath.replace(/^src\//, '').replace(/\.(ts|tsx|mts)$/, '.js')
+				})
+			}
+
+			// Build routes array
+			const routes = Array.from(routeMap.entries()).map(([routeKey, handlers]) => {
+				const [namespace, route] = routeKey.split(':')
+				return { namespace, route, handlers }
+			})
+
+			await spirits.exec(spiritId, {
+				event: 'hmr-notify',
+				payload: { changeType, files, routes }
+			})
+		} catch (error) {
+			// HMR notification failure is non-fatal
+			logger.debug(`[HMR] Hook notification failed:`, error)
+		}
+	}
+
 	return result
 }
 

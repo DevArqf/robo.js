@@ -37,6 +37,14 @@ export { portal }
 // Be careful, plugins may contain sensitive data in their config
 let plugins: Map<string, PluginData>
 
+/**
+ * Get the currently loaded plugins.
+ * @internal - Used by HMR hooks
+ */
+export function getPlugins(): Map<string, PluginData> {
+	return plugins ?? new Map()
+}
+
 interface StartOptions {
 	logLevel?: LogLevel
 	stateLoad?: Promise<void>

@@ -5,6 +5,7 @@ import { logger } from '../core/logger.js'
 import { setMode } from '../core/mode.js'
 import { removeInstances } from '../core/state.js'
 import type { HmrReloadHandlerPayload, HmrReloadRoutePayload, SpiritMessage } from '../types/index.js'
+import type { HmrNotifyPayload } from '../core/hooks.js'
 
 // This should only be run in a worker thread
 if (isMainThread) {
@@ -177,6 +178,40 @@ async function run(message: SpiritMessage): Promise<unknown> {
 	} else if (message.event === 'hmr-status') {
 		// Return HMR readiness status
 		return { ready: isRobo }
+	} else if (message.event === 'hmr-notify') {
+		// Execute HMR hooks after handlers are reloaded
+		if (!isRobo) {
+			return { success: false, error: 'Robo not running' }
+		}
+
+		const payload = message.payload as HmrNotifyPayload
+
+		// Validate payload
+		if (!['change', 'add', 'remove'].includes(payload?.changeType)) {
+			return { success: false, error: 'Invalid changeType' }
+		}
+		if (!Array.isArray(payload?.files)) {
+			return { success: false, error: 'Invalid files array' }
+		}
+		if (!Array.isArray(payload?.routes)) {
+			return { success: false, error: 'Invalid routes array' }
+		}
+
+		try {
+			const { executeHmrHooks } = await import('../core/hooks.js')
+			const { getPlugins } = await import('../core/robo.js')
+			const { getMode } = await import('../core/mode.js')
+
+			const plugins = getPlugins()
+			const mode = getMode()
+
+			await executeHmrHooks(plugins, mode, payload)
+			logger.debug(`[HMR] Notified hooks: ${payload.files.length} file(s), ${payload.routes.length} route(s)`)
+			return { success: true }
+		} catch (error) {
+			logger.warn(`[HMR] Hook execution failed:`, error)
+			return { success: false, error: String(error) }
+		}
 	} else {
 		throw `Unknown Spirit message event: ${message.event}`
 	}

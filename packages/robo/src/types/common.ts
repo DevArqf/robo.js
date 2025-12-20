@@ -99,7 +99,7 @@ export interface RoboStateMessage extends RoboMessage {
 export interface SpiritMessage {
 	error?: unknown
 	event?: 'build' | 'get-state' | 'command' | 'ready' | 'restart' | 'set-state' | 'start' | 'stop'
-		| 'hmr-compile' | 'hmr-reload-handler' | 'hmr-reload-route' | 'hmr-status'
+		| 'hmr-compile' | 'hmr-reload-handler' | 'hmr-reload-route' | 'hmr-status' | 'hmr-notify'
 	logLevel?: LogLevel
 	payload?: unknown
 	state?: Record<string, unknown>
@@ -158,7 +158,7 @@ export interface PluginData {
 /**
  * Lifecycle hook types that support priority-based execution.
  */
-export type LifecycleHookType = 'init' | 'prepare' | 'start' | 'stop' | 'setup'
+export type LifecycleHookType = 'init' | 'prepare' | 'start' | 'stop' | 'setup' | 'hmr'
 
 export interface PluginMetaOptions {
 	failSafe?: boolean

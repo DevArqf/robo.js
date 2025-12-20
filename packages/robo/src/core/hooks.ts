@@ -5,8 +5,9 @@ import { state } from './state.js'
 import { DEFAULT_CONFIG, TIMEOUT } from './constants.js'
 import { timeout } from '../cli/utils/utils.js'
 import { RoboPaths } from './paths.js'
-import type { ErrorContext, InitContext, PrepareContext, StartContext, PluginState, StopContext } from '../types/lifecycle.js'
+import type { ErrorContext, HmrContext, HmrHookConfig, HmrRouteInfo, InitContext, PrepareContext, StartContext, PluginState, StopContext } from '../types/lifecycle.js'
 import type { LifecycleHookType, PluginData } from '../types/common.js'
+import { dispatchHmrEvent, type HmrEventContext } from './hmr.js'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -194,7 +195,7 @@ async function fileExists(filePath: string): Promise<boolean> {
  */
 export async function resolvePluginHookPath(
 	pluginName: string,
-	hookName: 'init' | 'prepare' | 'start' | 'stop' | 'setup' | 'error'
+	hookName: 'init' | 'prepare' | 'start' | 'stop' | 'setup' | 'error' | 'hmr'
 ): Promise<string | null> {
 	const possiblePaths = [
 		// Plugin package: node_modules/@robojs/discord/.robo/build/robo/init.js
@@ -220,7 +221,7 @@ export async function resolvePluginHookPath(
  * @param mode - Runtime mode (supports custom modes like 'beta', 'staging', etc.)
  */
 export async function resolveProjectHookPath(
-	hookName: 'init' | 'prepare' | 'start' | 'stop' | 'error',
+	hookName: 'init' | 'prepare' | 'start' | 'stop' | 'error' | 'hmr',
 	mode: string
 ): Promise<string | null> {
 	const hookPath = RoboPaths.hook(mode, hookName)
@@ -991,6 +992,183 @@ export async function executeErrorHooks(
 
 		if (result === TIMEOUT) {
 			loggerInstance.warn('Error hooks timed out')
+		}
+	}
+}
+
+/**
+ * HMR hook timeout in milliseconds.
+ * Short timeout since HMR should be responsive.
+ */
+const HMR_HOOK_TIMEOUT = 5000
+
+/**
+ * Payload for HMR notification events.
+ */
+export interface HmrNotifyPayload {
+	changeType: 'change' | 'add' | 'remove'
+	files: string[]
+	routes: HmrRouteInfo[]
+}
+
+/**
+ * Filter HmrContext for a hook based on its config.
+ * Returns null if no routes match the filter (hook should be skipped).
+ */
+function filterHmrContextForHook(
+	context: HmrContext,
+	config?: HmrHookConfig
+): HmrContext | null {
+	if (!config) {
+		return context
+	}
+
+	let filteredRoutes = context.routes
+
+	if (config.namespaces) {
+		filteredRoutes = filteredRoutes.filter((r) => config.namespaces!.includes(r.namespace))
+	}
+
+	if (config.routes) {
+		filteredRoutes = filteredRoutes.filter((r) => config.routes!.includes(r.route))
+	}
+
+	// If no routes match, skip this hook
+	if (filteredRoutes.length === 0) {
+		return null
+	}
+
+	return {
+		...context,
+		routes: filteredRoutes
+	}
+}
+
+/**
+ * Build HmrContext from payload.
+ */
+function buildHmrContext(payload: HmrNotifyPayload, mode: string, loggerInstance: ReturnType<typeof logger>): HmrContext {
+	return {
+		changeType: payload.changeType,
+		files: payload.files,
+		routes: payload.routes,
+		mode,
+		logger: loggerInstance,
+		env: Env
+	}
+}
+
+/**
+ * Execute HMR hooks for all plugins and project.
+ * Runs in PARALLEL with a 5-second timeout.
+ * Also dispatches to imperative subscribers via hmr.subscribe().
+ * Errors in hooks are logged but never propagate (HMR hooks should never crash the server).
+ *
+ * @param plugins - Plugin data map
+ * @param mode - Runtime mode
+ * @param payload - HMR notification payload with change info
+ */
+export async function executeHmrHooks(
+	plugins: Map<string, PluginData>,
+	mode: string,
+	payload: HmrNotifyPayload
+): Promise<void> {
+	const loggerInstance = logger()
+	const baseContext = buildHmrContext(payload, mode, loggerInstance)
+
+	// First, dispatch to imperative subscribers
+	const subscriberContext: HmrEventContext = {
+		changeType: payload.changeType,
+		files: payload.files,
+		routes: payload.routes,
+		mode
+	}
+
+	try {
+		await dispatchHmrEvent(subscriberContext)
+	} catch (e) {
+		loggerInstance.warn('[HMR] Error dispatching to subscribers:', e)
+	}
+
+	const hookPromises: Promise<void>[] = []
+
+	// Execute plugin HMR hooks in parallel
+	for (const [pluginName] of plugins) {
+		const hookPath = await resolvePluginHookPath(pluginName, 'hmr')
+
+		if (!hookPath) {
+			continue // Plugin doesn't have an HMR hook
+		}
+
+		hookPromises.push(
+			(async () => {
+				try {
+					const hookModule = await import(pathToFileURL(hookPath).href)
+
+					if (typeof hookModule.default !== 'function') {
+						return
+					}
+
+					// Get hook config for filtering
+					const hookConfig: HmrHookConfig | undefined = hookModule.config
+
+					// Create plugin-scoped context
+					const pluginContext: HmrContext = {
+						...baseContext,
+						logger: loggerInstance.fork(inferNamespace(pluginName))
+					}
+
+					// Filter context based on hook config
+					const filteredContext = filterHmrContextForHook(pluginContext, hookConfig)
+					if (!filteredContext) {
+						return // No routes match this hook's filter
+					}
+
+					await hookModule.default(filteredContext)
+				} catch (e) {
+					// Log but don't propagate - HMR hooks should never crash the server
+					loggerInstance.warn(`[HMR] Hook for ${pluginName} failed:`, e)
+				}
+			})()
+		)
+	}
+
+	// Execute project HMR hook
+	const projectHookPath = await resolveProjectHookPath('hmr', mode)
+	if (projectHookPath) {
+		hookPromises.push(
+			(async () => {
+				try {
+					const hookModule = await import(pathToFileURL(projectHookPath).href)
+
+					if (typeof hookModule.default !== 'function') {
+						return
+					}
+
+					// Get hook config for filtering
+					const hookConfig: HmrHookConfig | undefined = hookModule.config
+
+					// Filter context based on hook config
+					const filteredContext = filterHmrContextForHook(baseContext, hookConfig)
+					if (!filteredContext) {
+						return // No routes match this hook's filter
+					}
+
+					await hookModule.default(filteredContext)
+				} catch (e) {
+					loggerInstance.warn('[HMR] Project hook failed:', e)
+				}
+			})()
+		)
+	}
+
+	// Wait for all hooks to complete with timeout
+	if (hookPromises.length > 0) {
+		const timeoutPromise = timeout(() => TIMEOUT, HMR_HOOK_TIMEOUT)
+		const result = await Promise.race([Promise.allSettled(hookPromises), timeoutPromise])
+
+		if (result === TIMEOUT) {
+			loggerInstance.warn('[HMR] Some hooks timed out')
 		}
 	}
 }
