@@ -237,3 +237,30 @@ Shows all registered CLI commands including those from plugins and extensions.
 ## Extending the CLI
 
 Plugins and projects can add their own commands to the Robo CLI or extend existing ones with hooks and options. See the **[Extending the CLI](./extending)** guide for details.
+
+## Troubleshooting
+
+### Shutdown logs appearing after terminal prompt
+
+When running `robo dev` through package managers like **pnpm** or **npx**, you may notice that shutdown logs appear after the terminal prompt returns when pressing `Ctrl+C`. This looks like:
+
+```
+^C
+Shutting down...
+user@host:~/project$
+Mock server stopped   <-- appears after prompt
+```
+
+**This is a known issue with how pnpm and npx handle SIGINT signals.** These package managers don't properly wait for child processes to complete before returning control to the terminal.
+
+#### Workarounds
+
+1. **Run robo directly** (recommended):
+   ```bash
+   ./node_modules/.bin/robo dev
+   ```
+
+2. **Use npm instead of pnpm/npx**:
+   npm handles child process signals more reliably in most cases.
+
+This is purely a cosmetic issue - your Robo still shuts down correctly and all cleanup operations complete properly. The logs just appear slightly out of order in the terminal.
