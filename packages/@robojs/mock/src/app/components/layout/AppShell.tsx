@@ -37,6 +37,8 @@ export function AppShell() {
 
 	// Home view toggle (Friends UI) via the top-left Home button in the server list.
 	const [showHome, setShowHome] = useState(false)
+	const [homeTitle, setHomeTitle] = useState('Friends')
+	const [homeResetKey, setHomeResetKey] = useState(0)
 
 	// Mobile sidebar state
 	const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
@@ -124,6 +126,8 @@ export function AppShell() {
 		// Home button should always take you to Friends/Home (no toggle-off).
 		// Users go back to the server UI by clicking a server.
 		setShowHome(true)
+		setHomeTitle('Friends')
+		setHomeResetKey((k) => k + 1)
 		selectGuild(null)
 		selectChannel(null)
 		// Close any open mobile sidebars/dropdowns when switching
@@ -141,12 +145,31 @@ export function AppShell() {
 		return 'unknown guild name'
 	}
 
+	const topTitle = showHome ? homeTitle : guildName()
+
 	const shellClassName = `${styles.shell}${mobileSidebarOpen ? ` ${styles.sidebarOpen}` : ''}`
 
 	return (
 		<div className={shellClassName}>
 			<div className={styles.topShell}>
-				<span>{guildName()}</span>
+				<div className={styles.topTitle}>{topTitle}</div>
+				<div className={styles.topIcons} aria-label="Top bar actions">
+					<button className="icon-button" aria-label="Inbox" title="Inbox" type="button">
+						<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+							<path d="M3 3h18v12h-5l-2 3h-4l-2-3H3V3Zm2 2v8h4l2 3h2l2-3h4V5H5Z" />
+						</svg>
+					</button>
+					<button className="icon-button" aria-label="New message" title="New message" type="button">
+						<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+							<path d="M20 2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7l-4 4V4a2 2 0 0 1 2-2h15Zm0 2H5v13.17L6.17 16H20V4Zm-3 3v2h-3v3h-2V9H9V7h3V4h2v3h3Z" />
+						</svg>
+					</button>
+					<button className="icon-button" aria-label="Help" title="Help" type="button">
+						<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+							<path d="M12 2a10 10 0 1 0 0 20a10 10 0 0 0 0-20Zm0 17a1.25 1.25 0 1 1 0-2.5A1.25 1.25 0 0 1 12 19Zm2.2-7.8c-.6.55-1 1-1 2.3h-2c0-2 .7-2.9 1.6-3.7c.8-.7 1.2-1.1 1.2-1.8c0-.9-.7-1.5-1.8-1.5c-1 0-1.8.5-2.1 1.5l-1.9-.8C8.7 5.7 10.1 5 12.1 5c2.3 0 3.9 1.3 3.9 3.2c0 1.5-.9 2.4-1.8 3Z" />
+						</svg>
+					</button>
+				</div>
 			</div>
 
 			<div className={styles.contentWrapper}>
@@ -163,7 +186,7 @@ export function AppShell() {
 
 				<div className={styles.mainContent}>
 					{showHome ? (
-						<FriendsAppShell />
+						<FriendsAppShell onTitleChange={setHomeTitle} resetKey={homeResetKey} />
 					) : (
 						<>
 							<ChannelList

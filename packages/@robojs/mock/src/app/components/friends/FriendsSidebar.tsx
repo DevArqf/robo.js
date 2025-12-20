@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
-import { IconButton, SearchInput } from '../ui'
+import type { FriendRowData } from './friends.data'
+import { FRIENDS } from './friends.data'
+import { Avatar, IconButton, SearchInput } from '../ui'
 import styles from './FriendsSidebar.module.css'
 
 function FriendsIcon() {
@@ -59,7 +61,57 @@ function NavItem({
 	)
 }
 
-export function FriendsSidebar() {
+function CloseIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+			<path d="M18 6.41L16.59 5 12 9.59 7.41 5 6 6.41 10.59 11 6 15.59 7.41 17 12 12.41 16.59 17 18 15.59 13.41 11z" />
+		</svg>
+	)
+}
+
+function DmRow({
+	friend,
+	selected,
+	onOpen,
+	onClose
+}: {
+	friend: FriendRowData
+	selected: boolean
+	onOpen: () => void
+	onClose: () => void
+}) {
+	return (
+		<button
+			type="button"
+			className={[styles.dmItem, 'interactive-item', selected ? styles.dmSelected : ''].filter(Boolean).join(' ')}
+			onClick={onOpen}
+		>
+			<div className={styles.dmAvatar}>
+				<Avatar imageUrl={null} size={32} showStatus statusBorderColor="var(--background-secondary)" statusColor="var(--status-online)" />
+			</div>
+			<div className={styles.dmText}>
+				<div className={styles.dmName}>{friend.username}</div>
+				<div className={styles.dmSub}>{friend.subtitle}</div>
+			</div>
+			{selected && (
+				<button
+					type="button"
+					className={[styles.dmClose, 'icon-button'].join(' ')}
+					aria-label={`Close DM ${friend.username}`}
+					title="Close"
+					onClick={(e) => {
+						e.stopPropagation()
+						onClose()
+					}}
+				>
+					<CloseIcon />
+				</button>
+			)}
+		</button>
+	)
+}
+
+export function FriendsSidebar({ openFriend, onOpenFriend }: { openFriend: FriendRowData | null; onOpenFriend: (friend: FriendRowData | null) => void }) {
 	return (
 		<div>
 			<div className={styles.topSearch}>
@@ -80,12 +132,16 @@ export function FriendsSidebar() {
 				</IconButton>
 			</div>
 
-			<div className={styles.dmList} aria-label="Direct Messages (placeholder)">
-				<div className={styles.dmRow} />
-				<div className={styles.dmRow} />
-				<div className={styles.dmRow} />
-				<div className={styles.dmRow} />
-				<div className={styles.dmRow} />
+			<div className={styles.dmList} aria-label="Direct Messages">
+				{FRIENDS.map((friend) => (
+					<DmRow
+						key={friend.id}
+						friend={friend}
+						selected={openFriend?.id === friend.id}
+						onOpen={() => onOpenFriend(friend)}
+						onClose={() => onOpenFriend(null)}
+					/>
+				))}
 			</div>
 		</div>
 	)

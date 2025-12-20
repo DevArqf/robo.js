@@ -1,22 +1,8 @@
 import { Avatar, IconButton } from '../ui'
 import { getAvatarUrl } from '../../utils/avatar'
 import styles from './FriendsList.module.css'
-
-type FriendRowData = {
-	id: string
-	username: string
-	subtitle: string
-	avatar: string | null
-}
-
-const FRIENDS: FriendRowData[] = [
-	{ id: '1', username: 'Dreamnugget', subtitle: 'Online', avatar: null },
-	{ id: '2', username: 'Jake', subtitle: 'Do Not Disturb', avatar: null },
-	{ id: '3', username: 'MrBatata', subtitle: 'Code • 🥲 The month is so slow without her D:', avatar: null },
-	{ id: '4', username: 'Pkmmte', subtitle: 'https://robojs.dev', avatar: null },
-	{ id: '5', username: 'secretised', subtitle: '🦀', avatar: null },
-	{ id: '6', username: 'Zoryko', subtitle: 'Do Not Disturb', avatar: null }
-]
+import type { FriendRowData } from './friends.data'
+import { FRIENDS } from './friends.data'
 
 function MessageIcon() {
 	return (
@@ -34,11 +20,11 @@ function MoreIcon() {
 	)
 }
 
-function FriendRow({ friend }: { friend: FriendRowData }) {
+function FriendRow({ friend, onOpen }: { friend: FriendRowData; onOpen?: (friend: FriendRowData) => void }) {
 	const url = friend.avatar ? getAvatarUrl(friend.id, friend.avatar, 32) : null
 
 	return (
-		<div className={styles.row}>
+		<button className={styles.row} type="button" onClick={() => onOpen?.(friend)}>
 			<Avatar imageUrl={url} size={32} showStatus statusBorderColor="var(--background-primary)" statusColor="var(--status-online)" />
 			<div className={styles.info}>
 				<div className={styles.name}>{friend.username}</div>
@@ -52,15 +38,15 @@ function FriendRow({ friend }: { friend: FriendRowData }) {
 					<MoreIcon />
 				</IconButton>
 			</div>
-		</div>
+		</button>
 	)
 }
 
-export function FriendsList() {
+export function FriendsList({ onOpenFriend }: { onOpenFriend?: (friend: FriendRowData) => void }) {
 	return (
 		<div>
 			{FRIENDS.map((friend) => (
-				<FriendRow key={friend.id} friend={friend} />
+				<FriendRow key={friend.id} friend={friend} onOpen={onOpenFriend} />
 			))}
 		</div>
 	)

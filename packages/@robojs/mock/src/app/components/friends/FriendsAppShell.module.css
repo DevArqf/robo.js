@@ -21,6 +21,16 @@
 	background: var(--background-primary);
 }
 
+.mainDm {
+	flex-direction: column;
+}
+
+.dmRow {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+}
+
 .center {
 	flex: 1;
 	min-width: 0;

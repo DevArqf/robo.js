@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { IconButton, SearchInput } from '../ui'
 import { FriendsAllPanel } from './FriendsAllPanel'
 import { FriendsOnlinePanel } from './FriendsOnlinePanel'
+import type { FriendRowData } from './friends.data'
+import { DirectMessageView } from './dm/DirectMessageView'
 import styles from './FriendsMain.module.css'
 
 function FriendsGlyph() {
@@ -49,10 +51,30 @@ function Tab({
 	)
 }
 
-export function FriendsMain() {
+export function FriendsMain({
+	onTitleChange,
+	openFriend,
+	onOpenFriend,
+}: {
+	onTitleChange?: (title: string) => void
+	openFriend: FriendRowData | null
+	onOpenFriend: (friend: FriendRowData | null) => void
+}) {
 	const [activeTab, setActiveTab] = useState<'online' | 'all'>('online')
 
 	const sectionLabel = activeTab === 'all' ? 'All — 6' : 'Online — 6'
+
+	useEffect(() => {
+		if (openFriend) {
+			onTitleChange?.(openFriend.username)
+		} else {
+			onTitleChange?.('Friends')
+		}
+	}, [openFriend, onTitleChange])
+
+	if (openFriend) {
+		return <DirectMessageView friend={openFriend} />
+	}
 
 	return (
 		<div className={styles.content}>
@@ -91,7 +113,11 @@ export function FriendsMain() {
 
 			<div className={styles.sectionLabel}>{sectionLabel}</div>
 			<div className={styles.list}>
-				{activeTab === 'all' ? <FriendsAllPanel /> : <FriendsOnlinePanel />}
+				{activeTab === 'all' ? (
+					<FriendsAllPanel onOpenFriend={onOpenFriend} />
+				) : (
+					<FriendsOnlinePanel onOpenFriend={onOpenFriend} />
+				)}
 			</div>
 		</div>
 	)

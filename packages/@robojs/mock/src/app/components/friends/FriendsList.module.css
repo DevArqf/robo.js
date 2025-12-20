@@ -6,6 +6,8 @@
 	margin: 0 4px;
 	border-radius: var(--radius-sm);
 	border-top: 1px solid rgba(255, 255, 255, 0.04);
+	width: calc(100% - 8px);
+	text-align: left;
 }
 
 .row:hover {
