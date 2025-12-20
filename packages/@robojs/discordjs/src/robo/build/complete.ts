@@ -44,9 +44,14 @@ const intentBitToName = Object.fromEntries(
 
 /**
  * Recursively sorts object keys for deterministic JSON output.
+ * Also converts BigInt values to strings since JSON.stringify cannot serialize BigInt.
  */
 function sortObjectKeys(obj: unknown): unknown {
 	if (obj === null || typeof obj !== 'object') {
+		// Convert BigInt to string for JSON serialization
+		if (typeof obj === 'bigint') {
+			return obj.toString()
+		}
 		return obj
 	}
 	if (Array.isArray(obj)) {
