@@ -2,6 +2,7 @@ import { useCallback, useMemo, useEffect, useRef } from 'react'
 import { useSession as useSessionState, useSessionDispatch, useWebSocket, type PendingMessage, type PendingInteraction, type FilteredEvent, type LoopWarning } from '../stores/sessionStore'
 import { usePlayback, usePlaybackControls, usePlaybackGuilds, usePlaybackChannels, usePlaybackMembers, usePlaybackMessages, usePlaybackTypingUsers } from '../stores/playbackStore'
 import { useUnifiedSelection } from '../stores/unifiedSelectionStore'
+import { useCurrentUser } from './useCurrentUser'
 import type { ModalActionRow, ModalData } from '../components/modals/Modal'
 import type { StageMessage, StageUser, StageGuild, StageChannel, StageMember, StageRole, StageVoiceState, StageApplicationCommand } from '../types/stage'
 
@@ -143,6 +144,9 @@ export function useStageData(options?: UseStageDataOptions): StageDataResult {
 	const sessionState = useSessionState()
 	const sessionDispatch = useSessionDispatch()
 	const { connect, disconnect, sendCommand, isConnected, isConnecting, error, hasGivenUp, isSessionInvalid, retryCount, retry } = useWebSocket()
+
+	// === Per-Browser User (localStorage-based) ===
+	const { currentUser: browserCurrentUser } = useCurrentUser()
 
 	// === Playback State ===
 	const playbackState = usePlayback()
@@ -350,11 +354,10 @@ export function useStageData(options?: UseStageDataOptions): StageDataResult {
 			throw new Error('No channel selected')
 		}
 
-		// Create pending message using current user
+		// Create pending message using per-browser current user
 		const pendingId = `pending_${Date.now()}_${Math.random().toString(36).slice(2)}`
-		const currentUser = sessionState.currentUser
-		const author = currentUser
-			? { id: currentUser.id, username: currentUser.username, avatar: currentUser.avatar ?? null }
+		const author = browserCurrentUser
+			? { id: browserCurrentUser.id, username: browserCurrentUser.username, avatar: browserCurrentUser.avatar ?? null }
 			: { id: 'user_0', username: 'You', avatar: null } // Fallback for backward compat
 
 		sessionDispatch({
@@ -378,7 +381,7 @@ export function useStageData(options?: UseStageDataOptions): StageDataResult {
 			})
 			throw err
 		}
-	}, [isPlaybackMode, selection.selectedChannelId, sendCommand, sessionDispatch, sessionState.currentUser])
+	}, [isPlaybackMode, selection.selectedChannelId, sendCommand, sessionDispatch, browserCurrentUser])
 
 	const retryMessage = useCallback(async (messageId: string) => {
 		if (isPlaybackMode) return
@@ -580,7 +583,7 @@ export function useStageData(options?: UseStageDataOptions): StageDataResult {
 		isSessionInvalid,
 		retryCount,
 		botUser: sessionState.botUser,
-		currentUser: sessionState.currentUser,
+		currentUser: browserCurrentUser,
 
 		// UI State
 		showMembers: sessionState.showMembers,

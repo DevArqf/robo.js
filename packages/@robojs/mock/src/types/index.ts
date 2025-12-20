@@ -347,6 +347,16 @@ export interface ConnectionState {
 	lastHeartbeat: number
 	heartbeatInterval: number
 	missedHeartbeats: number
+	/**
+	 * Per-connection bot identity (resolved during IDENTIFY)
+	 * Each bot connection gets its own identity, auto-detected from Discord token or generated
+	 */
+	botUser?: MockUser
+	/**
+	 * Original Discord token for identity resolution
+	 * Stored so we can fetch the bot's real identity from Discord API
+	 */
+	realToken?: string
 }
 
 // ============================================================================

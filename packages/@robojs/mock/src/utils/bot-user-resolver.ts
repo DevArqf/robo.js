@@ -20,7 +20,7 @@ export interface ResolvedBotUser {
 /**
  * Discord API user response shape (partial).
  */
-interface DiscordAPIUser {
+export interface DiscordAPIUser {
 	id: string
 	username: string
 	discriminator: string
@@ -77,20 +77,20 @@ export async function resolveBotUser(explicitConfig?: MockUserConfig): Promise<R
 const API_TIMEOUT_MS = 3000
 
 /**
- * Fetch bot user data from Discord API using the saved real token.
- * Returns null if no token exists, the API call fails, or times out.
- * Never blocks startup - gracefully falls back on any failure.
+ * Fetch bot user data from Discord API using a specific token.
+ * Returns null if no token provided, the API call fails, or times out.
+ * Never blocks - gracefully falls back on any failure.
+ *
+ * @param token - The Discord bot token to use for authentication
+ * @returns The Discord API user data, or null on failure
  */
-async function fetchDiscordBotUser(): Promise<DiscordAPIUser | null> {
-	const token = process.env.ROBO_MOCK_REAL_TOKEN
-
+export async function fetchBotFromDiscord(token: string): Promise<DiscordAPIUser | null> {
 	if (!token) {
-		mockLogger.debug('No Discord token - using default bot identity')
 		return null
 	}
 
 	try {
-		// Use AbortController for timeout to avoid blocking startup
+		// Use AbortController for timeout to avoid blocking
 		const controller = new AbortController()
 		const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS)
 
@@ -104,18 +104,38 @@ async function fetchDiscordBotUser(): Promise<DiscordAPIUser | null> {
 		clearTimeout(timeoutId)
 
 		if (!response.ok) {
-			mockLogger.debug(`Discord API returned ${response.status} - using default bot identity`)
+			mockLogger.debug(`Discord API returned ${response.status}`)
 			return null
 		}
 
 		const user = (await response.json()) as DiscordAPIUser
 		return user
 	} catch (error) {
-		// Network error, timeout, or other failure - continue without blocking
+		// Network error, timeout, or other failure
 		const message = (error as Error).name === 'AbortError'
 			? 'Discord API timed out'
 			: (error as Error).message
-		mockLogger.debug(`${message} - using default bot identity`)
+		mockLogger.debug(`${message}`)
 		return null
 	}
+}
+
+/**
+ * Fetch bot user data from Discord API using the saved real token.
+ * Returns null if no token exists, the API call fails, or times out.
+ * Never blocks startup - gracefully falls back on any failure.
+ */
+async function fetchDiscordBotUser(): Promise<DiscordAPIUser | null> {
+	const token = process.env.ROBO_MOCK_REAL_TOKEN
+
+	if (!token) {
+		mockLogger.debug('No Discord token - using default bot identity')
+		return null
+	}
+
+	const user = await fetchBotFromDiscord(token)
+	if (!user) {
+		mockLogger.debug('Failed to fetch from Discord API - using default bot identity')
+	}
+	return user
 }
