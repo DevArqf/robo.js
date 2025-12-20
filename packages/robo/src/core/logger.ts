@@ -74,6 +74,20 @@ function getInspect(): Promise<typeof import('node:util').inspect> {
 }
 
 /**
+ * Returns the cached inspect function if available, otherwise null.
+ * Used for synchronous console writes when the cache has been warmed.
+ */
+function getInspectSync(): typeof import('node:util').inspect | null {
+	return cachedInspect
+}
+
+// Warm the inspect cache immediately in Node.js environments
+// This ensures even the first log call can be synchronous
+if (!isBrowser()) {
+	getInspect()
+}
+
+/**
  * Given a hex color (e.g. "#F44336"), returns a dimmed version by multiplying its
  * RGB components by the given factor (default 0.6). If the input isn't in hex form,
  * the original string is returned.
@@ -355,8 +369,27 @@ function objectToCssString(style: Record<string, string>): string {
 }
 
 /**
- * Writes log data. Do not call this in browser environments.
+ * Writes log data synchronously. Do not call this in browser environments.
+ * Requires the inspect function to be cached (via getInspectSync).
+ */
+function writeLogSync(
+	stream: LogStream,
+	inspectFn: typeof import('node:util').inspect,
+	...data: unknown[]
+): void {
+	const parts = data.map((item) => {
+		if (typeof item === 'object' || item instanceof Error || Array.isArray(item)) {
+			return inspectFn(item, { colors: true, depth: null })
+		}
+		return item
+	})
+	stream.write(parts.join(' ') + '\n')
+}
+
+/**
+ * Writes log data asynchronously. Do not call this in browser environments.
  * This uses the dynamically imported `inspect` function and writes to the provided stream.
+ * Used as fallback when inspect cache is not yet warmed.
  */
 async function writeLog(stream: LogStream, ...data: unknown[]): Promise<void> {
 	const inspect = await getInspect()
@@ -383,6 +416,9 @@ async function writeLog(stream: LogStream, ...data: unknown[]): Promise<void> {
  * A drain function that writes logs either to stdout/stderr (in Node.js)
  * or uses console.log/error (in browsers). In browsers, it uses ansiToBrowserFormat()
  * to convert ANSI codes into %c format with merged CSS.
+ *
+ * In Node.js, this uses synchronous writes (like console.log) to ensure logs
+ * appear immediately and in order, without delayed output on shutdown.
  */
 export function consoleDrain(_logger: Logger, level: string, ...data: unknown[]): Promise<void> {
 	if (isBrowser()) {
@@ -422,19 +458,18 @@ export function consoleDrain(_logger: Logger, level: string, ...data: unknown[])
 		return Promise.resolve()
 	}
 
-	switch (level) {
-		case 'trace':
-		case 'debug':
-		case 'info':
-		case 'wait':
-		case 'event':
-			return writeLog(process.stdout, ...data)
-		case 'warn':
-		case 'error':
-			return writeLog(process.stderr, ...data)
-		default:
-			return writeLog(process.stdout, ...data)
+	// Determine output stream based on log level
+	const stream = level === 'warn' || level === 'error' ? process.stderr : process.stdout
+
+	// Use synchronous write if inspect is cached (99%+ of calls after module load)
+	const inspectFn = getInspectSync()
+	if (inspectFn) {
+		writeLogSync(stream, inspectFn, ...data)
+		return Promise.resolve()
 	}
+
+	// Async fallback for the rare case where cache isn't warmed yet
+	return writeLog(stream, ...data)
 }
 
 /**
