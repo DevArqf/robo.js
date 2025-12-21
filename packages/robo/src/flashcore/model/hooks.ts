@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Model Hooks
+ * Flashcore v1 (spec rev 4.3) Model Hooks
  *
  * Lifecycle hooks for model operations.
  */

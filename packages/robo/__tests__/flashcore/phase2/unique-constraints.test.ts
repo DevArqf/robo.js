@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 2 Tests - Unique Constraints
+ * Flashcore v1 (spec rev 4.3) Phase 2 Tests - Unique Constraints
  *
  * Tests unique field constraints, lookups, and race conditions.
  */

@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Schema Validation
+ * Flashcore v1 (spec rev 4.3) Schema Validation
  *
  * Validates record data against schema definitions.
  */

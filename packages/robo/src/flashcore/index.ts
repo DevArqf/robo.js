@@ -1,10 +1,10 @@
 /**
- * Flashcore v4.3
+ * Flashcore v1 (spec rev 4.3)
  *
  * A type-safe, Prisma-like database built on key-value storage for Robo.js.
  *
  * @module robo.js/flashcore
- * @version 4.3
+ * @version 1
  *
  * @example
  * ```typescript
@@ -116,7 +116,7 @@ export type { EncodedKeyData } from './core/encoding.js'
 export {
 	composeLegacyKey,
 	parseLegacyKey,
-	composeV4Key,
+	composeV1Key,
 	normalizeNamespace,
 	validateNotReserved,
 	buildModelKey,
@@ -298,3 +298,182 @@ export type { ResilienceOptions } from './adapter/wrappers/resilience.js'
 // ─────────────────────────────────────────────────────────────
 
 export { AdapterBuilder, buildAdapter, AdapterPresets } from './adapter/builder.js'
+
+// ─────────────────────────────────────────────────────────────
+// WAL (Write-Ahead Log) - Phase 4
+// ─────────────────────────────────────────────────────────────
+
+export {
+	WriteAheadLog,
+	setWALManager,
+	getWALManager,
+	isWALEnabled,
+	buildCreateDeltas,
+	buildCreateSegmentedDeltas,
+	buildUpdateDeltas,
+	buildUpdateSegmentedDeltas,
+	buildUpdateChunkToSegmentsDeltas,
+	buildUpdateSegmentsToChunkDeltas,
+	buildDeleteDeltas,
+	buildDeleteSegmentedDeltas,
+	computePatch,
+	applyPatch,
+	recoverWAL,
+	applyCatalogSetDelta,
+	applyCatalogSetSegmentsDelta,
+	applyCatalogDeleteDelta,
+	replayEntryWithContext,
+	rollbackEntryWithContext
+} from './wal/index.js'
+
+export type {
+	WalOp,
+	WalPhase,
+	WalAuthoritativeDelta,
+	WalInverseDelta,
+	WalDerivedDelta,
+	ChunkPutDelta,
+	ChunkPatchDelta,
+	ChunkDeleteDelta,
+	CatalogSetDelta,
+	CatalogDeleteDelta,
+	CatalogSetSegmentsDelta,
+	UniqueAcquireDelta,
+	UniqueReleaseDelta,
+	SegmentPutDelta,
+	SegmentDeleteDelta,
+	SegmentWrite,
+	FilterAddDelta,
+	FilterRemoveDelta,
+	IndexUpsertDelta,
+	IndexRemoveDelta,
+	WalSegmentInfo,
+	WALEntry,
+	WALEntryHeader,
+	WALEntryInput,
+	RecoveryResult,
+	WALConfig,
+	DeltaBuildResult,
+	UniqueChange,
+	UniqueUpdate,
+	RecoveryContext
+} from './wal/index.js'
+
+// WAL constants
+export {
+	WAL_ENTRY_PREFIX as WAL_ENTRY_KEY_PREFIX,
+	WAL_SEGMENT_PREFIX,
+	WAL_STALE_THRESHOLD_MS,
+	WAL_CLOCK_SKEW_TOLERANCE_MS,
+	WAL_DEFAULT_SEGMENT_SIZE
+} from './core/constants.js'
+
+// ─────────────────────────────────────────────────────────────
+// Integrity (Phase 6)
+// ─────────────────────────────────────────────────────────────
+
+export {
+	IntegrityChecker,
+	RepairEngine,
+	rebuildCatalogFromChunks,
+	verifyCatalogIntegrity
+} from './integrity/index.js'
+export type {
+	FilterIntegrityResult,
+	IndexIntegrityResult,
+	UniqueIntegrityResult,
+	IntegrityReport,
+	IntegrityCheckOptions,
+	IntegrityCheckProgress,
+	RepairResult,
+	FullRepairResult,
+	RepairOptions,
+	RepairProgress,
+	CatalogRebuildResult,
+	CatalogRebuildOptions,
+	CatalogRebuildProgress,
+	CatalogVerificationResult
+} from './integrity/index.js'
+
+// ─────────────────────────────────────────────────────────────
+// Index (Phase 6)
+// ─────────────────────────────────────────────────────────────
+
+export { CuckooFilter, SortedIndex, IndexPersistenceManager, setIndexPersistenceManager, getIndexPersistenceManager, QueryPlanner, executeIndexPlan, filterMightContain } from './index/index.js'
+export type {
+	CuckooFilterData,
+	CuckooFilterOptions,
+	SortedIndexData,
+	RangeOptions,
+	IndexPersistenceOptions,
+	EpochData,
+	FlushResult,
+	AvailableIndexes,
+	QueryArgs,
+	WhereInput,
+	OrderByInput,
+	QueryPlan
+} from './index/index.js'
+
+// ─────────────────────────────────────────────────────────────
+// Migration (Phase 7)
+// ─────────────────────────────────────────────────────────────
+
+// User-facing API
+export { defineMigration, generateMigrationFilename, generateMigrationContent, MIGRATION_TEMPLATE } from './migration/define.js'
+
+// Migration runner and registry
+export { MigrationRunner, createMigrationRunner, MigrationRegistry, migrationRegistry } from './migration/index.js'
+export type { MigrationRunnerOptions } from './migration/runner.js'
+
+// Schema diff and analysis
+export { analyzeSchemaChanges, analyzeNamespaceChanges, formatSchemaChanges, hasSchemaChanged, summarizeChanges } from './migration/diff.js'
+
+// Schema metadata manager
+export { SchemaMetadataManager } from './migration/metadata.js'
+
+// Schema history manager
+export { SchemaHistoryManager } from './migration/history.js'
+
+// Migration lock
+export { MigrationLockManager } from './migration/lock.js'
+export type { LockAcquisitionResult, LockStatus, MigrationLockOptions } from './migration/lock.js'
+
+// Migration types
+export type {
+	FieldMetadata,
+	RelationMetadata,
+	SchemaMetadata,
+	SchemaSnapshot,
+	SchemaHistoryEntry,
+	SchemaChangeType,
+	SchemaChange,
+	ChangeAnalysisResult,
+	MigrationDefinition,
+	RegisteredMigration,
+	MigrationMetadata,
+	MigrationLock,
+	MigrationStatus,
+	MigrationResult,
+	MigrationRunOptions,
+	MigrationStatusReport,
+	MigrationContext,
+	MigrationModelAccessor,
+	AutoRepairConfig,
+	VersionDiff,
+	ModelDiff,
+	FieldDiffEntry
+} from './migration/types.js'
+
+// Type conversion helpers
+export { normalizedFieldToMetadata, metadataToNormalizedField } from './migration/types.js'
+
+// Migration constants
+export {
+	MIGRATION_LOCK_KEY,
+	MIGRATION_STATUS_PREFIX,
+	MIGRATION_LOCK_TIMEOUT_MS,
+	MAX_SCHEMA_HISTORY_ENTRIES,
+	DEFAULT_AUTO_REPAIR_CONFIG,
+	SCHEMA_META_SUFFIX
+} from './core/constants.js'

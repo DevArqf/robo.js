@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 0 Tests - KV Parity
+ * Flashcore v1 (spec rev 4.3) Phase 0 Tests - KV Parity
  *
  * Tests KV API operations: get, set, delete, has, clear, on, off.
  * Includes namespace handling, reserved prefix validation, updater functions, watchers.

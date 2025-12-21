@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 0 Tests - Error Types
+ * Flashcore v1 (spec rev 4.3) Phase 0 Tests - Error Types
  *
  * Tests error class hierarchy and properties.
  */

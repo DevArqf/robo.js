@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 3 - Wrapper Transparency Tests
+ * Flashcore v1 (spec rev 4.3) Phase 3 - Wrapper Transparency Tests
  *
  * Tests that wrappers don't change data semantics.
  */

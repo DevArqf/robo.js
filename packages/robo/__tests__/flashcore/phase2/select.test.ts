@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 2 Tests - Select Projection
+ * Flashcore v1 (spec rev 4.3) Phase 2 Tests - Select Projection
  *
  * Tests select clause for returning only requested fields.
  */

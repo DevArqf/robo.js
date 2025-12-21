@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 1 Tests - Catalog and Chunk
+ * Flashcore v1 (spec rev 4.3) Phase 1 Tests - Catalog and Chunk
  *
  * Tests catalog-chunk consistency, chunk assignment, catalog serialization.
  */

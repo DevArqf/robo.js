@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Capability Detection
+ * Flashcore v1 (spec rev 4.3) Capability Detection
  *
  * Normalizes adapter capabilities from interface inspection and self-reporting.
  */

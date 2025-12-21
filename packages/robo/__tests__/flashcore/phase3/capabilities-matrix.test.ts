@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 3 - Capabilities Matrix Tests
+ * Flashcore v1 (spec rev 4.3) Phase 3 - Capabilities Matrix Tests
  *
  * Tests capability detection across different adapter configurations.
  */

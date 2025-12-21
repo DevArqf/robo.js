@@ -1,7 +1,7 @@
 /**
- * Flashcore v4.3 Create Operation
+ * Flashcore v1 (spec rev 4.3) Create Operation
  *
- * Implements the create() CRUD operation.
+ * Implements the create() CRUD operation with WAL protection.
  */
 
 import type { NormalizedSchema, ModelHooks } from '../../schema/types.js'
@@ -9,12 +9,30 @@ import type { Catalog } from '../catalog.js'
 import type { ChunkManager } from '../chunk.js'
 import type { CatalogLockManager, ChunkLockManager } from '../locks.js'
 import type { UniqueIndexManager, UniqueConstraintOptions } from '../../index/unique.js'
+import type { WriteAheadLog } from '../../wal/manager.js'
+import type { UniqueChange } from '../../wal/deltas.js'
 import { RecordValidator, throwIfInvalid } from '../../schema/validate.js'
 import { TypeSerializer } from '../../schema/serialize.js'
 import { applyDefaults, normalizeRecordShape } from '../../schema/normalize.js'
 import { generateId, isValidId } from '../id.js'
 import { executeBeforeCreate, executeAfterCreate } from '../hooks.js'
 import { UniqueConstraintError } from '../../core/errors.js'
+import { buildCreateDeltas, buildCreateSegmentedDeltas } from '../../wal/deltas.js'
+import { buildModelKey, buildUniqueKey } from '../../core/keys.js'
+import { encodeUniqueValue } from '../../core/encoding.js'
+import { splitRecordToSegments } from '../segments.js'
+
+/**
+ * Index update callbacks for derived writes (Phase 6).
+ */
+export interface IndexUpdateCallbacks {
+	/** Add record ID to filter */
+	addToFilter?: (id: string) => void
+	/** Add entry to sorted index */
+	addToSortedIndex?: (field: string, value: unknown, id: string) => void
+	/** Mark indexes as dirty for persistence */
+	markDirty?: () => void
+}
 
 /**
  * Context for create operation.
@@ -35,6 +53,15 @@ export interface CreateContext<T> {
 
 	// Callback to persist catalog after modification
 	persistCatalog: () => Promise<void>
+
+	// Optional WAL manager for crash safety
+	wal?: WriteAheadLog
+
+	// Optional override for building full chunk keys (for WAL deltas)
+	getChunkKey?: (chunkId: number) => string
+
+	// Optional index update callbacks (Phase 6)
+	indexCallbacks?: IndexUpdateCallbacks
 }
 
 /**
@@ -44,13 +71,16 @@ export interface CreateContext<T> {
  * 2. Generate ID if not provided
  * 3. Apply defaults
  * 4. Execute beforeCreate hook
- * 5. Check ID uniqueness (via catalog lookup)
- * 6. Acquire catalog lock
- * 7. Select chunk, acquire chunk lock
- * 8. Add to chunk, update catalog
- * 9. Release locks
- * 10. Execute afterCreate hook
- * 11. Return created record
+ * 5. Begin WAL entry (if enabled)
+ * 6. Check ID uniqueness (via catalog lookup)
+ * 7. Acquire catalog lock
+ * 8. Acquire unique constraints
+ * 9. Select chunk, acquire chunk lock
+ * 10. Add to chunk, update catalog (mark WAL authoritative)
+ * 11. Release locks
+ * 12. Complete WAL
+ * 13. Execute afterCreate hook
+ * 14. Return created record
  *
  * @param ctx - Create context
  * @param data - Input data
@@ -102,6 +132,10 @@ export async function executeCreate<T extends { id: string }>(
 	// Serialize for storage
 	const serialized = ctx.serializer.serializeRecord(normalized)
 
+	// Track WAL entry ID for cleanup
+	let walId: string | null = null
+	const walEnabled = ctx.wal?.isEnabled() ?? false
+
 	// Acquire catalog lock for the entire create operation
 	const result = await ctx.catalogLock.withCatalogLock(ctx.modelKey, async () => {
 		// Check if ID already exists
@@ -112,7 +146,54 @@ export async function executeCreate<T extends { id: string }>(
 			)
 		}
 
-		// Acquire unique constraints for all unique fields
+		// Build unique constraint keys for WAL deltas
+		const uniqueKeys: UniqueChange[] = []
+		if (ctx.schema.uniqueFields.length > 0) {
+			for (const field of ctx.schema.uniqueFields) {
+				const value = normalized[field]
+				if (value !== null && value !== undefined) {
+					const encodedValue = encodeUniqueValue(value)
+					const key = buildUniqueKey(ctx.modelName, field, encodedValue, ctx.namespace)
+					uniqueKeys.push({ key, id })
+				}
+			}
+		}
+
+		// Check if record needs segmentation (large record)
+		const sizeCheck = ctx.chunkManager.checkRecordSize(serialized)
+		const needsSegmentation = sizeCheck.needsSegmentation
+
+		// Select chunk for insertion (returns -1 if needs segmentation)
+		const chunkId = needsSegmentation ? -1 : ctx.chunkManager.selectChunkForInsert(ctx.catalog, sizeCheck.estimatedSize)
+
+		// Get full chunk key for WAL (only if not segmented)
+		const fullChunkKey =
+			chunkId >= 0
+				? ctx.getChunkKey
+					? ctx.getChunkKey(chunkId)
+					: buildModelKey(ctx.modelName, `chunk:${chunkId}`, ctx.namespace)
+				: '' // Segmented records don't use chunk keys
+
+		// Begin WAL entry (if enabled)
+		if (walEnabled && ctx.wal) {
+			const deltas = needsSegmentation
+				? (() => {
+					const { segmentIds, segments } = splitRecordToSegments(ctx.chunkManager, id, serialized)
+					return buildCreateSegmentedDeltas(id, segmentIds, segments, uniqueKeys)
+				})()
+				: buildCreateDeltas(fullChunkKey, chunkId, id, serialized, uniqueKeys)
+
+			walId = await ctx.wal.begin({
+				model: ctx.modelName,
+				namespace: ctx.namespace,
+				op: 'create',
+				auth: deltas.auth,
+				undo: deltas.undo,
+				derived: deltas.derived
+			})
+		}
+
+		// Acquire unique constraints for all unique fields (after WAL begin)
 		const acquiredConstraints: Array<{ options: UniqueConstraintOptions; value: unknown }> = []
 
 		if (ctx.uniqueIndexManager && ctx.schema.uniqueFields.length > 0) {
@@ -143,42 +224,107 @@ export async function executeCreate<T extends { id: string }>(
 						// Ignore release errors during rollback
 					}
 				}
+
+				// Operation failed without performing chunk/catalog writes; remove WAL entry to prevent replay.
+				if (walId && ctx.wal) {
+					try {
+						await ctx.wal.deleteEntry(walId)
+					} catch {
+						// Ignore WAL cleanup errors; recovery will handle it if needed.
+					}
+					walId = null
+				}
+
 				throw error
 			}
 		}
 
-		// Select chunk for insertion
-		const chunkId = ctx.chunkManager.selectChunkForInsert(ctx.catalog)
-
 		try {
-			// Acquire chunk lock and perform insert
-			return await ctx.chunkLock.withChunkLock(ctx.modelKey, chunkId, async () => {
-				// Add record to chunk
-				await ctx.chunkManager.setRecord(chunkId, id, serialized)
+			let created: T
 
-				// Update catalog
-				ctx.catalog.addEntry(id, chunkId)
+			if (needsSegmentation) {
+				// Store as segmented record
+				const segmentIds = await ctx.chunkManager.saveSegmentedRecord(id, serialized)
+
+				// Update catalog with segment entry
+				ctx.catalog.addSegmentedEntry(id, segmentIds)
 
 				// Persist catalog
 				await ctx.persistCatalog()
 
 				// Deserialize for return
-				return ctx.serializer.deserializeRecord(serialized) as T
-			})
-		} catch (error) {
-			// Release unique constraints on chunk/catalog failure
-			if (ctx.uniqueIndexManager) {
-				for (const { options, value } of acquiredConstraints) {
-					try {
-						await ctx.uniqueIndexManager.release(options, value)
-					} catch {
-						// Ignore release errors during rollback
+				created = ctx.serializer.deserializeRecord(serialized) as T
+			} else {
+				// Acquire chunk lock and perform insert
+				created = await ctx.chunkLock.withChunkLock(ctx.modelKey, chunkId, async () => {
+					// Add record to chunk
+					await ctx.chunkManager.setRecord(chunkId, id, serialized)
+
+					// Update catalog with size info
+					ctx.catalog.addEntry(id, chunkId, sizeCheck.estimatedSize)
+
+					// Persist catalog
+					await ctx.persistCatalog()
+
+					// Deserialize for return
+					return ctx.serializer.deserializeRecord(serialized) as T
+				})
+			}
+
+		// Mark WAL as authoritative (all writes complete)
+		if (walId && ctx.wal) {
+			await ctx.wal.markPhase(walId, 'authoritative')
+		}
+
+		// Derived writes: update filter and sorted indexes (Phase 6)
+		if (ctx.indexCallbacks) {
+			// Add to filter
+			if (ctx.indexCallbacks.addToFilter) {
+				ctx.indexCallbacks.addToFilter(id)
+			}
+
+			// Add to sorted indexes for indexed fields
+			if (ctx.indexCallbacks.addToSortedIndex) {
+				for (const field of ctx.schema.indexedFields) {
+					const value = normalized[field]
+					if (value !== null && value !== undefined) {
+						ctx.indexCallbacks.addToSortedIndex(field, value, id)
 					}
 				}
 			}
-			throw error
+
+			// Mark indexes as dirty for persistence
+			if (ctx.indexCallbacks.markDirty) {
+				ctx.indexCallbacks.markDirty()
+			}
 		}
+
+		// Mark derived writes complete
+		if (walId && ctx.wal) {
+			await ctx.wal.markPhase(walId, 'derived')
+		}
+
+		return created
+	} catch (error) {
+		// Release unique constraints on chunk/catalog failure
+		if (ctx.uniqueIndexManager) {
+			for (const { options, value } of acquiredConstraints) {
+				try {
+					await ctx.uniqueIndexManager.release(options, value)
+				} catch {
+					// Ignore release errors during rollback
+				}
+			}
+		}
+		// WAL will be recovered on next startup (if crash occurs here)
+		throw error
+	}
 	})
+
+	// Complete WAL entry (operation successful)
+	if (walId && ctx.wal) {
+		await ctx.wal.complete(walId)
+	}
 
 	// Execute afterCreate hook
 	await executeAfterCreate(ctx.hooks, result)

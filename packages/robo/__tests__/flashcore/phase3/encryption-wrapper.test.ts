@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 3 - Encryption Wrapper Tests
+ * Flashcore v1 (spec rev 4.3) Phase 3 - Encryption Wrapper Tests
  *
  * Tests for the AES encryption wrapper.
  */

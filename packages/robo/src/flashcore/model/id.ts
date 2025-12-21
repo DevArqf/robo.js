@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 ID Generation
+ * Flashcore v1 (spec rev 4.3) ID Generation
  *
  * Provides collision-resistant ID generation for model records.
  */

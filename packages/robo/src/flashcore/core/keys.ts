@@ -1,7 +1,7 @@
 /**
- * Flashcore v4.3 Key Composition Helpers
+ * Flashcore v1 Key Composition Helpers (spec rev 4.3)
  *
- * Provides utilities for composing storage keys in both legacy and v4 formats.
+ * Provides utilities for composing storage keys in both legacy and safe formats.
  */
 
 import {
@@ -86,15 +86,15 @@ export function parseLegacyKey(
 }
 
 /**
- * Compose a key using the v4 format.
+ * Compose a key using the safe (v1) format.
  *
- * V4 format uses SafeKeyEncoder for safe storage across all adapters.
+ * Safe format uses SafeKeyEncoder for safe storage across all adapters.
  *
  * @param key - The key
  * @param namespace - Optional namespace
- * @returns Composed v4 key
+ * @returns Composed safe key
  */
-export function composeV4Key(
+export function composeV1Key(
 	key: string,
 	namespace?: string | string[]
 ): string {

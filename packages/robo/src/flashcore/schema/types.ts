@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Schema Types
+ * Flashcore v1 (spec rev 4.3) Schema Types
  *
  * Type definitions for schema fields, models, and inference helpers.
  */
@@ -218,13 +218,35 @@ export interface ValidationError {
 }
 
 /**
- * Catalog data for serialization.
+ * Catalog entry in serialized format (v2).
+ */
+export interface CatalogEntryData {
+	id: string
+	kind: 'chunk' | 'segments'
+	chunkId?: number      // For kind='chunk'
+	segmentIds?: string[] // For kind='segments'
+}
+
+/**
+ * Chunk stats in serialized format (v2).
+ */
+export interface ChunkStatsData {
+	chunkId: number
+	count: number
+	size?: number  // Estimated size in bytes (v2)
+}
+
+/**
+ * Catalog data for serialization (v2 format).
+ * Supports both regular chunked records and segmented large records.
  */
 export interface CatalogData {
 	version: number
-	entries: Array<{ id: string; chunkId: number }>
-	chunkStats: Array<{ chunkId: number; count: number }>
+	// v2: supports both chunk and segmented entries
+	entries: CatalogEntryData[]
+	chunkStats: ChunkStatsData[]
 	count: number
+	segmentedCount?: number  // v2: count of segmented records
 }
 
 /**

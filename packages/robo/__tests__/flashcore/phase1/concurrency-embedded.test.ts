@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 1 Tests - Concurrency (Embedded Mode)
+ * Flashcore v1 (spec rev 4.3) Phase 1 Tests - Concurrency (Embedded Mode)
  *
  * Tests concurrent creates/updates/deletes with locking.
  */

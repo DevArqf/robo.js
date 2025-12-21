@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 0 Tests - SafeKeyEncoder
+ * Flashcore v1 (spec rev 4.3) Phase 0 Tests - SafeKeyEncoder
  *
  * Tests key encoding, roundtrip stability, special characters.
  */

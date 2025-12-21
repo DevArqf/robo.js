@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Error Types
+ * Flashcore v1 (spec rev 4.3) Error Types
  *
  * All user-facing operations throw consistent error types (not raw adapter errors).
  */

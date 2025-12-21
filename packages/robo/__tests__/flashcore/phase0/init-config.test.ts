@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 0 Tests - Initialization and Configuration
+ * Flashcore v1 (spec rev 4.3) Phase 0 Tests - Initialization and Configuration
  *
  * Tests Flashcore.$.init(), config access, and system API.
  */
@@ -70,34 +70,34 @@ describe('Flashcore Initialization', () => {
 		it('should merge custom config with defaults', async () => {
 			await Flashcore.$.init({
 				namespaceSeparator: '::',
-				kvReadPreference: 'v4',
+				kvReadPreference: 'v1',
 				kvWriteMode: 'dual'
 			})
 
 			expect(Flashcore.$.config.namespaceSeparator).toBe('::')
-			expect(Flashcore.$.config.kvReadPreference).toBe('v4')
+			expect(Flashcore.$.config.kvReadPreference).toBe('v1')
 			expect(Flashcore.$.config.kvWriteMode).toBe('dual')
 		})
 
 		it('should reject invalid kvReadPreference/kvWriteMode combinations', async () => {
-			// v4 read with legacy write would miss legacy keys
+			// v1 read with legacy write can cause writes to not read back when both keys exist
 			await expect(
 				Flashcore.$.init({
-					kvReadPreference: 'v4',
+					kvReadPreference: 'v1',
 					kvWriteMode: 'legacy'
 				})
-			).rejects.toThrow(/kvReadPreference.*v4.*kvWriteMode.*legacy/i)
+			).rejects.toThrow(/kvReadPreference.*v1.*kvWriteMode.*legacy/i)
 
 			// Reset for next test
 			await FlashcoreSystem._reset()
 
-			// legacy read with v4 write would miss v4 keys
+			// legacy read with v1 write can cause writes to not read back when both keys exist
 			await expect(
 				Flashcore.$.init({
 					kvReadPreference: 'legacy',
-					kvWriteMode: 'v4'
+					kvWriteMode: 'v1'
 				})
-			).rejects.toThrow(/kvReadPreference.*legacy.*kvWriteMode.*v4/i)
+			).rejects.toThrow(/kvReadPreference.*legacy.*kvWriteMode.*v1/i)
 		})
 
 		it('should freeze config object', async () => {

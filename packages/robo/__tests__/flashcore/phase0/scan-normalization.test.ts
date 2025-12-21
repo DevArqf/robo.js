@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 0 Tests - Scan Normalization
+ * Flashcore v1 (spec rev 4.3) Phase 0 Tests - Scan Normalization
  *
  * Tests the scanKeys() helper for normalizing array/async-iterable adapter responses.
  */

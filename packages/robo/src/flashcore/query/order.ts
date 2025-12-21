@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Ordering
+ * Flashcore v1 (spec rev 4.3) Ordering
  *
  * Implements sorting with stable tie-break by id.
  */

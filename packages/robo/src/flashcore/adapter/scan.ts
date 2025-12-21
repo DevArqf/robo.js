@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Scan Normalization
+ * Flashcore v1 (spec rev 4.3) Scan Normalization
  *
  * Provides a unified async iterable interface for adapter scan methods,
  * regardless of whether the adapter returns arrays or async iterables.

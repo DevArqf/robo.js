@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Logger
+ * Flashcore v1 (spec rev 4.3) Logger
  *
  * Forked logger for Flashcore operations.
  */

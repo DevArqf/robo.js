@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 1 Tests - Catalog Lock
+ * Flashcore v1 (spec rev 4.3) Phase 1 Tests - Catalog Lock
  *
  * Tests catalog serialization, no lost mappings under concurrent creates.
  */

@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Memory Adapter
+ * Flashcore v1 (spec rev 4.3) Memory Adapter
  *
  * A full-featured in-memory adapter for testing and development.
  * Implements all optional capabilities.

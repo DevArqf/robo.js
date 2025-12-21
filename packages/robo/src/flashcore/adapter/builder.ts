@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Adapter Builder
+ * Flashcore v1 (spec rev 4.3) Adapter Builder
  *
  * Provides a fluent API for composing adapter wrappers.
  */

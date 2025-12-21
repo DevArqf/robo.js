@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 3 - Introspection Tests
+ * Flashcore v1 (spec rev 4.3) Phase 3 - Introspection Tests
  *
  * Tests the Flashcore.$.introspect() API.
  */

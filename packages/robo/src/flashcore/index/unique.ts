@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Unique Index Manager
+ * Flashcore v1 (spec rev 4.3) Unique Index Manager
  *
  * Manages unique constraints via storage keys.
  * Key pattern: _model:{ns}::{model}:ux:{field}:{encodedValue} → { id }

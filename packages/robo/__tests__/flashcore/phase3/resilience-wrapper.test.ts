@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 3 - Resilience Wrapper Tests
+ * Flashcore v1 (spec rev 4.3) Phase 3 - Resilience Wrapper Tests
  *
  * Tests for the retry with exponential backoff wrapper.
  */

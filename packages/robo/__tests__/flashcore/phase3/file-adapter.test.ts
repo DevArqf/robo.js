@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 3 - FileAdapter Tests
+ * Flashcore v1 (spec rev 4.3) Phase 3 - FileAdapter Tests
  *
  * Tests specific to the v4 FileAdapter implementation.
  */

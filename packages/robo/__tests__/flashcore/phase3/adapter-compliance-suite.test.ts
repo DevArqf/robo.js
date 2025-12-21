@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 3 - Adapter Compliance Suite
+ * Flashcore v1 (spec rev 4.3) Phase 3 - Adapter Compliance Suite
  *
  * Shared tests for verifying adapters implement the correct semantics.
  */

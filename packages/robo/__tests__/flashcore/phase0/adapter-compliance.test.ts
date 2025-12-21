@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 0 Tests - Adapter Compliance
+ * Flashcore v1 (spec rev 4.3) Phase 0 Tests - Adapter Compliance
  *
  * Tests MemoryAdapter and KeyvAdapter against the adapter interface.
  */

@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 1 Tests - CRUD Basic
+ * Flashcore v1 (spec rev 4.3) Phase 1 Tests - CRUD Basic
  *
  * Tests create/findUnique/update/delete happy paths.
  */

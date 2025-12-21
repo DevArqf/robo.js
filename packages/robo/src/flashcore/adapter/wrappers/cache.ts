@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 LRU Cache Wrapper
+ * Flashcore v1 (spec rev 4.3) LRU Cache Wrapper
  *
  * Adds an in-memory LRU cache layer to any adapter.
  * Reduces reads to the underlying adapter for frequently accessed keys.
@@ -7,6 +7,7 @@
 
 import type { FlashcoreAdapter, BatchOperation } from '../types.js'
 import { AdapterWrapper } from './base.js'
+import { FlashcoreSystem } from '../../core/system.js'
 
 /**
  * Options for the LRU cache wrapper.
@@ -85,7 +86,12 @@ export class CacheAdapter<K extends string = string, V = unknown>
 				this.cache.delete(key)
 				this.cache.set(key, cached)
 
-				if (this.trackStats) this.stats.hits++
+				if (this.trackStats) {
+					this.stats.hits++
+					if (FlashcoreSystem.isInitialized) {
+						FlashcoreSystem._incrementCounter('cacheHits')
+					}
+				}
 				return cached.value
 			} else {
 				// Entry is stale, remove it
@@ -95,7 +101,12 @@ export class CacheAdapter<K extends string = string, V = unknown>
 		}
 
 		// Cache miss - fetch from underlying adapter
-		if (this.trackStats) this.stats.misses++
+		if (this.trackStats) {
+			this.stats.misses++
+			if (FlashcoreSystem.isInitialized) {
+				FlashcoreSystem._incrementCounter('cacheMisses')
+			}
+		}
 		const value = await this.next.get(key)
 
 		if (value !== undefined) {

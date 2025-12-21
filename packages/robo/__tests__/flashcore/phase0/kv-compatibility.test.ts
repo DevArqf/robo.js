@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 0 Tests - KV Backward Compatibility
+ * Flashcore v1 (spec rev 4.3) Phase 0 Tests - KV Backward Compatibility
  *
  * Tests legacy key composition, kvReadPreference, kvWriteMode, dual-key resolution.
  */
@@ -9,7 +9,7 @@ import {
 	FlashcoreSystem,
 	MemoryAdapter,
 	composeLegacyKey,
-	composeV4Key,
+	composeV1Key,
 	parseLegacyKey
 } from '../../../src/flashcore/index.js'
 
@@ -67,19 +67,19 @@ describe('KV Backward Compatibility', () => {
 			})
 		})
 
-		describe('composeV4Key', () => {
+		describe('composeV1Key', () => {
 			it('should compose key without namespace', () => {
-				const result = composeV4Key('key')
+				const result = composeV1Key('key')
 				expect(result).toBe('key')
 			})
 
 			it('should compose key with namespace', () => {
-				const result = composeV4Key('key', ['ns'])
+				const result = composeV1Key('key', ['ns'])
 				expect(result).toBe('ns::key')
 			})
 
 			it('should compose key with multi-segment namespace', () => {
-				const result = composeV4Key('key', ['a', 'b', 'c'])
+				const result = composeV1Key('key', ['a', 'b', 'c'])
 				expect(result).toBe('a:b:c::key')
 			})
 		})
@@ -94,34 +94,34 @@ describe('KV Backward Compatibility', () => {
 				kvWriteMode: 'dual'
 			})
 
-			// Write different values to legacy and v4 keys
+			// Write different values to legacy and v1 keys
 			const legacyKey = composeLegacyKey('key', 'ns')
-			const v4Key = composeV4Key('key', ['ns'])
+			const v1Key = composeV1Key('key', ['ns'])
 
 			adapter.set(legacyKey, 'legacy-value')
-			adapter.set(v4Key, 'v4-value')
+			adapter.set(v1Key, 'v1-value')
 
 			// Should read from legacy key
 			expect(await Flashcore.get('key', { namespace: 'ns' })).toBe('legacy-value')
 		})
 
-		it('should prefer v4 key when configured', async () => {
+		it('should prefer v1 key when configured', async () => {
 			const adapter = new MemoryAdapter()
 			await Flashcore.$.init({
 				adapter,
-				kvReadPreference: 'v4',
+				kvReadPreference: 'v1',
 				kvWriteMode: 'dual'
 			})
 
-			// Write different values to legacy and v4 keys
+			// Write different values to legacy and v1 keys
 			const legacyKey = composeLegacyKey('key', 'ns')
-			const v4Key = composeV4Key('key', ['ns'])
+			const v1Key = composeV1Key('key', ['ns'])
 
 			adapter.set(legacyKey, 'legacy-value')
-			adapter.set(v4Key, 'v4-value')
+			adapter.set(v1Key, 'v1-value')
 
-			// Should read from v4 key
-			expect(await Flashcore.get('key', { namespace: 'ns' })).toBe('v4-value')
+			// Should read from v1 key
+			expect(await Flashcore.get('key', { namespace: 'ns' })).toBe('v1-value')
 		})
 
 		it('should fall back when preferred key is missing', async () => {
@@ -132,12 +132,12 @@ describe('KV Backward Compatibility', () => {
 				kvWriteMode: 'dual'
 			})
 
-			// Only set v4 key
-			const v4Key = composeV4Key('key', ['ns'])
-			adapter.set(v4Key, 'v4-only')
+			// Only set v1 key
+			const v1Key = composeV1Key('key', ['ns'])
+			adapter.set(v1Key, 'v1-only')
 
-			// Should fall back to v4 key
-			expect(await Flashcore.get('key', { namespace: 'ns' })).toBe('v4-only')
+			// Should fall back to v1 key
+			expect(await Flashcore.get('key', { namespace: 'ns' })).toBe('v1-only')
 		})
 	})
 
@@ -153,27 +153,27 @@ describe('KV Backward Compatibility', () => {
 			await Flashcore.set('key', 'value', { namespace: 'ns' })
 
 			const legacyKey = composeLegacyKey('key', 'ns')
-			const v4Key = composeV4Key('key', ['ns'])
+			const v1Key = composeV1Key('key', ['ns'])
 
 			expect(adapter.has(legacyKey)).toBe(true)
-			expect(adapter.has(v4Key)).toBe(false)
+			expect(adapter.has(v1Key)).toBe(false)
 		})
 
-		it('should write only v4 key with v4 mode', async () => {
+		it('should write only v1 key with v1 mode', async () => {
 			const adapter = new MemoryAdapter()
 			await Flashcore.$.init({
 				adapter,
-				kvReadPreference: 'v4',
-				kvWriteMode: 'v4'
+				kvReadPreference: 'v1',
+				kvWriteMode: 'v1'
 			})
 
 			await Flashcore.set('key', 'value', { namespace: 'ns' })
 
 			const legacyKey = composeLegacyKey('key', 'ns')
-			const v4Key = composeV4Key('key', ['ns'])
+			const v1Key = composeV1Key('key', ['ns'])
 
 			expect(adapter.has(legacyKey)).toBe(false)
-			expect(adapter.has(v4Key)).toBe(true)
+			expect(adapter.has(v1Key)).toBe(true)
 		})
 
 		it('should write both keys with dual mode', async () => {
@@ -187,17 +187,17 @@ describe('KV Backward Compatibility', () => {
 			await Flashcore.set('key', 'value', { namespace: 'ns' })
 
 			const legacyKey = composeLegacyKey('key', 'ns')
-			const v4Key = composeV4Key('key', ['ns'])
+			const v1Key = composeV1Key('key', ['ns'])
 
 			expect(adapter.has(legacyKey)).toBe(true)
-			expect(adapter.has(v4Key)).toBe(true)
+			expect(adapter.has(v1Key)).toBe(true)
 			expect(adapter.get(legacyKey)).toBe('value')
-			expect(adapter.get(v4Key)).toBe('value')
+			expect(adapter.get(v1Key)).toBe('value')
 		})
 	})
 
 	describe('Delete removes both keys', () => {
-		it('should delete both legacy and v4 keys regardless of write mode', async () => {
+		it('should delete both legacy and v1 keys regardless of write mode', async () => {
 			const adapter = new MemoryAdapter()
 			await Flashcore.$.init({
 				adapter,
@@ -207,16 +207,16 @@ describe('KV Backward Compatibility', () => {
 
 			// Manually set both keys to simulate migration scenario
 			const legacyKey = composeLegacyKey('key', 'ns')
-			const v4Key = composeV4Key('key', ['ns'])
+			const v1Key = composeV1Key('key', ['ns'])
 
 			adapter.set(legacyKey, 'legacy-value')
-			adapter.set(v4Key, 'v4-value')
+			adapter.set(v1Key, 'v1-value')
 
 			// Delete should remove both
 			await Flashcore.delete('key', { namespace: 'ns' })
 
 			expect(adapter.has(legacyKey)).toBe(false)
-			expect(adapter.has(v4Key)).toBe(false)
+			expect(adapter.has(v1Key)).toBe(false)
 		})
 
 		it('should return true if either key existed', async () => {
@@ -297,12 +297,12 @@ describe('KV Backward Compatibility', () => {
 
 			// Step 5: Both keys have new value
 			const legacyKey = composeLegacyKey('key1', 'ns')
-			const v4Key = composeV4Key('key1', ['ns'])
+			const v1Key = composeV1Key('key1', ['ns'])
 
 			expect(adapter.get(legacyKey)).toBe('new-value-1')
-			expect(adapter.get(v4Key)).toBe('new-value-1')
+			expect(adapter.get(v1Key)).toBe('new-value-1')
 
-			// Step 6: After migration complete, can switch to v4 preference
+			// Step 6: After migration complete, can switch to v1 preference
 			// (would need to reinit in real scenario)
 		})
 	})
@@ -316,9 +316,9 @@ describe('KV Backward Compatibility', () => {
 				kvWriteMode: 'dual'
 			})
 
-			// Only v4 key exists
-			const v4Key = composeV4Key('key', ['ns'])
-			adapter.set(v4Key, 'value')
+			// Only v1 key exists
+			const v1Key = composeV1Key('key', ['ns'])
+			adapter.set(v1Key, 'value')
 
 			expect(await Flashcore.has('key', { namespace: 'ns' })).toBe(true)
 		})

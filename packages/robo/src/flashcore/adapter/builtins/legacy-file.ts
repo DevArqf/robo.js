@@ -1,11 +1,11 @@
 /**
- * Flashcore v4.3 Legacy File Adapter
+ * Flashcore v1 Legacy File Adapter (spec rev 4.3)
  *
  * Wraps the existing .robo/data hashed-file storage for backward compatibility.
  * Uses SHA256 hashing for filenames, which means keys are NOT enumerable.
  *
  * This adapter is used to maintain access to existing Robo.js Flashcore data
- * after upgrading to v4.
+ * after upgrading to Flashcore v1.
  */
 
 import { createHash } from 'node:crypto'
@@ -34,7 +34,7 @@ export interface LegacyFileAdapterOptions {
  * - Fixes the `has()` truthiness bug from the original implementation
  *
  * Use this adapter to preserve access to existing Flashcore data.
- * For new projects, consider using a v4 adapter with deterministic key storage.
+ * For new projects, consider using a v1 adapter with deterministic key storage.
  */
 export class LegacyFileAdapter<K = string, V = unknown> implements FlashcoreAdapter<K, V> {
 	readonly name = 'LegacyFileAdapter'
@@ -139,7 +139,7 @@ export class LegacyFileAdapter<K = string, V = unknown> implements FlashcoreAdap
 	// - Prefix-based scanning is not possible
 	// - WAL recovery is NOT available with this adapter
 	//
-	// If you need scan capability, migrate to a v4 file adapter.
+	// If you need scan capability, migrate to a v1 file adapter.
 	// ─────────────────────────────────────────────────────────────
 
 	// ─────────────────────────────────────────────────────────────

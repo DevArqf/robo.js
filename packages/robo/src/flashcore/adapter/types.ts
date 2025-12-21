@@ -1,8 +1,10 @@
 /**
- * Flashcore v4.3 Adapter Types
+ * Flashcore v1 Adapter Types (spec rev 4.3)
  *
  * Defines the adapter interface and capability system.
  */
+
+import type { WALConfig } from '../wal/types.js'
 
 /**
  * Core adapter interface for Flashcore storage backends.
@@ -229,7 +231,7 @@ export interface AdapterCapabilities {
 }
 
 /**
- * Configuration for the Flashcore v4 client.
+ * Configuration for the Flashcore v1 client.
  */
 export interface FlashcoreConfig {
 	/**
@@ -246,17 +248,17 @@ export interface FlashcoreConfig {
 	/**
 	 * KV read preference for dual-key resolution.
 	 * - 'legacy': prefer legacy composed key format (default for robo.js import)
-	 * - 'v4': prefer v4 encoded key format (default for robo.js/flashcore import)
+	 * - 'v1': prefer safe encoded key format (default for robo.js/flashcore import)
 	 */
-	kvReadPreference?: 'legacy' | 'v4'
+	kvReadPreference?: 'legacy' | 'v1'
 
 	/**
 	 * KV write mode for key storage.
 	 * - 'legacy': write only legacy key format
-	 * - 'v4': write only v4 key format
+	 * - 'v1': write only safe key format
 	 * - 'dual': write both formats (for migration)
 	 */
-	kvWriteMode?: 'legacy' | 'v4' | 'dual'
+	kvWriteMode?: 'legacy' | 'v1' | 'dual'
 
 	/**
 	 * Transaction configuration.
@@ -276,6 +278,10 @@ export interface FlashcoreConfig {
 		intervalMs?: number
 		flushOnShutdown?: boolean
 		shutdownTimeout?: number
+		/** Maximum memory for indexes in bytes (default: 50MB) */
+		memoryLimit?: number
+		/** Maximum records to hold in memory before evicting (default: 100000) */
+		maxInMemoryRecords?: number
 	}
 
 	/**
@@ -315,6 +321,11 @@ export interface FlashcoreConfig {
 		uniqueIndexes?: boolean
 		catalog?: boolean // requires explicit opt-in
 	}
+
+	/**
+	 * WAL configuration (Phase 4).
+	 */
+	wal?: WALConfig
 }
 
 /**

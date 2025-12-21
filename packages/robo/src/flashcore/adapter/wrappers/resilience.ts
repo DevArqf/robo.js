@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Resilience Wrapper
+ * Flashcore v1 (spec rev 4.3) Resilience Wrapper
  *
  * Adds automatic retry with exponential backoff for transient failures.
  * Supports disconnect/reconnect callbacks for monitoring.

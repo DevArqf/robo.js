@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Read Operation
+ * Flashcore v1 (spec rev 4.3) Read Operation
  *
  * Implements the findUnique() CRUD operation.
  */
@@ -28,9 +28,9 @@ export interface ReadContext<T> {
  * Execute findUnique operation.
  *
  * 1. Extract ID from where clause
- * 2. Look up chunk in catalog
+ * 2. Look up catalog entry
  * 3. If not found, return null
- * 4. Load chunk and get record
+ * 4. Load record (from chunk or segments depending on entry kind)
  * 5. Deserialize and return
  *
  * @param ctx - Read context
@@ -59,19 +59,29 @@ export async function executeFindUnique<T extends { id: string }>(
 		return null
 	}
 
-	// Look up in catalog
-	const chunkId = ctx.catalog.getChunkFor(id)
+	// Get catalog entry to check storage type
+	const entry = ctx.catalog.getEntry(id)
 
-	if (chunkId === null) {
+	if (!entry) {
 		// Record doesn't exist
 		return null
 	}
 
-	// Load record from chunk
-	const record = await ctx.chunkManager.getRecord(chunkId, id)
+	let record: unknown
+
+	if (entry.kind === 'segments' && entry.segmentIds) {
+		// Load segmented record
+		record = await ctx.chunkManager.loadSegmentedRecord(id, entry.segmentIds)
+	} else if (entry.kind === 'chunk' && entry.chunkId !== undefined) {
+		// Load from chunk
+		record = await ctx.chunkManager.getRecord(entry.chunkId, id)
+	} else {
+		// Invalid catalog entry
+		return null
+	}
 
 	if (!record) {
-		// Record not in chunk (catalog inconsistency)
+		// Record not in storage (catalog inconsistency)
 		// This shouldn't happen in normal operation
 		return null
 	}

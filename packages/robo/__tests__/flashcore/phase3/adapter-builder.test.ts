@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 3 - AdapterBuilder Tests
+ * Flashcore v1 (spec rev 4.3) Phase 3 - AdapterBuilder Tests
  *
  * Tests the fluent AdapterBuilder API for stacking wrappers.
  */

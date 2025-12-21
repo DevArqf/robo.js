@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Locking Primitives
+ * Flashcore v1 (spec rev 4.3) Locking Primitives
  *
  * Provides async mutex and lock managers for embedded mode concurrency safety.
  */

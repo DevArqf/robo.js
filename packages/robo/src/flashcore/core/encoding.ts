@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Safe Key Encoding
+ * Flashcore v1 Safe Key Encoding (spec rev 4.3)
  *
  * Provides reversible key encoding for safe storage across all adapters.
  * Keys with special characters are encoded using base64url.
@@ -39,7 +39,7 @@ function fromBase64Url(encoded: string): string {
 }
 
 /**
- * Encoded key structure for v4 format.
+ * Encoded key structure for v1 format.
  */
 export interface EncodedKeyData {
 	namespace: string[]

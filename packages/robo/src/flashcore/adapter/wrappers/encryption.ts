@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Encryption Wrapper
+ * Flashcore v1 Encryption Wrapper (spec rev 4.3)
  *
  * Adds AES-256-GCM encryption to all values.
  * Encrypted values are tagged with '__enc__:' prefix for identification.
@@ -22,7 +22,10 @@ export interface EncryptionOptions {
 	/**
 	 * Salt for key derivation.
 	 * If not provided, a default salt is used (less secure).
-	 * Default: 'flashcore-v4-salt'
+	 *
+	 * Default: 'flashcore-v1-salt'
+	 * Backward compatibility: when `salt` is omitted, decryption also attempts
+	 * the legacy default salt ('flashcore-v4-salt') to avoid data loss.
 	 */
 	salt?: string
 
@@ -41,6 +44,9 @@ const IV_LENGTH = 16
 // Auth tag length for AES-GCM
 const AUTH_TAG_LENGTH = 16
 
+const DEFAULT_SALT = 'flashcore-v1-salt'
+const LEGACY_DEFAULT_SALT = 'flashcore-v4-salt'
+
 /**
  * Encryption wrapper for adapters.
  *
@@ -52,7 +58,8 @@ export class EncryptionAdapter<K extends string = string, V = unknown>
 {
 	readonly name = 'EncryptionAdapter'
 
-	private derivedKey: Buffer
+	private primaryKey: Buffer
+	private fallbackKeys: Buffer[] = []
 	private algorithm: 'aes-256-gcm' | 'aes-256-cbc'
 
 	constructor(adapter: FlashcoreAdapter<K, V>, options: EncryptionOptions) {
@@ -63,8 +70,13 @@ export class EncryptionAdapter<K extends string = string, V = unknown>
 		}
 
 		// Derive a 32-byte key using scrypt
-		const salt = options.salt ?? 'flashcore-v4-salt'
-		this.derivedKey = scryptSync(options.key, salt, 32)
+		const salt = options.salt ?? DEFAULT_SALT
+		this.primaryKey = scryptSync(options.key, salt, 32)
+
+		// If the salt is implicit, also allow decrypting values written with the legacy default.
+		if (!options.salt) {
+			this.fallbackKeys.push(scryptSync(options.key, LEGACY_DEFAULT_SALT, 32))
+		}
 		this.algorithm = options.algorithm ?? 'aes-256-gcm'
 	}
 
@@ -147,9 +159,9 @@ export class EncryptionAdapter<K extends string = string, V = unknown>
 		const json = JSON.stringify(value)
 
 		if (this.algorithm === 'aes-256-gcm') {
-			return this.encryptGcm(json)
+			return this.encryptGcm(json, this.primaryKey)
 		} else {
-			return this.encryptCbc(json)
+			return this.encryptCbc(json, this.primaryKey)
 		}
 	}
 
@@ -163,18 +175,22 @@ export class EncryptionAdapter<K extends string = string, V = unknown>
 
 		// Check if this is an encrypted string
 		if (typeof stored === 'string' && stored.startsWith(ENCRYPTED_PREFIX)) {
-			try {
-				const payload = stored.slice(ENCRYPTED_PREFIX.length)
+			const payload = stored.slice(ENCRYPTED_PREFIX.length)
+			const keysToTry = [this.primaryKey, ...this.fallbackKeys]
 
-				if (this.algorithm === 'aes-256-gcm') {
-					return JSON.parse(this.decryptGcm(payload)) as V
-				} else {
-					return JSON.parse(this.decryptCbc(payload)) as V
+			for (const key of keysToTry) {
+				try {
+					if (this.algorithm === 'aes-256-gcm') {
+						return JSON.parse(this.decryptGcm(payload, key)) as V
+					} else {
+						return JSON.parse(this.decryptCbc(payload, key)) as V
+					}
+				} catch {
+					// Try next key
 				}
-			} catch {
-				// Decryption failed
-				throw new Error('Failed to decrypt value: invalid key or corrupted data')
 			}
+
+			throw new Error('Failed to decrypt value: invalid key or corrupted data')
 		}
 
 		// Value is not encrypted (legacy or different format)
@@ -184,9 +200,9 @@ export class EncryptionAdapter<K extends string = string, V = unknown>
 	/**
 	 * Encrypt using AES-256-GCM (authenticated encryption).
 	 */
-	private encryptGcm(plaintext: string): string {
+	private encryptGcm(plaintext: string, key: Buffer): string {
 		const iv = randomBytes(IV_LENGTH)
-		const cipher = createCipheriv('aes-256-gcm', this.derivedKey, iv)
+		const cipher = createCipheriv('aes-256-gcm', key, iv)
 
 		const encrypted = Buffer.concat([
 			cipher.update(plaintext, 'utf8'),
@@ -202,14 +218,14 @@ export class EncryptionAdapter<K extends string = string, V = unknown>
 	/**
 	 * Decrypt using AES-256-GCM.
 	 */
-	private decryptGcm(payload: string): string {
+	private decryptGcm(payload: string, key: Buffer): string {
 		const data = Buffer.from(payload, 'base64')
 
 		const iv = data.subarray(0, IV_LENGTH)
 		const authTag = data.subarray(IV_LENGTH, IV_LENGTH + AUTH_TAG_LENGTH)
 		const ciphertext = data.subarray(IV_LENGTH + AUTH_TAG_LENGTH)
 
-		const decipher = createDecipheriv('aes-256-gcm', this.derivedKey, iv)
+		const decipher = createDecipheriv('aes-256-gcm', key, iv)
 		decipher.setAuthTag(authTag)
 
 		const decrypted = Buffer.concat([
@@ -223,9 +239,9 @@ export class EncryptionAdapter<K extends string = string, V = unknown>
 	/**
 	 * Encrypt using AES-256-CBC.
 	 */
-	private encryptCbc(plaintext: string): string {
+	private encryptCbc(plaintext: string, key: Buffer): string {
 		const iv = randomBytes(IV_LENGTH)
-		const cipher = createCipheriv('aes-256-cbc', this.derivedKey, iv)
+		const cipher = createCipheriv('aes-256-cbc', key, iv)
 
 		const encrypted = Buffer.concat([
 			cipher.update(plaintext, 'utf8'),
@@ -240,13 +256,13 @@ export class EncryptionAdapter<K extends string = string, V = unknown>
 	/**
 	 * Decrypt using AES-256-CBC.
 	 */
-	private decryptCbc(payload: string): string {
+	private decryptCbc(payload: string, key: Buffer): string {
 		const data = Buffer.from(payload, 'base64')
 
 		const iv = data.subarray(0, IV_LENGTH)
 		const ciphertext = data.subarray(IV_LENGTH)
 
-		const decipher = createDecipheriv('aes-256-cbc', this.derivedKey, iv)
+		const decipher = createDecipheriv('aes-256-cbc', key, iv)
 
 		const decrypted = Buffer.concat([
 			decipher.update(ciphertext),

@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 2 Tests - Safety Limits
+ * Flashcore v1 (spec rev 4.3) Phase 2 Tests - Safety Limits
  *
  * Tests query safety limits including default take behavior and warnings.
  */

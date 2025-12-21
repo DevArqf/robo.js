@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Compression Wrapper
+ * Flashcore v1 (spec rev 4.3) Compression Wrapper
  *
  * Adds gzip compression to values above a configurable threshold.
  * Compressed values are tagged with '__gz__:' prefix for identification.

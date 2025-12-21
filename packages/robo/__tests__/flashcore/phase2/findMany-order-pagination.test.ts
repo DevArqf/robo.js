@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 2 Tests - FindMany Ordering and Pagination
+ * Flashcore v1 (spec rev 4.3) Phase 2 Tests - FindMany Ordering and Pagination
  *
  * Tests orderBy, take/skip pagination, and findFirst.
  */

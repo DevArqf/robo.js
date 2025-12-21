@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Schema Normalization
+ * Flashcore v1 (spec rev 4.3) Schema Normalization
  *
  * Normalizes schema definitions into a consistent internal format.
  */

@@ -160,6 +160,13 @@ export const COMMANDS: CommandMetadata[] = [
 		options: [{ alias: '-i', name: '--inspect', description: 'Show all registered CLI commands and extensions' }],
 		positionalArgs: true,
 		modulePath: '../commands/cli.js'
+	},
+	{
+		name: 'db',
+		description: 'Manage Flashcore database schemas and migrations.',
+		options: [],
+		hasSubcommands: true,
+		modulePath: '../commands/db/index.js'
 	}
 ]
 

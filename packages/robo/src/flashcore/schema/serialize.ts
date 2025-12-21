@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Type Serialization
+ * Flashcore v1 (spec rev 4.3) Type Serialization
  *
  * Handles serialization/deserialization of special types (Date, BigInt)
  * for storage in key-value adapters.

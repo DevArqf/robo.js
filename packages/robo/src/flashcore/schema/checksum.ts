@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Schema Checksum
+ * Flashcore v1 (spec rev 4.3) Schema Checksum
  *
  * Computes deterministic checksums for schema change detection.
  * Uses FNV-1a 32-bit hash for fast, stable hashing.

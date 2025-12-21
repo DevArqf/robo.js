@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Adapter Wrappers
+ * Flashcore v1 (spec rev 4.3) Adapter Wrappers
  *
  * Export all wrapper classes and factory functions.
  */

@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Schema Field Builders
+ * Flashcore v1 (spec rev 4.3) Schema Field Builders
  *
  * Provides fluent API for defining model schema fields.
  */

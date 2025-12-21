@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 1 Tests - Chunk Lock
+ * Flashcore v1 (spec rev 4.3) Phase 1 Tests - Chunk Lock
  *
  * Tests mutual exclusion, no deadlocks, proper queue handling.
  */

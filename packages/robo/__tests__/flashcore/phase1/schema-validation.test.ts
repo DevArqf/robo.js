@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 1 Tests - Schema Validation
+ * Flashcore v1 (spec rev 4.3) Phase 1 Tests - Schema Validation
  *
  * Tests field types, required/optional/default, unknown rejection, Date round-trip.
  */

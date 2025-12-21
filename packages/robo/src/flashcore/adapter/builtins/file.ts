@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 File Adapter
+ * Flashcore v1 (spec rev 4.3) File Adapter
  *
  * A persistent file-based adapter with:
  * - Deterministic key storage (filesystem-safe encoding)

@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 0 Tests - Capability Detection
+ * Flashcore v1 (spec rev 4.3) Phase 0 Tests - Capability Detection
  *
  * Tests capability normalization from adapter interface inspection.
  */

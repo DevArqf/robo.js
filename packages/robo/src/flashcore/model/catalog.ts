@@ -1,16 +1,22 @@
 /**
- * Flashcore v4.3 Catalog
+ * Flashcore v1 (spec rev 4.3) Catalog (v2 format)
  *
  * Authoritative mapping from record ID to chunk location.
  * The catalog is the source of truth for record existence.
+ *
+ * v2 changes:
+ * - Support for segmented large records (kind: 'segments')
+ * - Size tracking per chunk for better chunk selection
  */
 
-import type { CatalogData } from '../schema/types.js'
+import type { CatalogData, CatalogEntryData } from '../schema/types.js'
 
 /**
  * Version number for catalog format.
+ * v1: Basic chunk mapping
+ * v2: Segment support + size tracking
  */
-export const CATALOG_VERSION = 1
+export const CATALOG_VERSION = 2
 
 /**
  * Catalog entry for a single record.
@@ -18,8 +24,8 @@ export const CATALOG_VERSION = 1
 export interface CatalogEntry {
 	id: string
 	kind: 'chunk' | 'segments'
-	chunkId?: number
-	segmentIds?: string[]
+	chunkId?: number      // For kind='chunk'
+	segmentIds?: string[] // For kind='segments'
 }
 
 /**
@@ -27,6 +33,7 @@ export interface CatalogEntry {
  */
 export interface ChunkStats {
 	count: number
+	size: number  // Estimated size in bytes
 }
 
 /**
@@ -84,19 +91,17 @@ export class Catalog {
 	}
 
 	/**
-	 * Add a record to the catalog.
+	 * Add a regular chunked record to the catalog.
 	 *
 	 * @param id - Record ID
 	 * @param chunkId - Chunk where record is stored
+	 * @param recordSize - Optional estimated size of record in bytes
 	 */
-	addEntry(id: string, chunkId: number): void {
-		// Remove from old chunk if exists
+	addEntry(id: string, chunkId: number, recordSize?: number): void {
+		// Remove from old location if exists
 		const existing = this.entries.get(id)
-		if (existing && existing.kind === 'chunk' && existing.chunkId !== undefined) {
-			const oldStats = this.chunkStats.get(existing.chunkId)
-			if (oldStats && oldStats.count > 0) {
-				oldStats.count--
-			}
+		if (existing) {
+			this.removeEntryStats(existing)
 		}
 
 		// Add to new location
@@ -109,10 +114,48 @@ export class Catalog {
 		// Update chunk stats
 		let stats = this.chunkStats.get(chunkId)
 		if (!stats) {
-			stats = { count: 0 }
+			stats = { count: 0, size: 0 }
 			this.chunkStats.set(chunkId, stats)
 		}
 		stats.count++
+		if (recordSize !== undefined) {
+			stats.size += recordSize
+		}
+	}
+
+	/**
+	 * Add a segmented (large) record to the catalog.
+	 *
+	 * @param id - Record ID
+	 * @param segmentIds - Array of segment IDs
+	 */
+	addSegmentedEntry(id: string, segmentIds: string[]): void {
+		// Remove from old location if exists
+		const existing = this.entries.get(id)
+		if (existing) {
+			this.removeEntryStats(existing)
+		}
+
+		// Add as segmented record
+		this.entries.set(id, {
+			id,
+			kind: 'segments',
+			segmentIds
+		})
+	}
+
+	/**
+	 * Helper to remove stats for an entry.
+	 */
+	private removeEntryStats(entry: CatalogEntry): void {
+		if (entry.kind === 'chunk' && entry.chunkId !== undefined) {
+			const stats = this.chunkStats.get(entry.chunkId)
+			if (stats && stats.count > 0) {
+				stats.count--
+				// Note: we don't track individual record sizes so can't decrement size accurately
+			}
+		}
+		// Segmented entries don't affect chunk stats
 	}
 
 	/**
@@ -127,13 +170,8 @@ export class Catalog {
 			return false
 		}
 
-		// Update chunk stats
-		if (entry.kind === 'chunk' && entry.chunkId !== undefined) {
-			const stats = this.chunkStats.get(entry.chunkId)
-			if (stats && stats.count > 0) {
-				stats.count--
-			}
-		}
+		// Update stats
+		this.removeEntryStats(entry)
 
 		return this.entries.delete(id)
 	}
@@ -179,6 +217,57 @@ export class Catalog {
 	 */
 	getChunkCount(chunkId: number): number {
 		return this.chunkStats.get(chunkId)?.count ?? 0
+	}
+
+	/**
+	 * Get the estimated size of a specific chunk in bytes.
+	 *
+	 * @param chunkId - Chunk ID
+	 * @returns Estimated size in bytes
+	 */
+	getChunkSize(chunkId: number): number {
+		return this.chunkStats.get(chunkId)?.size ?? 0
+	}
+
+	/**
+	 * Update the size of a chunk (useful when loading/saving chunks).
+	 *
+	 * @param chunkId - Chunk ID
+	 * @param size - New size in bytes
+	 */
+	setChunkSize(chunkId: number, size: number): void {
+		let stats = this.chunkStats.get(chunkId)
+		if (!stats) {
+			stats = { count: 0, size: 0 }
+			this.chunkStats.set(chunkId, stats)
+		}
+		stats.size = size
+	}
+
+	/**
+	 * Get the count of segmented records.
+	 *
+	 * @returns Count of segmented records
+	 */
+	getSegmentedCount(): number {
+		let count = 0
+		for (const entry of this.entries.values()) {
+			if (entry.kind === 'segments') {
+				count++
+			}
+		}
+		return count
+	}
+
+	/**
+	 * Check if a record is stored as segments.
+	 *
+	 * @param id - Record ID
+	 * @returns True if record is segmented
+	 */
+	isSegmented(id: string): boolean {
+		const entry = this.entries.get(id)
+		return entry?.kind === 'segments'
 	}
 
 	/**
@@ -235,34 +324,52 @@ export class Catalog {
 	}
 
 	/**
-	 * Serialize catalog for storage.
+	 * Serialize catalog for storage (v2 format).
 	 *
 	 * @returns Serialized catalog data
 	 */
 	serialize(): CatalogData {
-		const entries: Array<{ id: string; chunkId: number }> = []
+		const entries: CatalogEntryData[] = []
+		let segmentedCount = 0
 
 		for (const entry of this.entries.values()) {
 			if (entry.kind === 'chunk' && entry.chunkId !== undefined) {
-				entries.push({ id: entry.id, chunkId: entry.chunkId })
+				entries.push({
+					id: entry.id,
+					kind: 'chunk',
+					chunkId: entry.chunkId
+				})
+			} else if (entry.kind === 'segments' && entry.segmentIds) {
+				entries.push({
+					id: entry.id,
+					kind: 'segments',
+					segmentIds: entry.segmentIds
+				})
+				segmentedCount++
 			}
 		}
 
-		const chunkStats: Array<{ chunkId: number; count: number }> = []
+		const chunkStats: Array<{ chunkId: number; count: number; size?: number }> = []
 		for (const [chunkId, stats] of this.chunkStats) {
-			chunkStats.push({ chunkId, count: stats.count })
+			chunkStats.push({
+				chunkId,
+				count: stats.count,
+				size: stats.size > 0 ? stats.size : undefined
+			})
 		}
 
 		return {
 			version: CATALOG_VERSION,
 			entries,
 			chunkStats,
-			count: this.entries.size
+			count: this.entries.size,
+			segmentedCount: segmentedCount > 0 ? segmentedCount : undefined
 		}
 	}
 
 	/**
 	 * Deserialize catalog from storage.
+	 * Supports both v1 and v2 formats (automatic migration).
 	 *
 	 * @param data - Stored catalog data
 	 * @returns Catalog instance
@@ -270,24 +377,47 @@ export class Catalog {
 	static deserialize(data: CatalogData): Catalog {
 		const catalog = new Catalog()
 
-		// Validate version
-		if (data.version !== CATALOG_VERSION) {
-			// Future: handle migrations between versions
-			console.warn(`Catalog version mismatch: expected ${CATALOG_VERSION}, got ${data.version}`)
-		}
+		// Handle v1 to v2 migration
+		const isV1 = data.version === 1
 
 		// Restore entries
 		for (const entry of data.entries) {
-			catalog.entries.set(entry.id, {
-				id: entry.id,
-				kind: 'chunk',
-				chunkId: entry.chunkId
-			})
+			// v1 format: { id, chunkId } - treat as chunk entries
+			// v2 format: { id, kind, chunkId?, segmentIds? }
+			const kind = (entry as CatalogEntryData).kind ?? 'chunk'
+
+			if (kind === 'chunk') {
+				const chunkId = entry.chunkId
+				if (chunkId !== undefined) {
+					catalog.entries.set(entry.id, {
+						id: entry.id,
+						kind: 'chunk',
+						chunkId
+					})
+				}
+			} else if (kind === 'segments') {
+				const segmentIds = (entry as CatalogEntryData).segmentIds
+				if (segmentIds) {
+					catalog.entries.set(entry.id, {
+						id: entry.id,
+						kind: 'segments',
+						segmentIds
+					})
+				}
+			}
 		}
 
 		// Restore chunk stats
 		for (const stat of data.chunkStats) {
-			catalog.chunkStats.set(stat.chunkId, { count: stat.count })
+			catalog.chunkStats.set(stat.chunkId, {
+				count: stat.count,
+				size: stat.size ?? 0
+			})
+		}
+
+		// Log migration if needed
+		if (isV1) {
+			// Silently migrate - catalog will be saved in v2 format on next write
 		}
 
 		return catalog

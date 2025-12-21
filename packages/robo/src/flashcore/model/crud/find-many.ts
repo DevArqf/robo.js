@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 FindMany Operation
+ * Flashcore v1 (spec rev 4.3) FindMany Operation
  *
  * Implements findMany(), findFirst(), and count() with filtering.
  */
@@ -7,11 +7,14 @@
 import type { NormalizedSchema, FindManyArgs, FindFirstArgs, WhereClause, CountArgs } from '../../schema/types.js'
 import type { Catalog } from '../catalog.js'
 import type { ChunkManager } from '../chunk.js'
+import type { CuckooFilter } from '../../index/filter.js'
+import type { SortedIndex } from '../../index/sorted.js'
 import { TypeSerializer } from '../../schema/serialize.js'
 import { evaluateWhere } from '../../query/evaluate.js'
 import { sortRecords } from '../../query/order.js'
 import { DEFAULT_SAFETY_CONFIG } from '../../core/constants.js'
 import { logger } from '../../core/logger.js'
+import { QueryPlanner, executeIndexPlan, filterMightContain, type AvailableIndexes, type QueryArgs } from '../../query/planner.js'
 
 /**
  * Context for findMany operations.
@@ -26,15 +29,18 @@ export interface FindManyContext<T> {
 		maxDefaultResults: number
 		warnResultsThreshold: number
 	}
+	// Index state (Phase 6)
+	filter?: CuckooFilter
+	sortedIndexes?: Map<string, SortedIndex>
 }
 
 /**
  * Execute findMany operation.
  *
- * 1. Get all record IDs from catalog
- * 2. Load all chunks (batch by chunk ID)
- * 3. Filter records against where clause
- * 4. Sort by orderBy
+ * 1. Plan query using available indexes (Phase 6)
+ * 2. Execute plan: index scan or full scan
+ * 3. Filter records against where clause (post-filter if index used)
+ * 4. Sort by orderBy (if not provided by index)
  * 5. Apply skip/take pagination
  * 6. Apply select projection
  * 7. Return results
@@ -49,17 +55,97 @@ export async function executeFindMany<T extends { id: string }>(
 ): Promise<T[]> {
 	const safetyConfig = ctx.safetyConfig ?? DEFAULT_SAFETY_CONFIG
 
-	// Get all records from storage
-	const allRecords = await loadAllRecords<T>(ctx)
+	// Check if we have indexes available (Phase 6)
+	const indexes: AvailableIndexes = {
+		filter: ctx.filter,
+		sortedIndexes: ctx.sortedIndexes ?? new Map()
+	}
+	const hasIndexes = indexes.filter || indexes.sortedIndexes.size > 0
+
+	let records: T[]
+
+	if (hasIndexes && args) {
+		// Use query planner to determine optimal execution strategy
+		const totalRecords = ctx.catalog.getCount()
+		const planner = new QueryPlanner(totalRecords)
+
+		// Convert args to QueryArgs format
+		const queryArgs: QueryArgs = {
+			where: args.where as QueryArgs['where'],
+			orderBy: args.orderBy as QueryArgs['orderBy'],
+			skip: args.skip,
+			take: args.take
+		}
+
+		const plan = planner.plan(queryArgs, indexes)
+
+		if (plan.type === 'filter-check' && args.where && 'id' in args.where) {
+			// Fast path: check filter first for ID lookup
+			const idCondition = args.where.id
+			const id = typeof idCondition === 'string' ? idCondition :
+				(typeof idCondition === 'object' && idCondition && 'equals' in idCondition) ?
+					(idCondition as { equals: string }).equals : null
+
+			if (id && !filterMightContain(id, indexes.filter)) {
+				// Definitely not present - return empty
+				return []
+			}
+		}
+
+		if (plan.type === 'index-scan' || plan.type === 'index-range') {
+			// Execute index plan to get candidate IDs
+			const candidateIds = executeIndexPlan(plan, indexes)
+
+			if (candidateIds !== null) {
+				// Load only matching records
+				records = await loadRecordsByIds<T>(ctx, candidateIds)
+
+				// Apply post-filter for fields not covered by index
+				if (plan.postFilterFields.length > 0 && args.where) {
+					records = records.filter((record) =>
+						evaluateWhere(record as Record<string, unknown>, args.where as WhereClause<Record<string, unknown>>)
+					)
+				}
+
+				// Sort only if index doesn't provide ordering
+				if (!plan.indexProvidesOrder && args.orderBy) {
+					records = sortRecords(records, args.orderBy)
+				}
+
+				// Apply pagination
+				const skip = Math.max(0, args.skip ?? 0)
+				let take = args.take ?? safetyConfig.maxDefaultResults
+
+				if (records.length > safetyConfig.warnResultsThreshold && args.take === undefined) {
+					logger.warn(
+						`[flashcore] findMany on '${ctx.modelName}' returned ${records.length} results. ` +
+						`Consider using 'take' for pagination. Limiting to ${take}.`
+					)
+				}
+
+				const paginated = records.slice(skip, skip + take)
+
+				// Apply select projection
+				if (args.select) {
+					return paginated.map((record) => applySelect(record, args.select!))
+				}
+
+				return paginated
+			}
+		}
+	}
+
+	// Fall back to full scan
+	records = await loadAllRecords<T>(ctx)
 
 	// Filter by where clause
 	let filtered: T[]
 	if (args?.where) {
-		filtered = allRecords.filter((record) =>
+		filtered = records.filter((record) =>
 			evaluateWhere(record as Record<string, unknown>, args.where as WhereClause<Record<string, unknown>>)
 		)
 	} else {
-		filtered = allRecords
+		filtered = records
 	}
 
 	// Sort by orderBy
@@ -160,6 +246,76 @@ async function loadAllRecords<T extends { id: string }>(
 			) as T
 
 			// Ensure id is set
+			if (!deserialized.id) {
+				(deserialized as Record<string, unknown>).id = id
+			}
+
+			records.push(deserialized)
+		}
+	}
+
+	return records
+}
+
+/**
+ * Load specific records by their IDs.
+ *
+ * Groups by chunk ID for efficient batch loading.
+ */
+async function loadRecordsByIds<T extends { id: string }>(
+	ctx: FindManyContext<T>,
+	ids: string[]
+): Promise<T[]> {
+	const records: T[] = []
+
+	// Group IDs by chunk for efficient loading
+	const idsByChunk = new Map<number, string[]>()
+
+	for (const id of ids) {
+		const entry = ctx.catalog.getEntry(id)
+		if (!entry) {
+			continue // ID not in catalog
+		}
+
+		if (entry.kind === 'chunk' && entry.chunkId !== undefined) {
+			const chunkIds = idsByChunk.get(entry.chunkId) ?? []
+			chunkIds.push(id)
+			idsByChunk.set(entry.chunkId, chunkIds)
+		} else if (entry.kind === 'segments' && entry.segmentIds) {
+			// Handle segmented records
+			try {
+				const rawRecord = await ctx.chunkManager.loadSegmentedRecord(id, entry.segmentIds)
+				if (rawRecord) {
+					const deserialized = ctx.serializer.deserializeRecord(
+						rawRecord as Record<string, unknown>
+					) as T
+
+					if (!deserialized.id) {
+						(deserialized as Record<string, unknown>).id = id
+					}
+
+					records.push(deserialized)
+				}
+			} catch {
+				// Skip failed segment loads
+			}
+		}
+	}
+
+	// Load records from chunks
+	for (const [chunkId, chunkRecordIds] of idsByChunk) {
+		const chunk = await ctx.chunkManager.loadChunk(chunkId)
+
+		for (const id of chunkRecordIds) {
+			const rawRecord = chunk[id]
+			if (!rawRecord) {
+				continue // Record not in chunk (shouldn't happen if catalog is consistent)
+			}
+
+			const deserialized = ctx.serializer.deserializeRecord(
+				rawRecord as Record<string, unknown>
+			) as T
+
 			if (!deserialized.id) {
 				(deserialized as Record<string, unknown>).id = id
 			}

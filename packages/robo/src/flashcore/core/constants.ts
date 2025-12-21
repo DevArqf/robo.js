@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Constants
+ * Flashcore v1 Constants (spec rev 4.3)
  *
  * Reserved prefixes, default values, and limits.
  */
@@ -30,7 +30,7 @@ export const DEFAULT_NAMESPACE_SEPARATOR = '/'
 export const LEGACY_KEY_SEPARATOR = '__'
 
 /**
- * Prefix for v4 encoded keys that contain special characters.
+ * Prefix for encoded keys that contain special characters.
  * When a key contains characters that need encoding, it's stored as `_e:{base64url}`.
  */
 export const ENCODED_KEY_PREFIX = '_e:'
@@ -44,6 +44,28 @@ export const DEFAULT_MAX_CHUNK_SIZE = 100_000 // 100KB
  * Default maximum records per chunk.
  */
 export const DEFAULT_MAX_RECORDS_PER_CHUNK = 50
+
+/**
+ * Default LRU cache size for chunks (number of chunks to cache per model).
+ */
+export const DEFAULT_CHUNK_CACHE_SIZE = 20
+
+/**
+ * Prefix for record segments (large records split across multiple keys).
+ * Full key format: _model:{ns}::{model}:seg:{recordId}:{n}
+ */
+export const RECORD_SEGMENT_PREFIX = 'seg:'
+
+/**
+ * Storage exhaustion error patterns to detect.
+ */
+export const STORAGE_EXHAUSTION_PATTERNS = [
+	/ENOSPC/i,
+	/no space left/i,
+	/quota exceeded/i,
+	/disk full/i,
+	/storage limit/i
+] as const
 
 /**
  * Default safety limits for queries.
@@ -159,3 +181,143 @@ export const SAFE_ID_PATTERN = /^[A-Za-z0-9_-]+$/
  * Characters that are safe in storage keys (no encoding needed).
  */
 export const SAFE_KEY_CHARS = /^[A-Za-z0-9_:\-./]+$/
+
+// ─────────────────────────────────────────────────────────────
+// WAL (Write-Ahead Log) Constants
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Key prefix for WAL entry headers.
+ * Full key format: _flashcore:wal:entry:{id}
+ */
+export const WAL_ENTRY_PREFIX = '_flashcore:wal:entry:'
+
+/**
+ * Key prefix for WAL entry segments (for large entries).
+ * Full key format: _flashcore:wal:seg:{id}:{n}
+ */
+export const WAL_SEGMENT_PREFIX = '_flashcore:wal:seg:'
+
+/**
+ * Default threshold for considering a WAL entry "stale" (5 minutes).
+ * Stale entries in 'pending' phase are rolled back instead of replayed.
+ */
+export const WAL_STALE_THRESHOLD_MS = 5 * 60 * 1000
+
+/**
+ * Clock skew tolerance for WAL staleness detection (5 seconds).
+ * Entries with timestamps slightly in the future are still considered valid.
+ */
+export const WAL_CLOCK_SKEW_TOLERANCE_MS = 5 * 1000
+
+/**
+ * Default maximum size for a single WAL entry value (100KB).
+ * Entries exceeding this are segmented across multiple keys.
+ */
+export const WAL_DEFAULT_SEGMENT_SIZE = 100_000
+
+// ─────────────────────────────────────────────────────────────
+// Phase 6: Index/Filter Constants
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Default number of entries per bucket in the Cuckoo filter.
+ */
+export const DEFAULT_FILTER_BUCKET_SIZE = 4
+
+/**
+ * Fingerprint size in bits for Cuckoo filter.
+ * 16-bit fingerprints support deletion and provide ~0.003% false positive rate at 95% load.
+ */
+export const DEFAULT_FILTER_FP_SIZE = 16
+
+/**
+ * Load factor threshold at which to resize the Cuckoo filter.
+ */
+export const DEFAULT_FILTER_LOAD_FACTOR = 0.95
+
+/**
+ * Maximum kick attempts before declaring insert failure (triggers resize).
+ */
+export const DEFAULT_FILTER_MAX_KICKS = 500
+
+/**
+ * Default initial capacity for Cuckoo filter (number of buckets).
+ */
+export const DEFAULT_FILTER_INITIAL_CAPACITY = 256
+
+/**
+ * Default index memory limit in bytes (50MB).
+ */
+export const DEFAULT_INDEX_MEMORY_LIMIT = 50 * 1024 * 1024
+
+/**
+ * Default maximum records to hold in memory for operations.
+ */
+export const DEFAULT_MAX_IN_MEMORY_RECORDS = 100_000
+
+/**
+ * Key suffix for filter storage.
+ * Full key: _model:{ns}::{model}:filter
+ */
+export const FILTER_KEY_SUFFIX = 'filter'
+
+/**
+ * Key prefix for sorted index storage.
+ * Full key: _model:{ns}::{model}:idx:{field} or _model:{ns}::{model}:idx:{field}:{indexType}
+ */
+export const INDEX_KEY_PREFIX = 'idx:'
+
+/**
+ * B+Tree default order (max children per node).
+ */
+export const DEFAULT_BTREE_ORDER = 32
+
+/**
+ * Default minimum entries for B+Tree leaf nodes before merging.
+ */
+export const DEFAULT_BTREE_MIN_LEAF_ENTRIES = 16
+
+// ─────────────────────────────────────────────────────────────
+// Phase 7: Migration Constants
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Key for the migration lock.
+ * Only one migration can run at a time across all processes.
+ */
+export const MIGRATION_LOCK_KEY = '_flashcore:migrations:lock'
+
+/**
+ * Key prefix for migration metadata.
+ * Full key: _flashcore:migrations:{name}
+ */
+export const MIGRATION_STATUS_PREFIX = '_flashcore:migrations:'
+
+/**
+ * Default migration lock timeout (5 minutes).
+ * Locks older than this are considered stale and can be overridden.
+ */
+export const MIGRATION_LOCK_TIMEOUT_MS = 5 * 60 * 1000
+
+/**
+ * Maximum number of schema history entries to keep.
+ */
+export const MAX_SCHEMA_HISTORY_ENTRIES = 100
+
+/**
+ * Default auto-repair configuration.
+ * Catalog is never auto-repaired by default (requires explicit opt-in).
+ */
+export const DEFAULT_AUTO_REPAIR_CONFIG = {
+	filter: true,
+	indexes: true,
+	uniqueIndexes: true,
+	catalog: false // Never by default - too dangerous
+} as const
+
+/**
+ * Key suffix for model schema metadata.
+ * Full key: _model:{ns}::{model}:_meta
+ */
+export const SCHEMA_META_SUFFIX = '_meta'

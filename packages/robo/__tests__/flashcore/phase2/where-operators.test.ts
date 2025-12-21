@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 2 Tests - Where Operators
+ * Flashcore v1 (spec rev 4.3) Phase 2 Tests - Where Operators
  *
  * Tests all where clause operators: equals, not, gt/gte/lt/lte, in, string ops, AND/OR/NOT.
  */

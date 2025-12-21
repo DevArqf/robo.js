@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 3 - Cache Wrapper Tests
+ * Flashcore v1 (spec rev 4.3) Phase 3 - Cache Wrapper Tests
  *
  * Tests for the LRU cache wrapper.
  */

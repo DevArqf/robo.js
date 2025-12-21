@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Where Clause Evaluation
+ * Flashcore v1 (spec rev 4.3) Where Clause Evaluation
  *
  * Evaluates where clauses against records for filtering.
  */

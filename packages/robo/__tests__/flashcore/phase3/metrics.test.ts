@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 3 - Metrics Tests
+ * Flashcore v1 (spec rev 4.3) Phase 3 - Metrics Tests
  *
  * Tests the Flashcore.$.metrics() and resetMetrics() APIs.
  */
@@ -7,6 +7,7 @@
 // Uses Jest globals
 import { FlashcoreSystem } from '../../../src/flashcore/core/system.js'
 import { MemoryAdapter } from '../../../src/flashcore/adapter/builtins/memory.js'
+import { CacheAdapter } from '../../../src/flashcore/adapter/wrappers/cache.js'
 import { f } from '../../../src/flashcore/schema/field.js'
 
 describe('Flashcore Metrics', () => {
@@ -119,6 +120,26 @@ describe('Flashcore Metrics', () => {
 			const metrics = FlashcoreSystem.metrics()
 			expect(metrics.cacheHits).toBe(2)
 			expect(metrics.cacheMisses).toBe(1)
+		})
+
+		it('should increment cache metrics via CacheAdapter operations', async () => {
+			await FlashcoreSystem._reset()
+
+			const base = new MemoryAdapter()
+			const cached = new CacheAdapter(base)
+
+			await FlashcoreSystem.init({ adapter: cached })
+
+			// Miss
+			await FlashcoreSystem.adapter.get('missing')
+
+			// Hit (set populates cache)
+			await FlashcoreSystem.adapter.set('k', 'v')
+			await FlashcoreSystem.adapter.get('k')
+
+			const metrics = FlashcoreSystem.metrics()
+			expect(metrics.cacheMisses).toBe(1)
+			expect(metrics.cacheHits).toBe(1)
 		})
 	})
 

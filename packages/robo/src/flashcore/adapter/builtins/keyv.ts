@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Keyv Adapter
+ * Flashcore v1 (spec rev 4.3) Keyv Adapter
  *
  * Wraps a Keyv instance as a Flashcore adapter.
  * Minimal capabilities - no scan, no atomic operations.

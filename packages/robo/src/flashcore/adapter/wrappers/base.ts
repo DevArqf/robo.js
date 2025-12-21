@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Adapter Wrapper Base Class
+ * Flashcore v1 (spec rev 4.3) Adapter Wrapper Base Class
  *
  * Provides a passthrough implementation for all adapter methods,
  * allowing wrappers to override only what they need.

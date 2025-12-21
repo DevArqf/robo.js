@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 3 - Compression Wrapper Tests
+ * Flashcore v1 (spec rev 4.3) Phase 3 - Compression Wrapper Tests
  *
  * Tests for the gzip compression wrapper.
  */
