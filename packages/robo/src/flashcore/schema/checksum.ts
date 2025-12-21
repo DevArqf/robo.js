@@ -1,0 +1,102 @@
+/**
+ * Flashcore v4.3 Schema Checksum
+ *
+ * Computes deterministic checksums for schema change detection.
+ * Uses FNV-1a 32-bit hash for fast, stable hashing.
+ */
+
+import type { SchemaFields, FieldDef, RelationDef } from './types.js'
+
+/**
+ * Compute a deterministic checksum for a schema.
+ *
+ * The checksum changes when:
+ * - Fields are added or removed
+ * - Field types change
+ * - Modifiers change (optional, unique, indexed, etc.)
+ * - Enum values change
+ * - Relations change
+ *
+ * @param schema - Schema definition
+ * @returns Hex string checksum
+ */
+export function computeSchemaChecksum(schema: SchemaFields): string {
+	// Build deterministic string representation
+	const normalized = normalizeSchemaForChecksum(schema)
+	const hash = fnv1a32(normalized)
+	return hash.toString(16).padStart(8, '0')
+}
+
+/**
+ * Normalize schema to a deterministic string for hashing.
+ */
+function normalizeSchemaForChecksum(schema: SchemaFields): string {
+	const parts: string[] = []
+
+	// Sort field names for deterministic order
+	const sortedKeys = Object.keys(schema).sort()
+
+	for (const key of sortedKeys) {
+		const field = schema[key]
+
+		if (!field || typeof field !== 'object' || !('_def' in field)) {
+			continue
+		}
+
+		const isRelation = '_isRelation' in field && field._isRelation
+
+		if (isRelation) {
+			// Relation field
+			const def = field._def as RelationDef
+			parts.push(`${key}:rel:${def.type}:${def.model}:${def.foreignKey ?? ''}:${def.onDelete}`)
+		} else {
+			// Regular field
+			const def = field._def as FieldDef
+			const fieldParts = [
+				key,
+				def.type,
+				def.optional ? 'opt' : 'req',
+				def.unique ? 'uniq' : '',
+				def.indexed ? 'idx' : '',
+				def.indexTypes.length > 0 ? def.indexTypes.join(',') : '',
+				def.primaryKey ? 'pk' : '',
+				def.version ? 'ver' : '',
+				def.hasDefault ? 'def' : '',
+				def.enumValues?.join(',') ?? ''
+			]
+			parts.push(fieldParts.filter(Boolean).join(':'))
+		}
+	}
+
+	return parts.join('|')
+}
+
+/**
+ * FNV-1a 32-bit hash algorithm.
+ *
+ * Fast, well-distributed hash suitable for checksums.
+ * Used by spec for schema checksums.
+ */
+function fnv1a32(str: string): number {
+	let hash = 0x811c9dc5 // FNV offset basis
+
+	for (let i = 0; i < str.length; i++) {
+		hash ^= str.charCodeAt(i)
+		// FNV prime (32-bit)
+		hash = Math.imul(hash, 0x01000193)
+	}
+
+	// Ensure unsigned 32-bit integer
+	return hash >>> 0
+}
+
+/**
+ * Compare two schema checksums.
+ *
+ * @param checksum1 - First checksum
+ * @param checksum2 - Second checksum
+ * @returns True if checksums match
+ */
+export function compareChecksums(checksum1: string, checksum2: string): boolean {
+	return checksum1.toLowerCase() === checksum2.toLowerCase()
+}
