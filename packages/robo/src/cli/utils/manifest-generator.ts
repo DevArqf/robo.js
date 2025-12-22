@@ -512,6 +512,7 @@ export class ManifestGenerator {
 
 	private async writeJson(relativePath: string, data: unknown): Promise<void> {
 		const fullPath = path.join(this.basePath, relativePath)
+		await fs.mkdir(path.dirname(fullPath), { recursive: true })
 		await fs.writeFile(fullPath, this.safeStringify(data))
 	}
 
