@@ -27,9 +27,9 @@ describe('FlashcoreSystem.preload()', () => {
 		})
 
 		// Register models
-		FlashcoreSystem.registerModel<{ id: string; name: string }>('Model1', { name: f.string() })
-		FlashcoreSystem.registerModel<{ id: string; name: string }>('Model2', { name: f.string() })
-		FlashcoreSystem.registerModel<{ id: string; name: string }>('Model3', { name: f.string() })
+		FlashcoreSystem.registerModel<{ id: string; name: string }>('Model1', { id: f.id(), name: f.string() })
+		FlashcoreSystem.registerModel<{ id: string; name: string }>('Model2', { id: f.id(), name: f.string() })
+		FlashcoreSystem.registerModel<{ id: string; name: string }>('Model3', { id: f.id(), name: f.string() })
 
 		// Preload only Model1 and Model2
 		await FlashcoreSystem.preload(['Model1', 'Model2'])
@@ -41,6 +41,7 @@ describe('FlashcoreSystem.preload()', () => {
 		await FlashcoreSystem.init({ adapter })
 
 		const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string }>('TestModel', {
+			id: f.id(),
 			name: f.string()
 		})
 
@@ -54,7 +55,7 @@ describe('FlashcoreSystem.preload()', () => {
 	it('should warn for non-existent models', async () => {
 		await FlashcoreSystem.init({ adapter })
 
-		FlashcoreSystem.registerModel<{ id: string; name: string }>('ExistingModel', { name: f.string() })
+		FlashcoreSystem.registerModel<{ id: string; name: string }>('ExistingModel', { id: f.id(), name: f.string() })
 
 		// Should not throw, but may warn
 		await FlashcoreSystem.preload(['ExistingModel', 'NonExistentModel'])
@@ -78,7 +79,7 @@ describe('FlashcoreSystem.preload()', () => {
 
 		// Register namespaced model
 		const schema = FlashcoreSystem.schema('plugin1')
-		schema.model<{ id: string; data: string }>('PluginModel', { data: f.string() })
+		schema.model<{ id: string; data: string }>('PluginModel', { id: f.id(), data: f.string() })
 
 		// Preload using full key
 		await FlashcoreSystem.preload(['plugin1::PluginModel'])

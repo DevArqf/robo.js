@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Repair Engine (Phase 6)
+ * Flashcore v1 Repair Engine (Phase 6, spec rev 4.3)
  *
  * Repairs derived index structures from authoritative data.
  *

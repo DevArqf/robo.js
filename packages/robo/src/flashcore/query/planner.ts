@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Query Planner (Phase 6)
+ * Flashcore v1 Query Planner (Phase 6, spec rev 4.3)
  *
  * Analyzes queries and selects optimal execution strategies using available indexes.
  *

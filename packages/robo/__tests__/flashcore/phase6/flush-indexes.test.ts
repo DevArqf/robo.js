@@ -36,6 +36,7 @@ describe('FlashcoreSystem.flushIndexes()', () => {
 
 		// Register a model with an indexed field
 		const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string; createdAt: number }>('TestModel', {
+			id: f.id(),
 			name: f.string(),
 			createdAt: f.number().indexed()
 		})
@@ -85,6 +86,7 @@ describe('Index persistence strategies', () => {
 		})
 
 		const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string }>('TestModel', {
+			id: f.id(),
 			name: f.string()
 		})
 
@@ -103,6 +105,7 @@ describe('Index persistence strategies', () => {
 		})
 
 		const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string }>('TestModel', {
+			id: f.id(),
 			name: f.string()
 		})
 
@@ -121,6 +124,7 @@ describe('Index persistence strategies', () => {
 		})
 
 		const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string }>('TestModel', {
+			id: f.id(),
 			name: f.string()
 		})
 

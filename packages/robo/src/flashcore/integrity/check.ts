@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Integrity Checker (Phase 6)
+ * Flashcore v1 Integrity Checker (Phase 6, spec rev 4.3)
  *
  * Verifies integrity of derived index structures against authoritative data.
  *
@@ -13,7 +13,7 @@
 import type { FlashcoreAdapter } from '../adapter/types.js'
 import type { CuckooFilter } from '../index/filter.js'
 import type { SortedIndex } from '../index/sorted.js'
-import type { Catalog } from '../model/catalog.js'
+import { Catalog } from '../model/catalog.js'
 import { scanKeys, hasScanCapability } from '../adapter/scan.js'
 import { buildModelKey } from '../core/keys.js'
 import { FeatureNotSupportedError } from '../core/errors.js'
@@ -274,15 +274,29 @@ export class IntegrityChecker {
 			})
 		}
 
-		// Scan for unique index keys
-		const uniquePrefix = buildModelKey(modelName, 'unique:', namespace)
+		// Load authoritative catalog (best-effort)
+		let catalog: Catalog | null = null
+		try {
+			const storedCatalog = (await this.adapter.get(buildModelKey(modelName, 'catalog', namespace))) as unknown
+			if (storedCatalog && typeof storedCatalog === 'object' && 'entries' in storedCatalog && 'version' in storedCatalog) {
+				catalog = Catalog.deserialize(storedCatalog as any)
+			} else {
+				catalog = Catalog.empty()
+			}
+		} catch {
+			// If catalog is unreadable, fall back to empty so we still surface issues
+			catalog = Catalog.empty()
+		}
+
+		// Scan for unique index keys (ux:{field}:{encodedValue})
+		const uniquePrefix = buildModelKey(modelName, 'ux:', namespace)
 		const valueToIds = new Map<string, string[]>()
 
 		for await (const key of scanKeys(this.adapter, uniquePrefix)) {
 			result.keysChecked++
 
 			// Extract field and value from key
-			const match = key.match(/unique:([^:]+):(.+)$/)
+			const match = key.match(/ux:([^:]+):(.+)$/)
 			if (!match) {
 				continue
 			}
@@ -293,9 +307,15 @@ export class IntegrityChecker {
 			}
 
 			// Get the record ID this key points to
-			const recordId = (await this.adapter.get(key)) as string | undefined
+			const entry = await this.adapter.get(key) as unknown
+			const recordId =
+				typeof entry === 'string'
+					? entry
+					: (entry && typeof entry === 'object' && 'id' in entry && typeof (entry as { id?: unknown }).id === 'string')
+						? (entry as { id: string }).id
+						: undefined
 
-			if (!recordId) {
+			if (!recordId || !catalog?.has(recordId)) {
 				result.orphanedKeys.push(key)
 				result.isValid = false
 				continue

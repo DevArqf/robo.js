@@ -164,23 +164,6 @@ export class ConnectionError extends FlashcoreError {
 }
 
 /**
- * Thrown when subscription limits are exceeded.
- */
-export class SubscriptionLimitError extends FlashcoreError {
-	readonly limit: number
-	readonly current: number
-	readonly limitType: 'perModel' | 'total' | 'recordsPerSubscription'
-
-	constructor(message: string, options: { limit: number; current: number; limitType: 'perModel' | 'total' | 'recordsPerSubscription'; cause?: Error }) {
-		super(message, 'SUBSCRIPTION_LIMIT', { cause: options?.cause })
-		this.name = 'SubscriptionLimitError'
-		this.limit = options.limit
-		this.current = options.current
-		this.limitType = options.limitType
-	}
-}
-
-/**
  * Thrown when schema validation fails on startup (breaking schema drift).
  */
 export class FlashcoreSchemaError extends FlashcoreError {

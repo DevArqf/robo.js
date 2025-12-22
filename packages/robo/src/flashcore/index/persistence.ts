@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Index Persistence Manager (Phase 6)
+ * Flashcore v1 Index Persistence Manager (Phase 6, spec rev 4.3)
  *
  * Manages persistence of derived index structures (filters, sorted indexes).
  * Tracks dirty state and handles flush strategies including graceful shutdown.
@@ -101,6 +101,7 @@ export class IndexPersistenceManager {
 	private shutdownHandlersInstalled = false
 	private flushInProgress = false
 	private pendingFlushPromise: Promise<FlushResult> | null = null
+	private shutdownHandler: (() => Promise<void>) | null = null
 
 	// Memory management (Phase 6)
 	private lruEntries: Map<string, LRUEntry> = new Map()
@@ -142,6 +143,19 @@ export class IndexPersistenceManager {
 	async shutdown(): Promise<void> {
 		this.isShuttingDown = true
 
+		// Remove shutdown handlers (prevents listener leaks in tests/re-inits)
+		if (this.shutdownHandlersInstalled && this.shutdownHandler && typeof process !== 'undefined') {
+			const off =
+				(process as unknown as { off?: typeof process.off; removeListener?: typeof process.removeListener }).off ??
+				(process as unknown as { removeListener?: typeof process.removeListener }).removeListener
+
+			off?.call(process, 'SIGINT', this.shutdownHandler)
+			off?.call(process, 'SIGTERM', this.shutdownHandler)
+			off?.call(process, 'beforeExit', this.shutdownHandler)
+			this.shutdownHandler = null
+			this.shutdownHandlersInstalled = false
+		}
+
 		// Clear periodic timer
 		if (this.periodicTimer) {
 			clearInterval(this.periodicTimer)
@@ -150,14 +164,20 @@ export class IndexPersistenceManager {
 
 		// Flush all pending changes with timeout
 		if (this.dirty.size > 0) {
+			let timeout: ReturnType<typeof setTimeout> | null = null
 			const timeoutPromise = new Promise<FlushResult>((_, reject) => {
-				setTimeout(() => reject(new Error('Shutdown flush timeout')), this.options.shutdownTimeout)
+				timeout = setTimeout(() => reject(new Error('Shutdown flush timeout')), this.options.shutdownTimeout)
+				timeout?.unref?.()
 			})
 
 			try {
 				await Promise.race([this.flushAll(), timeoutPromise])
 			} catch {
 				// Log but don't throw on shutdown timeout
+			} finally {
+				if (timeout) {
+					clearTimeout(timeout)
+				}
 			}
 		}
 
@@ -300,6 +320,7 @@ export class IndexPersistenceManager {
 					})
 				}
 			}, intervalMs)
+			this.periodicTimer.unref?.()
 		}
 	}
 
@@ -311,7 +332,7 @@ export class IndexPersistenceManager {
 			return
 		}
 
-		const handleShutdown = async () => {
+		this.shutdownHandler = async () => {
 			if (!this.isShuttingDown) {
 				await this.shutdown()
 			}
@@ -319,9 +340,9 @@ export class IndexPersistenceManager {
 
 		// Handle graceful shutdown signals
 		if (typeof process !== 'undefined' && process.on) {
-			process.on('SIGINT', handleShutdown)
-			process.on('SIGTERM', handleShutdown)
-			process.on('beforeExit', handleShutdown)
+			process.on('SIGINT', this.shutdownHandler)
+			process.on('SIGTERM', this.shutdownHandler)
+			process.on('beforeExit', this.shutdownHandler)
 		}
 
 		this.shutdownHandlersInstalled = true

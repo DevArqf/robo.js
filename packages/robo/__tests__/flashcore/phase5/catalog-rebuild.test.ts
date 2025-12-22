@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 5 Tests - Catalog Rebuild
+ * Flashcore v1 (spec rev 4.3) Phase 5 Tests - Catalog Rebuild
  *
  * Tests for rebuilding catalog from chunk and segment data.
  */

@@ -32,6 +32,23 @@ export interface IndexUpdateCallbacks {
 }
 
 /**
+ * Cascade callbacks for Phase 9.
+ */
+export interface CascadeCallbacks {
+	/**
+	 * Check restrict constraints before delete.
+	 * Throws FlashcoreError if delete should be blocked.
+	 */
+	checkRestrict?: (record: { id: string }) => Promise<void>
+
+	/**
+	 * Execute cascade operations for the delete.
+	 * This handles cascade deletes, setNull, and junction cleanup.
+	 */
+	executeCascades?: (record: { id: string }) => Promise<void>
+}
+
+/**
  * Context for delete operation.
  */
 export interface DeleteContext<T> {
@@ -58,6 +75,9 @@ export interface DeleteContext<T> {
 
 	// Optional index update callbacks (Phase 6)
 	indexCallbacks?: IndexUpdateCallbacks
+
+	// Optional cascade callbacks (Phase 9)
+	cascadeCallbacks?: CascadeCallbacks
 }
 
 /**
@@ -140,6 +160,11 @@ export async function executeDelete<T extends { id: string }>(
 		const existing = ctx.serializer.deserializeRecord(
 			existingRaw as Record<string, unknown>
 		) as T
+
+		// Check restrict constraints before proceeding (Phase 9)
+		if (ctx.cascadeCallbacks?.checkRestrict) {
+			await ctx.cascadeCallbacks.checkRestrict(existing)
+		}
 
 		// Execute beforeDelete hook
 		await executeBeforeDelete(ctx.hooks, existing)
@@ -257,6 +282,12 @@ export async function executeDelete<T extends { id: string }>(
 		// Mark derived writes complete
 		if (walId && ctx.wal) {
 			await ctx.wal.markPhase(walId, 'derived')
+		}
+
+		// Execute cascade operations (Phase 9)
+		// This handles cascade deletes, setNull, and junction cleanup
+		if (ctx.cascadeCallbacks?.executeCascades) {
+			await ctx.cascadeCallbacks.executeCascades(existing)
 		}
 
 		return existing

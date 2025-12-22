@@ -25,6 +25,7 @@ describe('Query Uses Index', () => {
 			await FlashcoreSystem.init({ adapter })
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string }>('TestModel', {
+				id: f.id(),
 				name: f.string()
 			})
 
@@ -39,6 +40,7 @@ describe('Query Uses Index', () => {
 			await FlashcoreSystem.init({ adapter })
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string }>('TestModel', {
+				id: f.id(),
 				name: f.string()
 			})
 
@@ -55,6 +57,7 @@ describe('Query Uses Index', () => {
 			await FlashcoreSystem.init({ adapter })
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string; score: number }>('TestModel', {
+				id: f.id(),
 				name: f.string(),
 				score: f.number().indexed()
 			})
@@ -78,6 +81,7 @@ describe('Query Uses Index', () => {
 			await FlashcoreSystem.init({ adapter })
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string; priority: number }>('TestModel', {
+				id: f.id(),
 				name: f.string(),
 				priority: f.number().indexed()
 			})
@@ -97,6 +101,7 @@ describe('Query Uses Index', () => {
 			await FlashcoreSystem.init({ adapter })
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string; indexed: number; notIndexed: number }>('TestModel', {
+				id: f.id(),
 				name: f.string(),
 				indexed: f.number().indexed(),
 				notIndexed: f.number()
@@ -133,6 +138,7 @@ describe('Query Uses Index', () => {
 			await FlashcoreSystem.init({ adapter })
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string; rank: number }>('TestModel', {
+				id: f.id(),
 				name: f.string(),
 				rank: f.number().indexed()
 			})
@@ -154,6 +160,7 @@ describe('Query Uses Index', () => {
 			await FlashcoreSystem.init({ adapter })
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string; position: number }>('TestModel', {
+				id: f.id(),
 				name: f.string(),
 				position: f.number().indexed()
 			})
@@ -180,6 +187,7 @@ describe('Query Uses Index', () => {
 			await FlashcoreSystem.init({ adapter })
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string; score: number; createdAt: number }>('TestModel', {
+				id: f.id(),
 				name: f.string(),
 				score: f.number().indexed(),
 				createdAt: f.number().indexed()
@@ -209,6 +217,7 @@ describe('Query Uses Index', () => {
 			await FlashcoreSystem.init({ adapter })
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string; notIndexed: number }>('TestModel', {
+				id: f.id(),
 				name: f.string(),
 				notIndexed: f.number()
 			})

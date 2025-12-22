@@ -29,6 +29,7 @@ describe('Lazy Loading', () => {
 
 			// Register a model
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string }>('TestModel', {
+				id: f.id(),
 				name: f.string()
 			})
 
@@ -44,6 +45,7 @@ describe('Lazy Loading', () => {
 			})
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string; score: number }>('TestModel', {
+				id: f.id(),
 				name: f.string(),
 				score: f.number().indexed()
 			})
@@ -64,6 +66,7 @@ describe('Lazy Loading', () => {
 			})
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string }>('TestModel', {
+				id: f.id(),
 				name: f.string()
 			})
 
@@ -82,6 +85,7 @@ describe('Lazy Loading', () => {
 			})
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string }>('TestModel', {
+				id: f.id(),
 				name: f.string()
 			})
 
@@ -97,9 +101,9 @@ describe('Lazy Loading', () => {
 				lazyLoading: true
 			})
 
-			const Model1 = FlashcoreSystem.registerModel<{ id: string; name: string }>('Model1', { name: f.string() })
-			const Model2 = FlashcoreSystem.registerModel<{ id: string; title: string }>('Model2', { title: f.string() })
-			const Model3 = FlashcoreSystem.registerModel<{ id: string; data: string }>('Model3', { data: f.string() })
+			const Model1 = FlashcoreSystem.registerModel<{ id: string; name: string }>('Model1', { id: f.id(), name: f.string() })
+			const Model2 = FlashcoreSystem.registerModel<{ id: string; title: string }>('Model2', { id: f.id(), title: f.string() })
+			const Model3 = FlashcoreSystem.registerModel<{ id: string; data: string }>('Model3', { id: f.id(), data: f.string() })
 
 			// Access models in random order
 			await Model2.create({ title: 'Second' })
@@ -118,6 +122,7 @@ describe('Lazy Loading', () => {
 			})
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string }>('TestModel', {
+				id: f.id(),
 				name: f.string()
 			})
 

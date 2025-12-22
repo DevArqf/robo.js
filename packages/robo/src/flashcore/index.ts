@@ -88,7 +88,6 @@ export {
 	StorageExhaustedError,
 	TransactionConflictError,
 	ConnectionError,
-	SubscriptionLimitError,
 	FlashcoreSchemaError,
 	MigrationError,
 	SafetyError
@@ -477,3 +476,193 @@ export {
 	DEFAULT_AUTO_REPAIR_CONFIG,
 	SCHEMA_META_SUFFIX
 } from './core/constants.js'
+
+// ─────────────────────────────────────────────────────────────
+// Transactions (Phase 8)
+// ─────────────────────────────────────────────────────────────
+
+export {
+	TransactionContext,
+	SerialTransactionQueue,
+	getSerialQueue,
+	clearSerialQueue
+} from './transaction/context.js'
+
+export {
+	resolveAutoMode,
+	validateMode,
+	hasAcidSupport,
+	requiresAcid,
+	buildTransactionOptions,
+	getModeName,
+	requiresVersionTracking,
+	delay,
+	calculateRetryDelay
+} from './transaction/modes.js'
+
+export type {
+	TransactionMode,
+	ResolvedTransactionMode,
+	TransactionOptions,
+	ITransactionContext,
+	TransactionContextState,
+	TransactionResult,
+	TransactionExecutionOptions,
+	StagedOperation,
+	ReadSetEntry,
+	SerialQueueItem,
+	TransactionCommitHandler,
+	ModelTransactionContext
+} from './transaction/types.js'
+
+// Transaction constants
+export {
+	VERSION_FIELD_NAME,
+	MAX_VERSION_VALUE,
+	VERSION_OVERFLOW_WARN_THRESHOLD
+} from './core/constants.js'
+
+// ─────────────────────────────────────────────────────────────
+// Bulk Operations (Phase 8)
+// ─────────────────────────────────────────────────────────────
+
+export type {
+	CreateManyArgs,
+	UpdateManyArgs,
+	DeleteManyArgs,
+	UpsertArgs,
+	BatchResult
+} from './schema/types.js'
+
+// ─────────────────────────────────────────────────────────────
+// Relations (Phase 9)
+// ─────────────────────────────────────────────────────────────
+
+export {
+	JunctionTableManager,
+	getJunctionModelName,
+	getJunctionTableDef,
+	createJunctionSchema,
+	isJunctionModel,
+	parseJunctionModelName,
+	validateForeignKey,
+	validateForeignKeys,
+	validateRelationsSchema,
+	collectCascadeOperations,
+	executeCascadeOperations,
+	checkRestrictConstraints,
+	resolveInclude,
+	resolveIncludesBatched,
+	hasIncludes
+} from './relation/index.js'
+
+export type {
+	CascadeOp,
+	IncludeOptions,
+	JunctionTableDef,
+	ParsedIncludeEntry,
+	RelationInfo,
+	RelationValidationError,
+	BatchedIncludeResult,
+	ManyToManyConnect,
+	RelationFieldValue,
+	IncludeContext,
+	CascadeContext
+} from './relation/index.js'
+
+// Relation constants
+export {
+	MAX_CASCADE_DEPTH,
+	MAX_INCLUDE_DEPTH,
+	JUNCTION_PREFIX,
+	DEFAULT_ON_DELETE
+} from './core/constants.js'
+
+// ─────────────────────────────────────────────────────────────
+// Plugin System (Phase 10)
+// ─────────────────────────────────────────────────────────────
+
+// Plugin definition and utilities
+export {
+	definePlugin,
+	defineIndex,
+	createSimpleIndex,
+	createTrieIndex,
+	createFullTextIndex,
+	trieIndexProvider,
+	fullTextIndexProvider
+} from './plugin/define.js'
+
+// Middleware utilities
+export {
+	executeWithMiddleware,
+	createLoggingMiddleware,
+	createValidationMiddleware,
+	createErrorHandlerMiddleware,
+	createConditionalMiddleware,
+	composeMiddleware,
+	forModels,
+	forOperations
+} from './plugin/middleware.js'
+
+// Plugin context
+export {
+	getPluginContext,
+	hasPlugin,
+	getPluginNames,
+	createBoundContext,
+	applyModelExtensions,
+	createClientExtensions,
+	wrapModelWithPluginAccess
+} from './plugin/context.js'
+
+export type {
+	WithPluginExtensions,
+	WithClientExtensions
+} from './plugin/context.js'
+
+// Plugin manager
+export {
+	PluginManager,
+	getPluginManager,
+	setPluginManager,
+	createPluginManager
+} from './plugin/manager.js'
+
+// Plugin utilities for plugin authors
+export {
+	evaluateWhere as evaluatePluginWhere,
+	computePatches,
+	applyPatches
+} from './plugin/utils.js'
+
+// Plugin types
+export type {
+	FlashcorePlugin as FlashcorePluginDefinition,
+	PluginSetupContext,
+	ModelInfo,
+	PluginMiddleware,
+	OperationType,
+	MiddlewareFn,
+	OperationParams,
+	OperationResult,
+	PluginContext,
+	OperationArgs,
+	CreateArgs,
+	UpdateArgs as PluginUpdateArgs,
+	DeleteArgs as PluginDeleteArgs,
+	FindUniqueArgs as PluginFindUniqueArgs,
+	CountArgs as PluginCountArgs,
+	CreateManyArgs as PluginCreateManyArgs,
+	UpdateManyArgs as PluginUpdateManyArgs,
+	DeleteManyArgs as PluginDeleteManyArgs,
+	UpsertArgs as PluginUpsertArgs,
+	IndexProvider,
+	IndexOptions,
+	Index,
+	QueryContext,
+	QueryOperatorFn,
+	ModelQueryResolver,
+	FieldQueryResolver,
+	JSONPatch
+} from './plugin/types.js'

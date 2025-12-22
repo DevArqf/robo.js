@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Sorted Index (Phase 6)
+ * Flashcore v1 Sorted Index (Phase 6, spec rev 4.3)
  *
  * A B+Tree-based sorted index for range queries and ordered pagination.
  *

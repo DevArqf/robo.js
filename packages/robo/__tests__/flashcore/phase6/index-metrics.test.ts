@@ -32,6 +32,7 @@ describe('Index Metrics', () => {
 			await FlashcoreSystem.init({ adapter })
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string }>('TestModel', {
+				id: f.id(),
 				name: f.string()
 			})
 
@@ -48,6 +49,7 @@ describe('Index Metrics', () => {
 			await FlashcoreSystem.init({ adapter })
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string }>('TestModel', {
+				id: f.id(),
 				name: f.string()
 			})
 
@@ -63,9 +65,9 @@ describe('Index Metrics', () => {
 		it('should increment for each model when rebuilding all', async () => {
 			await FlashcoreSystem.init({ adapter })
 
-			const Model1 = FlashcoreSystem.registerModel<{ id: string; name: string }>('Model1', { name: f.string() })
-			const Model2 = FlashcoreSystem.registerModel<{ id: string; name: string }>('Model2', { name: f.string() })
-			const Model3 = FlashcoreSystem.registerModel<{ id: string; name: string }>('Model3', { name: f.string() })
+			const Model1 = FlashcoreSystem.registerModel<{ id: string; name: string }>('Model1', { id: f.id(), name: f.string() })
+			const Model2 = FlashcoreSystem.registerModel<{ id: string; name: string }>('Model2', { id: f.id(), name: f.string() })
+			const Model3 = FlashcoreSystem.registerModel<{ id: string; name: string }>('Model3', { id: f.id(), name: f.string() })
 
 			await Model1.create({ name: '1' })
 			await Model2.create({ name: '2' })
@@ -82,6 +84,7 @@ describe('Index Metrics', () => {
 			await FlashcoreSystem.init({ adapter })
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string }>('TestModel', {
+				id: f.id(),
 				name: f.string()
 			})
 
@@ -100,6 +103,7 @@ describe('Index Metrics', () => {
 			await FlashcoreSystem.init({ adapter })
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string }>('TestModel', {
+				id: f.id(),
 				name: f.string()
 			})
 
@@ -119,6 +123,7 @@ describe('Index Metrics', () => {
 			await FlashcoreSystem.init({ adapter })
 
 			const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string }>('TestModel', {
+				id: f.id(),
 				name: f.string()
 			})
 

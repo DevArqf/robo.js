@@ -38,9 +38,36 @@ import type { SortedIndex } from '../index/sorted.js'
 import { SchemaMetadataManager } from '../migration/metadata.js'
 import { SchemaHistoryManager } from '../migration/history.js'
 import { analyzeSchemaChanges, summarizeChanges } from '../migration/diff.js'
-import { FlashcoreSchemaError } from './errors.js'
+import { FlashcoreSchemaError, TransactionConflictError } from './errors.js'
 import type { SchemaChange, AutoRepairConfig } from '../migration/types.js'
 import { DEFAULT_AUTO_REPAIR_CONFIG } from './constants.js'
+
+// Phase 8: Transaction imports
+import type {
+	TransactionOptions,
+	TransactionResult,
+	ITransactionContext,
+	ResolvedTransactionMode
+} from '../transaction/types.js'
+import {
+	TransactionContext,
+	getSerialQueue,
+	clearSerialQueue
+} from '../transaction/context.js'
+import {
+	validateMode,
+	buildTransactionOptions,
+	delay,
+	calculateRetryDelay
+} from '../transaction/modes.js'
+
+// Phase 10: Plugin imports
+import {
+	PluginManager,
+	setPluginManager
+} from '../plugin/manager.js'
+import { createClientExtensions } from '../plugin/context.js'
+import type { PluginContext } from '../plugin/types.js'
 
 /**
  * Introspection data returned by Flashcore.$.introspect().
@@ -169,6 +196,9 @@ class FlashcoreSystemState {
 	schemaHistoryManager: SchemaHistoryManager | null = null
 	schemasValidated = false
 
+	// Plugin manager (Phase 10)
+	pluginManager: PluginManager | null = null
+
 	// Query time tracking for avgQueryTime
 	private queryTimes: number[] = []
 	private readonly maxQueryTimeSamples = 100
@@ -225,7 +255,7 @@ const state = new FlashcoreSystemState()
  *
  * Provides initialization, configuration, capabilities, and introspection.
  */
-export const FlashcoreSystem = {
+const FlashcoreSystemBase = {
 	/**
 	 * Initialize Flashcore with the provided options.
 	 *
@@ -370,12 +400,33 @@ export const FlashcoreSystem = {
 		state.schemasValidated = false
 		state.logger.debug('Schema managers initialized')
 
+		// Initialize plugin manager (Phase 10)
+		state.pluginManager = new PluginManager()
+		setPluginManager(state.pluginManager)
+
+		// Register plugins
+		for (const plugin of config.plugins) {
+			state.pluginManager.register(plugin)
+		}
+		state.logger.debug(`Registered ${config.plugins.length} plugin(s)`)
+
 		// Store state
 		state.adapter = adapter
 		state.capabilities = capabilities
 		state.config = config
 		state.plugins = config.plugins
 		state.initialized = true
+
+		// Initialize plugin manager with model access (after state is set)
+		state.pluginManager.init({
+			getModel: <T extends { id: string }>(name: string) => state.models.get(name) as unknown as FlashcoreModel<T> | undefined,
+			registerModel: <T extends { id: string }>(name: string, schema: SchemaFields) => FlashcoreSystem.registerModel<T>(name, schema),
+			models: state.models
+		})
+
+		// Run plugin setup
+		await state.pluginManager.setup()
+		state.logger.debug('Plugin setup complete')
 
 		// Warn about missing capabilities
 		warnMissingCapabilities(capabilities, state.logger)
@@ -464,7 +515,7 @@ export const FlashcoreSystem = {
 			)
 		}
 
-		// Create model instance
+		// Create model instance with relation lookup callbacks (Phase 9)
 		const model = new FlashcoreModel<T>(
 			name,
 			schema,
@@ -472,12 +523,18 @@ export const FlashcoreSystem = {
 			{
 				namespace: options?.namespace,
 				methods: options?.methods,
-				hooks: options?.hooks
+				hooks: options?.hooks,
+				// Phase 9: Provide getModel and getSchema for relations
+				getModel: (modelName: string) => state.models.get(modelName),
+				getSchema: (modelName: string) => state.models.get(modelName)?.schema
 			}
 		)
 
 		// Register in state (use unknown as intermediate type for generic variance)
 		state.models.set(modelKey, model as unknown as FlashcoreModel<{ id: string }>)
+
+		// Apply any pending plugin marks (Phase 10)
+		state.pluginManager.applyPendingMarks(model as unknown as FlashcoreModel<{ id: string }>)
 
 		state.logger.debug(`Registered model: ${modelKey}`)
 
@@ -621,6 +678,14 @@ export const FlashcoreSystem = {
 	 * @internal
 	 */
 	async _reset(): Promise<void> {
+		// Shutdown plugin manager (Phase 10)
+		if (state.pluginManager) {
+			await state.pluginManager.shutdown()
+			state.pluginManager.clear()
+			state.pluginManager = null
+		}
+		setPluginManager(null)
+
 		// Shutdown index persistence manager
 		if (state.indexPersistence) {
 			await state.indexPersistence.shutdown()
@@ -654,6 +719,9 @@ export const FlashcoreSystem = {
 		// Clear lock managers
 		catalogLockManager._clear()
 		chunkLockManager._clear()
+
+		// Clear serial transaction queue (Phase 8)
+		clearSerialQueue()
 	},
 
 	// ========================================================================
@@ -1264,6 +1332,154 @@ export const FlashcoreSystem = {
 		return new MigrationRunner(state.adapter)
 	},
 
+	// ========================================================================
+	// Phase 8: Transaction API
+	// ========================================================================
+
+	/**
+	 * Execute a function within a transaction.
+	 *
+	 * @param fn - The function to execute within the transaction
+	 * @param options - Optional transaction options
+	 * @returns The result of the transaction function
+	 *
+	 * @example
+	 * ```typescript
+	 * const result = await Flashcore.$.transaction(async (ctx) => {
+	 *   const user = await ctx.read('user:123')
+	 *   ctx.set('user:123', { ...user, name: 'Updated' })
+	 *   return user
+	 * })
+	 * ```
+	 */
+	async transaction<T>(
+		fn: (ctx: ITransactionContext) => Promise<T>,
+		options?: TransactionOptions
+	): Promise<TransactionResult<T>> {
+		if (!state.initialized || !state.adapter) {
+			throw new FlashcoreError(
+				'Flashcore not initialized. Call Flashcore.$.init() first.',
+				'NOT_INITIALIZED'
+			)
+		}
+
+		const startTime = Date.now()
+		const effectiveOptions = buildTransactionOptions(options)
+		const resolvedMode = validateMode(effectiveOptions.mode, state.adapter)
+
+		state.logger.debug(`Starting transaction with mode: ${resolvedMode}`)
+
+		// Handle serial mode with queue
+		if (resolvedMode === 'serial') {
+			const serialResult = await getSerialQueue().enqueue(async () => {
+				return this._executeTransaction(fn, resolvedMode, effectiveOptions, startTime)
+			})
+			return serialResult as TransactionResult<T>
+		}
+
+		// Handle optimistic mode with retries
+		if (resolvedMode === 'optimistic') {
+			return this._executeOptimisticTransaction(fn, resolvedMode, effectiveOptions, startTime)
+		}
+
+		// Other modes: native, batch, single
+		return this._executeTransaction(fn, resolvedMode, effectiveOptions, startTime)
+	},
+
+	/**
+	 * Execute a transaction (internal).
+	 * @internal
+	 */
+	async _executeTransaction<T>(
+		fn: (ctx: ITransactionContext) => Promise<T>,
+		mode: ResolvedTransactionMode,
+		options: Required<TransactionOptions>,
+		startTime: number
+	): Promise<TransactionResult<T>> {
+		const ctx = new TransactionContext(state.adapter!, mode, options)
+
+		try {
+			// Execute user function
+			const result = await fn(ctx)
+
+			// Commit staged operations
+			await ctx.commit()
+
+			return {
+				result,
+				retries: 0,
+				durationMs: Date.now() - startTime
+			}
+		} catch (error) {
+			// Rollback on error
+			ctx.rollback()
+			throw error
+		}
+	},
+
+	/**
+	 * Execute an optimistic transaction with retries.
+	 * @internal
+	 */
+	async _executeOptimisticTransaction<T>(
+		fn: (ctx: ITransactionContext) => Promise<T>,
+		mode: ResolvedTransactionMode,
+		options: Required<TransactionOptions>,
+		startTime: number
+	): Promise<TransactionResult<T>> {
+		let retries = 0
+		let lastError: Error | null = null
+
+		while (retries <= options.maxRetries) {
+			const ctx = new TransactionContext(state.adapter!, mode, options)
+
+			try {
+				// Execute user function
+				const result = await fn(ctx)
+
+				// Commit staged operations (validates versions)
+				await ctx.commit()
+
+				return {
+					result,
+					retries,
+					durationMs: Date.now() - startTime
+				}
+			} catch (error) {
+				ctx.rollback()
+
+				// Check if it's a conflict error (retriable)
+				if (error instanceof TransactionConflictError) {
+					lastError = error
+					retries++
+					state.metrics.transactionRetries++
+
+					if (retries <= options.maxRetries) {
+						// Wait before retry with exponential backoff
+						const delayMs = calculateRetryDelay(options.retryDelay, retries - 1)
+						state.logger.debug(`Transaction conflict, retrying in ${delayMs}ms (attempt ${retries}/${options.maxRetries})`)
+						await delay(delayMs)
+						continue
+					}
+				}
+
+				// Non-conflict error or retries exhausted
+				throw error
+			}
+		}
+
+		// Should not reach here, but just in case
+		throw lastError ?? new Error('Transaction failed after retries')
+	},
+
+	/**
+	 * Clear the serial transaction queue.
+	 * @internal
+	 */
+	_clearSerialQueue(): void {
+		clearSerialQueue()
+	},
+
 	/**
 	 * Apply safe schema changes to a model.
 	 * @internal
@@ -1304,5 +1520,90 @@ export const FlashcoreSystem = {
 					break
 			}
 		}
+	},
+
+	// ========================================================================
+	// Phase 10: Plugin System API
+	// ========================================================================
+
+	/**
+	 * Register a plugin at runtime.
+	 *
+	 * This enables runtime plugin composition after initialization.
+	 * The plugin's setup() hook will be called immediately.
+	 *
+	 * @param plugin - The plugin to register
+	 * @returns Promise that resolves when the plugin is registered
+	 */
+	async extend(plugin: FlashcorePlugin): Promise<void> {
+		if (!state.pluginManager) {
+			throw new FlashcoreError('NOT_INITIALIZED', 'Cannot extend: Flashcore not initialized')
+		}
+
+		// Register the plugin
+		state.pluginManager.register(plugin)
+
+		// Run setup for this plugin (uses current model registry)
+		await state.pluginManager.setupPlugin(plugin)
+	},
+
+	/**
+	 * Get plugin context by name.
+	 *
+	 * @param pluginName - Name of the plugin
+	 * @returns Plugin context or undefined if not found
+	 */
+	getPluginContext(pluginName: string): PluginContext | undefined {
+		if (!state.pluginManager) return undefined
+		return state.pluginManager.getPluginContext(pluginName)
+	},
+
+	/**
+	 * Get client extensions for all plugins.
+	 *
+	 * Returns an object where each key is a plugin name and the value
+	 * is that plugin's client extensions.
+	 *
+	 * @returns Client extensions by plugin name
+	 */
+	getClientExtensions(): Record<string, Record<string, unknown>> {
+		return createClientExtensions()
+	},
+
+	/**
+	 * Get the plugin manager.
+	 * @internal
+	 */
+	get _pluginManager(): PluginManager | null {
+		return state.pluginManager
 	}
 }
+
+/**
+ * Flashcore.$ system API with Proxy wrapper.
+ *
+ * The Proxy enables direct plugin client extension access:
+ * - `Flashcore.$.realtime.getSubscriptionCount()` instead of
+ * - `Flashcore.$.getClientExtensions()['realtime'].getSubscriptionCount()`
+ */
+export const FlashcoreSystem = new Proxy(FlashcoreSystemBase, {
+	get(target, prop, receiver) {
+		// Check if property exists on FlashcoreSystemBase
+		if (prop in target) {
+			return Reflect.get(target, prop, receiver)
+		}
+
+		// Try to resolve as a plugin name for client extensions
+		if (typeof prop === 'string' && prop !== 'then' && prop !== 'toJSON') {
+			const manager = state.pluginManager
+			if (manager) {
+				const extensions = manager.getClientExtensions(prop)
+				if (extensions) {
+					return extensions
+				}
+			}
+		}
+
+		return undefined
+	}
+})

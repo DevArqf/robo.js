@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 5 Tests - Chunk Cache LRU
+ * Flashcore v1 (spec rev 4.3) Phase 5 Tests - Chunk Cache LRU
  *
  * Tests LRU cache behavior, hit/miss, and eviction order.
  */

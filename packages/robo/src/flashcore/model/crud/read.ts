@@ -4,12 +4,14 @@
  * Implements the findUnique() CRUD operation.
  */
 
-import type { NormalizedSchema, FindUniqueArgs } from '../../schema/types.js'
+import type { NormalizedSchema, FindUniqueArgs, IncludeClause } from '../../schema/types.js'
 import type { Catalog } from '../catalog.js'
 import type { ChunkManager } from '../chunk.js'
 import type { UniqueIndexManager } from '../../index/unique.js'
+import type { IncludeContext } from '../../relation/types.js'
 import { TypeSerializer } from '../../schema/serialize.js'
 import { ValidationError } from '../../core/errors.js'
+import { resolveInclude, hasIncludes } from '../../relation/include.js'
 
 /**
  * Context for read operation.
@@ -22,6 +24,9 @@ export interface ReadContext<T> {
 	serializer: TypeSerializer
 	uniqueIndexManager?: UniqueIndexManager
 	namespace?: string
+
+	// Optional include context (Phase 9)
+	includeContext?: IncludeContext
 }
 
 /**
@@ -87,9 +92,20 @@ export async function executeFindUnique<T extends { id: string }>(
 	}
 
 	// Deserialize for return
-	const deserialized = ctx.serializer.deserializeRecord(
+	let deserialized = ctx.serializer.deserializeRecord(
 		record as Record<string, unknown>
 	) as T
+
+	// Resolve includes (Phase 9)
+	if (args.include && hasIncludes(args.include as IncludeClause) && ctx.includeContext) {
+		deserialized = await resolveInclude(
+			deserialized,
+			args.include as IncludeClause,
+			ctx.schema,
+			ctx.modelName,
+			ctx.includeContext
+		) as T
+	}
 
 	// Apply select if specified
 	if (args.select) {

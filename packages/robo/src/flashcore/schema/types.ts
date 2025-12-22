@@ -328,3 +328,46 @@ export interface FindFirstArgs<T> extends FindManyArgs<T> {}
 export interface CountArgs<T> {
 	where?: WhereClause<T>
 }
+
+// ============================================================================
+// Bulk Operation Types (Phase 8)
+// ============================================================================
+
+/**
+ * CreateMany arguments.
+ */
+export interface CreateManyArgs<T> {
+	data: CreateInput<T>[]
+	skipDuplicates?: boolean
+}
+
+/**
+ * UpdateMany arguments.
+ */
+export interface UpdateManyArgs<T> {
+	where: WhereClause<T>
+	data: UpdateInput<T>
+}
+
+/**
+ * DeleteMany arguments.
+ */
+export interface DeleteManyArgs<T> {
+	where: WhereClause<T>
+}
+
+/**
+ * Upsert arguments.
+ */
+export interface UpsertArgs<T> {
+	where: UniqueWhere<T>
+	create: CreateInput<T>
+	update: UpdateInput<T>
+}
+
+/**
+ * Batch operation result for createMany/updateMany/deleteMany.
+ */
+export interface BatchResult {
+	count: number
+}

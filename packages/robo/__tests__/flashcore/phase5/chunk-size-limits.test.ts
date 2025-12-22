@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 5 Tests - Chunk Size Limits
+ * Flashcore v1 (spec rev 4.3) Phase 5 Tests - Chunk Size Limits
  *
  * Tests chunk size awareness and adapter maxValueSize respect.
  */

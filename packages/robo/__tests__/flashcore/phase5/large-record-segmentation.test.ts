@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Phase 5 Tests - Large Record Segmentation
+ * Flashcore v1 (spec rev 4.3) Phase 5 Tests - Large Record Segmentation
  *
  * Tests for records that exceed maxChunkSize and require segmentation.
  */

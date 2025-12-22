@@ -4,17 +4,19 @@
  * Implements findMany(), findFirst(), and count() with filtering.
  */
 
-import type { NormalizedSchema, FindManyArgs, FindFirstArgs, WhereClause, CountArgs } from '../../schema/types.js'
+import type { NormalizedSchema, FindManyArgs, FindFirstArgs, WhereClause, CountArgs, IncludeClause } from '../../schema/types.js'
 import type { Catalog } from '../catalog.js'
 import type { ChunkManager } from '../chunk.js'
 import type { CuckooFilter } from '../../index/filter.js'
 import type { SortedIndex } from '../../index/sorted.js'
+import type { IncludeContext } from '../../relation/types.js'
 import { TypeSerializer } from '../../schema/serialize.js'
 import { evaluateWhere } from '../../query/evaluate.js'
 import { sortRecords } from '../../query/order.js'
 import { DEFAULT_SAFETY_CONFIG } from '../../core/constants.js'
 import { logger } from '../../core/logger.js'
 import { QueryPlanner, executeIndexPlan, filterMightContain, type AvailableIndexes, type QueryArgs } from '../../query/planner.js'
+import { resolveIncludesBatched, hasIncludes } from '../../relation/include.js'
 
 /**
  * Context for findMany operations.
@@ -32,6 +34,9 @@ export interface FindManyContext<T> {
 	// Index state (Phase 6)
 	filter?: CuckooFilter
 	sortedIndexes?: Map<string, SortedIndex>
+
+	// Optional include context (Phase 9)
+	includeContext?: IncludeContext
 }
 
 /**
@@ -123,7 +128,18 @@ export async function executeFindMany<T extends { id: string }>(
 					)
 				}
 
-				const paginated = records.slice(skip, skip + take)
+				let paginated = records.slice(skip, skip + take)
+
+				// Resolve includes with batching (Phase 9)
+				if (args.include && hasIncludes(args.include as IncludeClause) && ctx.includeContext) {
+					paginated = await resolveIncludesBatched(
+						paginated,
+						args.include as IncludeClause,
+						ctx.schema,
+						ctx.modelName,
+						ctx.includeContext
+					) as T[]
+				}
 
 				// Apply select projection
 				if (args.select) {
@@ -171,7 +187,18 @@ export async function executeFindMany<T extends { id: string }>(
 		take = Math.max(0, take)
 	}
 
-	const paginated = sorted.slice(skip, skip + take)
+	let paginated = sorted.slice(skip, skip + take)
+
+	// Resolve includes with batching (Phase 9)
+	if (args?.include && hasIncludes(args.include as IncludeClause) && ctx.includeContext) {
+		paginated = await resolveIncludesBatched(
+			paginated,
+			args.include as IncludeClause,
+			ctx.schema,
+			ctx.modelName,
+			ctx.includeContext
+		) as T[]
+	}
 
 	// Apply select projection
 	if (args?.select) {

@@ -17,7 +17,12 @@ import type {
 	FindManyArgs,
 	FindFirstArgs,
 	CountArgs,
-	CatalogData
+	CatalogData,
+	CreateManyArgs,
+	UpdateManyArgs,
+	DeleteManyArgs,
+	UpsertArgs,
+	BatchResult
 } from '../schema/types.js'
 import { normalizeSchema } from '../schema/normalize.js'
 import { RecordValidator } from '../schema/validate.js'
@@ -46,6 +51,31 @@ import { getIndexPersistenceManager } from '../index/persistence.js'
 import { getWALManager } from '../wal/manager.js'
 import { FILTER_KEY_SUFFIX, INDEX_KEY_PREFIX } from '../core/constants.js'
 
+// Phase 8: Bulk and upsert operations
+import {
+	executeCreateMany,
+	executeUpdateMany,
+	executeDeleteMany,
+	type BulkContext,
+	type CreateManyResult
+} from './crud/bulk.js'
+import { executeUpsert, type UpsertContext } from './crud/upsert.js'
+
+// Phase 9: Relations
+import { validateForeignKeys } from '../relation/validation.js'
+import {
+	checkRestrictConstraints,
+	collectCascadeOperations,
+	executeCascadeOperations,
+	hasCascadeRelations,
+	type CascadeContext
+} from '../relation/cascade.js'
+
+// Phase 10: Plugin system
+import { getPluginContext } from '../plugin/context.js'
+import { executeWithMiddleware } from '../plugin/middleware.js'
+import type { PluginContext } from '../plugin/types.js'
+
 /**
  * Model options for registration.
  */
@@ -53,6 +83,18 @@ export interface FlashcoreModelOptions {
 	namespace?: string
 	methods?: Record<string, (...args: unknown[]) => unknown>
 	hooks?: ModelHooks
+
+	/**
+	 * Function to get a model by name (for relations).
+	 * Set by FlashcoreSystem when registering the model.
+	 */
+	getModel?: (name: string) => FlashcoreModel | undefined
+
+	/**
+	 * Function to get a model's schema by name (for cascades).
+	 * Set by FlashcoreSystem when registering the model.
+	 */
+	getSchema?: (name: string) => NormalizedSchema | undefined
 }
 
 /**
@@ -85,6 +127,10 @@ export class FlashcoreModel<T extends { id: string } = { id: string }> {
 	private _sortedIndexes: Map<string, SortedIndex> = new Map()
 	private _indexesLoaded = false
 	private _needsRebuild = false
+
+	// Relation state (Phase 9)
+	private _getModel?: (name: string) => FlashcoreModel | undefined
+	private _getSchema?: (name: string) => NormalizedSchema | undefined
 
 	/**
 	 * Key used for locking and storage.
@@ -136,6 +182,10 @@ export class FlashcoreModel<T extends { id: string } = { id: string }> {
 				this.customMethods[methodName] = method.bind(this)
 			}
 		}
+
+		// Store relation lookup functions (Phase 9)
+		this._getModel = options?.getModel
+		this._getSchema = options?.getSchema
 
 		// Create proxy to expose custom methods
 		return new Proxy(this, {
@@ -218,10 +268,27 @@ export class FlashcoreModel<T extends { id: string } = { id: string }> {
 			uniqueIndexManager: this.uniqueIndexManager,
 			namespace: this.namespace,
 			wal: getWALManager() ?? undefined,
-			indexCallbacks
+			indexCallbacks,
+			// Phase 9: Relation callbacks
+			relationCallbacks: this._getModel ? {
+				validateForeignKeys: async (inputData) => {
+					await validateForeignKeys(
+						this.name,
+						this.schema,
+						inputData,
+						this._getModel!
+					)
+				}
+			} : undefined
 		}
 
-		return executeCreate(ctx, data)
+		// Phase 10: Execute through middleware pipeline
+		return executeWithMiddleware(
+			'create',
+			this as unknown as FlashcoreModel<{ id: string }>,
+			{ data },
+			() => executeCreate(ctx, data)
+		) as Promise<T>
 	}
 
 	/**
@@ -240,10 +307,21 @@ export class FlashcoreModel<T extends { id: string } = { id: string }> {
 			chunkManager: this.chunkManager,
 			serializer: this.serializer,
 			uniqueIndexManager: this.uniqueIndexManager,
-			namespace: this.namespace
+			namespace: this.namespace,
+			// Phase 9: Include context
+			includeContext: this._getModel ? {
+				depth: 0,
+				getModel: this._getModel
+			} : undefined
 		}
 
-		return executeFindUnique(ctx, args)
+		// Phase 10: Execute through middleware pipeline
+		return executeWithMiddleware(
+			'findUnique',
+			this as unknown as FlashcoreModel<{ id: string }>,
+			args,
+			() => executeFindUnique(ctx, args)
+		) as Promise<T | null>
 	}
 
 	/**
@@ -272,10 +350,27 @@ export class FlashcoreModel<T extends { id: string } = { id: string }> {
 			namespace: this.namespace,
 			persistCatalog: () => this.persistCatalog(),
 			wal: getWALManager() ?? undefined,
-			indexCallbacks
+			indexCallbacks,
+			// Phase 9: Relation callbacks for FK validation on update
+			relationCallbacks: this._getModel ? {
+				validateForeignKeys: async (inputData) => {
+					await validateForeignKeys(
+						this.name,
+						this.schema,
+						inputData,
+						this._getModel!
+					)
+				}
+			} : undefined
 		}
 
-		return executeUpdate(ctx, args)
+		// Phase 10: Execute through middleware pipeline
+		return executeWithMiddleware(
+			'update',
+			this as unknown as FlashcoreModel<{ id: string }>,
+			args,
+			() => executeUpdate(ctx, args)
+		) as Promise<T | null>
 	}
 
 	/**
@@ -304,10 +399,42 @@ export class FlashcoreModel<T extends { id: string } = { id: string }> {
 			uniqueIndexManager: this.uniqueIndexManager,
 			namespace: this.namespace,
 			wal: getWALManager() ?? undefined,
-			indexCallbacks
+			indexCallbacks,
+			// Phase 9: Cascade callbacks
+			cascadeCallbacks: this._getModel && this._getSchema && hasCascadeRelations(this.schema) ? {
+				checkRestrict: async (record) => {
+					const cascadeCtx: CascadeContext = {
+						getModel: this._getModel!,
+						getSchema: this._getSchema!
+					}
+					await checkRestrictConstraints(this.name, this.schema, record, cascadeCtx)
+				},
+				executeCascades: async (record) => {
+					const cascadeCtx: CascadeContext = {
+						getModel: this._getModel!,
+						getSchema: this._getSchema!
+					}
+					const ops = await collectCascadeOperations(
+						this.name,
+						this.schema,
+						record,
+						cascadeCtx,
+						0
+					)
+					if (ops.length > 0) {
+						await executeCascadeOperations(ops, record.id, cascadeCtx)
+					}
+				}
+			} : undefined
 		}
 
-		return executeDelete(ctx, args)
+		// Phase 10: Execute through middleware pipeline
+		return executeWithMiddleware(
+			'delete',
+			this as unknown as FlashcoreModel<{ id: string }>,
+			args,
+			() => executeDelete(ctx, args)
+		) as Promise<T | null>
 	}
 
 	/**
@@ -327,10 +454,21 @@ export class FlashcoreModel<T extends { id: string } = { id: string }> {
 			chunkManager: this.chunkManager,
 			serializer: this.serializer,
 			filter: this._filter ?? undefined,
-			sortedIndexes: this._sortedIndexes
+			sortedIndexes: this._sortedIndexes,
+			// Phase 9: Include context
+			includeContext: this._getModel ? {
+				depth: 0,
+				getModel: this._getModel
+			} : undefined
 		}
 
-		return executeFindMany(ctx, args)
+		// Phase 10: Execute through middleware pipeline
+		return executeWithMiddleware(
+			'findMany',
+			this as unknown as FlashcoreModel<{ id: string }>,
+			args ?? {},
+			() => executeFindMany(ctx, args)
+		) as Promise<T[]>
 	}
 
 	/**
@@ -350,10 +488,21 @@ export class FlashcoreModel<T extends { id: string } = { id: string }> {
 			chunkManager: this.chunkManager,
 			serializer: this.serializer,
 			filter: this._filter ?? undefined,
-			sortedIndexes: this._sortedIndexes
+			sortedIndexes: this._sortedIndexes,
+			// Phase 9: Include context
+			includeContext: this._getModel ? {
+				depth: 0,
+				getModel: this._getModel
+			} : undefined
 		}
 
-		return executeFindFirst(ctx, args)
+		// Phase 10: Execute through middleware pipeline (uses findMany middleware)
+		return executeWithMiddleware(
+			'findMany',
+			this as unknown as FlashcoreModel<{ id: string }>,
+			{ ...args, take: 1 },
+			() => executeFindFirst(ctx, args) as unknown as Promise<{ id: string }[]>
+		) as unknown as Promise<T | null>
 	}
 
 	/**
@@ -373,7 +522,12 @@ export class FlashcoreModel<T extends { id: string } = { id: string }> {
 			chunkManager: this.chunkManager,
 			serializer: this.serializer,
 			filter: this._filter ?? undefined,
-			sortedIndexes: this._sortedIndexes
+			sortedIndexes: this._sortedIndexes,
+			// Phase 9: Include context
+			includeContext: this._getModel ? {
+				depth: 0,
+				getModel: this._getModel
+			} : undefined
 		}
 
 		yield* executeFindManyStream(ctx, args)
@@ -445,21 +599,213 @@ export class FlashcoreModel<T extends { id: string } = { id: string }> {
 	async count(args?: CountArgs<T>): Promise<number> {
 		await this.ensureCatalogLoaded()
 
-		// No filter - use catalog count directly (O(1))
-		if (!args?.where) {
-			return this.catalog.getCount()
+		// Build execution function
+		const execute = async (): Promise<number> => {
+			// No filter - use catalog count directly (O(1))
+			if (!args?.where) {
+				return this.catalog.getCount()
+			}
+
+			// With filter - delegate to executeCount
+			const ctx: FindManyContext<T> = {
+				modelName: this.name,
+				schema: this.schema,
+				catalog: this.catalog,
+				chunkManager: this.chunkManager,
+				serializer: this.serializer
+			}
+
+			return executeCount(ctx, args)
 		}
 
-		// With filter - delegate to executeCount
-		const ctx: FindManyContext<T> = {
+		// Phase 10: Execute through middleware pipeline
+		return executeWithMiddleware(
+			'count',
+			this as unknown as FlashcoreModel<{ id: string }>,
+			args ?? {},
+			execute
+		)
+	}
+
+	// ========================================================================
+	// Plugin Context (Phase 10)
+	// ========================================================================
+
+	/**
+	 * Get plugin context by name.
+	 *
+	 * Used by plugins to access their state and methods from model operations.
+	 *
+	 * @param pluginName - Name of the plugin
+	 * @returns Plugin context
+	 * @throws Error if plugin not found
+	 */
+	pluginContext(pluginName: string): PluginContext {
+		return getPluginContext(pluginName)
+	}
+
+	// ========================================================================
+	// Bulk Operations (Phase 8)
+	// ========================================================================
+
+	/**
+	 * Create multiple records atomically.
+	 * Requires adapter with ACID support (transaction or atomicBatch).
+	 *
+	 * @param args - Create many arguments with data array
+	 * @returns Created records array
+	 */
+	async createMany(args: CreateManyArgs<T>): Promise<CreateManyResult<T>> {
+		await this.ensureCatalogLoaded()
+
+		// Build index callbacks for derived writes
+		const indexCallbacks = await this._buildCreateIndexCallbacks()
+
+		const ctx: BulkContext<T> = {
 			modelName: this.name,
+			modelKey: this.modelKey,
 			schema: this.schema,
 			catalog: this.catalog,
 			chunkManager: this.chunkManager,
-			serializer: this.serializer
+			catalogLock: catalogLockManager,
+			chunkLock: chunkLockManager,
+			validator: this.validator,
+			serializer: this.serializer,
+			persistCatalog: () => this.persistCatalog(),
+			uniqueIndexManager: this.uniqueIndexManager,
+			namespace: this.namespace,
+			adapter: this.adapter,
+			indexCallbacks
 		}
 
-		return executeCount(ctx, args)
+		// Phase 10: Execute through middleware pipeline
+		return executeWithMiddleware(
+			'createMany',
+			this as unknown as FlashcoreModel<{ id: string }>,
+			args,
+			() => executeCreateMany(ctx, args.data, args.skipDuplicates)
+		) as Promise<CreateManyResult<T>>
+	}
+
+	/**
+	 * Update multiple records atomically.
+	 * Requires adapter with ACID support (transaction or atomicBatch).
+	 *
+	 * @param args - Update many arguments with where clause and data
+	 * @returns Batch result with count of updated records
+	 */
+	async updateMany(args: UpdateManyArgs<T>): Promise<BatchResult> {
+		await this.ensureCatalogLoaded()
+		await this._ensureIndexesLoaded()
+
+		// Build index callbacks for derived writes
+		const indexCallbacks = await this._buildUpdateIndexCallbacks()
+
+		const ctx: BulkContext<T> = {
+			modelName: this.name,
+			modelKey: this.modelKey,
+			schema: this.schema,
+			catalog: this.catalog,
+			chunkManager: this.chunkManager,
+			catalogLock: catalogLockManager,
+			chunkLock: chunkLockManager,
+			validator: this.validator,
+			serializer: this.serializer,
+			persistCatalog: () => this.persistCatalog(),
+			uniqueIndexManager: this.uniqueIndexManager,
+			namespace: this.namespace,
+			adapter: this.adapter,
+			indexCallbacks
+		}
+
+		// Phase 10: Execute through middleware pipeline
+		return executeWithMiddleware(
+			'updateMany',
+			this as unknown as FlashcoreModel<{ id: string }>,
+			args,
+			() => executeUpdateMany(ctx, args.where ?? {}, args.data)
+		) as Promise<BatchResult>
+	}
+
+	/**
+	 * Delete multiple records atomically.
+	 * Requires adapter with ACID support (transaction or atomicBatch).
+	 *
+	 * @param args - Delete many arguments with where clause
+	 * @returns Batch result with count of deleted records
+	 */
+	async deleteMany(args: DeleteManyArgs<T>): Promise<BatchResult> {
+		await this.ensureCatalogLoaded()
+		await this._ensureIndexesLoaded()
+
+		// Build index callbacks for derived writes
+		const indexCallbacks = await this._buildDeleteIndexCallbacks()
+
+		const ctx: BulkContext<T> = {
+			modelName: this.name,
+			modelKey: this.modelKey,
+			schema: this.schema,
+			catalog: this.catalog,
+			chunkManager: this.chunkManager,
+			catalogLock: catalogLockManager,
+			chunkLock: chunkLockManager,
+			validator: this.validator,
+			serializer: this.serializer,
+			persistCatalog: () => this.persistCatalog(),
+			uniqueIndexManager: this.uniqueIndexManager,
+			namespace: this.namespace,
+			adapter: this.adapter,
+			indexCallbacks
+		}
+
+		// Phase 10: Execute through middleware pipeline
+		return executeWithMiddleware(
+			'deleteMany',
+			this as unknown as FlashcoreModel<{ id: string }>,
+			args,
+			() => executeDeleteMany(ctx, args.where ?? {})
+		) as Promise<BatchResult>
+	}
+
+	/**
+	 * Create or update a record based on unique identifier.
+	 *
+	 * @param args - Upsert arguments with where, create, and update data
+	 * @returns Created or updated record
+	 */
+	async upsert(args: UpsertArgs<T>): Promise<T> {
+		await this.ensureCatalogLoaded()
+
+		// Build index callbacks (used for both create and update paths)
+		const indexCallbacks = await this._buildCreateIndexCallbacks()
+
+		const ctx: UpsertContext<T> = {
+			modelName: this.name,
+			modelKey: this.modelKey,
+			schema: this.schema,
+			catalog: this.catalog,
+			chunkManager: this.chunkManager,
+			catalogLock: catalogLockManager,
+			chunkLock: chunkLockManager,
+			validator: this.validator,
+			serializer: this.serializer,
+			persistCatalog: () => this.persistCatalog(),
+			uniqueIndexManager: this.uniqueIndexManager,
+			namespace: this.namespace,
+			adapter: this.adapter,
+			indexCallbacks
+		}
+
+		// Phase 10: Execute through middleware pipeline
+		return executeWithMiddleware(
+			'upsert',
+			this as unknown as FlashcoreModel<{ id: string }>,
+			args,
+			async () => {
+				const result = await executeUpsert(ctx, args)
+				return result.record
+			}
+		) as Promise<T>
 	}
 
 	// ========================================================================

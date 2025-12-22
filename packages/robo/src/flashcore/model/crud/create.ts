@@ -35,6 +35,17 @@ export interface IndexUpdateCallbacks {
 }
 
 /**
+ * Relation callbacks for Phase 9.
+ */
+export interface RelationCallbacks {
+	/**
+	 * Validate foreign keys in the input data.
+	 * Throws ValidationError if a FK references a non-existent record.
+	 */
+	validateForeignKeys?: (data: Record<string, unknown>) => Promise<void>
+}
+
+/**
  * Context for create operation.
  */
 export interface CreateContext<T> {
@@ -62,6 +73,9 @@ export interface CreateContext<T> {
 
 	// Optional index update callbacks (Phase 6)
 	indexCallbacks?: IndexUpdateCallbacks
+
+	// Optional relation callbacks (Phase 9)
+	relationCallbacks?: RelationCallbacks
 }
 
 /**
@@ -116,9 +130,20 @@ export async function executeCreate<T extends { id: string }>(
 	// Apply defaults before validation
 	const withDefaults = applyDefaults(inputData, ctx.schema)
 
+	// Initialize version field to 0 if schema has one
+	const versionField = findVersionField(ctx.schema)
+	if (versionField && !(versionField in withDefaults)) {
+		withDefaults[versionField] = 0
+	}
+
 	// Validate input
 	const validationResult = ctx.validator.validateCreate(withDefaults)
 	throwIfInvalid(validationResult)
+
+	// Validate foreign keys (Phase 9)
+	if (ctx.relationCallbacks?.validateForeignKeys) {
+		await ctx.relationCallbacks.validateForeignKeys(withDefaults)
+	}
 
 	// Execute beforeCreate hook (may modify data)
 	const hookedData = await executeBeforeCreate(ctx.hooks, withDefaults) as Record<string, unknown>
@@ -330,4 +355,16 @@ export async function executeCreate<T extends { id: string }>(
 	await executeAfterCreate(ctx.hooks, result)
 
 	return result
+}
+
+/**
+ * Find the version field in the schema.
+ */
+function findVersionField(schema: NormalizedSchema): string | null {
+	for (const [name, field] of schema.fields) {
+		if (field.version) {
+			return name
+		}
+	}
+	return null
 }

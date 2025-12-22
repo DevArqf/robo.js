@@ -1,5 +1,5 @@
 /**
- * Flashcore v4.3 Cuckoo Filter (Phase 6)
+ * Flashcore v1 Cuckoo Filter (Phase 6, spec rev 4.3)
  *
  * A space-efficient probabilistic data structure for fast negative lookups.
  * Supports deletion via 16-bit fingerprints.

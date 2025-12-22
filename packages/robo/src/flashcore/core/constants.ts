@@ -321,3 +321,51 @@ export const DEFAULT_AUTO_REPAIR_CONFIG = {
  * Full key: _model:{ns}::{model}:_meta
  */
 export const SCHEMA_META_SUFFIX = '_meta'
+
+// ─────────────────────────────────────────────────────────────
+// Phase 8: Transaction Constants
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Name of the auto-injected version field for optimistic locking.
+ */
+export const VERSION_FIELD_NAME = '_version'
+
+/**
+ * Maximum safe version value (2^53 - 1).
+ * JavaScript's safe integer limit. When exceeded, version resets to 1.
+ */
+export const MAX_VERSION_VALUE = Number.MAX_SAFE_INTEGER
+
+/**
+ * Threshold for version overflow warning.
+ * Warn when version exceeds 90% of MAX_VERSION_VALUE.
+ */
+export const VERSION_OVERFLOW_WARN_THRESHOLD = Math.floor(MAX_VERSION_VALUE * 0.9)
+
+// ─────────────────────────────────────────────────────────────
+// Phase 9: Relation Constants
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Maximum cascade depth to prevent infinite recursion.
+ * If cascade operations exceed this depth, an error is thrown.
+ */
+export const MAX_CASCADE_DEPTH = 50
+
+/**
+ * Maximum include depth for relation loading.
+ * Prevents infinite recursion in nested includes.
+ */
+export const MAX_INCLUDE_DEPTH = 10
+
+/**
+ * Prefix for junction table model names.
+ * Junction tables are named: _junction_{modelA}_{modelB} (alphabetical order)
+ */
+export const JUNCTION_PREFIX = '_junction_'
+
+/**
+ * Default onDelete action for relations.
+ */
+export const DEFAULT_ON_DELETE = 'restrict' as const

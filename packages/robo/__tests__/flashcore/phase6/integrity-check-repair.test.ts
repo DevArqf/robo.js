@@ -12,7 +12,8 @@ import { SortedIndex } from '../../../src/flashcore/index/sorted.js'
 import { Catalog } from '../../../src/flashcore/model/catalog.js'
 import { ChunkManager } from '../../../src/flashcore/model/chunk.js'
 import { MemoryAdapter } from '../../../src/flashcore/adapter/builtins/memory.js'
-import { buildModelKey } from '../../../src/flashcore/core/keys.js'
+import { encodeUniqueValue } from '../../../src/flashcore/core/encoding.js'
+import { buildModelKey, buildUniqueKey } from '../../../src/flashcore/core/keys.js'
 
 describe('IntegrityChecker', () => {
 	let adapter: MemoryAdapter
@@ -108,7 +109,7 @@ describe('IntegrityChecker', () => {
 	describe('checkUniqueIndexes', () => {
 		it('should detect orphaned unique keys with no value', async () => {
 			// Set up unique key that exists but has no value (orphaned)
-			const key = buildModelKey('User', 'unique:email:test@example.com')
+			const key = buildUniqueKey('User', 'email', encodeUniqueValue('test@example.com'))
 			await adapter.set(key, '') // Empty string - will be detected as orphaned
 
 			const result = await checker.checkUniqueIndexes('User', ['email'])
@@ -119,8 +120,9 @@ describe('IntegrityChecker', () => {
 
 		it('should detect duplicate unique values', async () => {
 			// Set up unique keys pointing to different records with same value
-			await adapter.set(buildModelKey('User', 'unique:email:test@example.com'), 'id1')
-			await adapter.set(buildModelKey('User', 'unique:email:test@example.com'), 'id2')
+			const key = buildUniqueKey('User', 'email', encodeUniqueValue('test@example.com'))
+			await adapter.set(key, { id: 'id1' })
+			await adapter.set(key, { id: 'id2' })
 
 			// Note: This test would need a more sophisticated setup to actually have duplicates
 			// since the second set would overwrite the first
@@ -281,8 +283,8 @@ describe('RepairEngine', () => {
 	describe('repairUniqueIndex', () => {
 		it('should clean orphaned unique keys', async () => {
 			// Set up orphaned key
-			const orphanedKey = buildModelKey('User', 'unique:email:orphan@test.com')
-			await adapter.set(orphanedKey, 'nonexistent-id')
+			const orphanedKey = buildUniqueKey('User', 'email', encodeUniqueValue('orphan@test.com'))
+			await adapter.set(orphanedKey, { id: 'nonexistent-id' })
 
 			const integrityResult = {
 				isValid: false,

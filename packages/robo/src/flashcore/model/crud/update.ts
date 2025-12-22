@@ -15,7 +15,9 @@ import { RecordValidator, throwIfInvalid } from '../../schema/validate.js'
 import { TypeSerializer } from '../../schema/serialize.js'
 import { normalizeRecordShape } from '../../schema/normalize.js'
 import { executeBeforeUpdate, executeAfterUpdate } from '../hooks.js'
-import { ValidationError } from '../../core/errors.js'
+import { ValidationError, TransactionConflictError } from '../../core/errors.js'
+import { MAX_VERSION_VALUE, VERSION_OVERFLOW_WARN_THRESHOLD } from '../../core/constants.js'
+import { logger } from '../../core/logger.js'
 import {
 	buildUpdateDeltas,
 	buildUpdateSegmentedDeltas,
@@ -36,6 +38,17 @@ export interface IndexUpdateCallbacks {
 	addToSortedIndex?: (field: string, value: unknown, id: string) => void
 	/** Mark indexes as dirty for persistence */
 	markDirty?: () => void
+}
+
+/**
+ * Relation callbacks for Phase 9.
+ */
+export interface RelationCallbacks {
+	/**
+	 * Validate foreign keys in the input data.
+	 * Throws ValidationError if a FK references a non-existent record.
+	 */
+	validateForeignKeys?: (data: Record<string, unknown>) => Promise<void>
 }
 
 /**
@@ -65,6 +78,9 @@ export interface UpdateContext<T> {
 
 	// Optional index update callbacks (Phase 6)
 	indexCallbacks?: IndexUpdateCallbacks
+
+	// Optional relation callbacks (Phase 9)
+	relationCallbacks?: RelationCallbacks
 }
 
 /**
@@ -130,6 +146,11 @@ export async function executeUpdate<T extends { id: string }>(
 	const validationResult = ctx.validator.validateUpdate(updateData)
 	throwIfInvalid(validationResult)
 
+	// Validate foreign keys if any FK fields are being updated (Phase 9)
+	if (ctx.relationCallbacks?.validateForeignKeys) {
+		await ctx.relationCallbacks.validateForeignKeys(updateData)
+	}
+
 	// Track WAL entry ID for cleanup
 	let walId: string | null = null
 	const walEnabled = ctx.wal?.isEnabled() ?? false
@@ -154,6 +175,25 @@ export async function executeUpdate<T extends { id: string }>(
 		const existing = ctx.serializer.deserializeRecord(
 			existingRaw as Record<string, unknown>
 		) as T
+
+		// Check explicit version if provided (optimistic locking)
+		if (args.version !== undefined) {
+			const versionField = findVersionField(ctx.schema)
+			if (versionField) {
+				const actualVersion = (existing as Record<string, unknown>)[versionField] as number | undefined
+				if (actualVersion !== args.version) {
+					throw new TransactionConflictError(
+						`Version mismatch: expected ${args.version}, found ${actualVersion ?? 0}`,
+						{
+							model: ctx.modelName,
+							id,
+							expectedVersion: args.version,
+							actualVersion: actualVersion ?? 0
+						}
+					)
+				}
+			}
+		}
 
 		// Execute beforeUpdate hook (may modify data)
 		const hookedData = await executeBeforeUpdate(ctx.hooks, updateData, existing) as Record<string, unknown>
@@ -200,11 +240,30 @@ export async function executeUpdate<T extends { id: string }>(
 			}
 		}
 
-		// Increment version field if present
+		// Increment version field if present (with overflow protection)
 		const versionField = findVersionField(ctx.schema)
 		if (versionField && versionField in merged) {
-			const currentVersion = merged[versionField] as number
-			merged[versionField] = (currentVersion || 0) + 1
+			// Skip auto-increment if explicit _version provided in update data
+			if (!(versionField in hookedData)) {
+				const currentVersion = (merged[versionField] as number) || 0
+				let newVersion = currentVersion + 1
+
+				// Version overflow protection
+				if (newVersion >= MAX_VERSION_VALUE) {
+					logger.warn(
+						`Version overflow detected for ${ctx.modelName}:${id}. ` +
+						`Resetting from ${currentVersion} to 1. This breaks optimistic locking for in-flight transactions.`
+					)
+					newVersion = 1
+				} else if (newVersion >= VERSION_OVERFLOW_WARN_THRESHOLD) {
+					logger.warn(
+						`Version approaching overflow for ${ctx.modelName}:${id}. ` +
+						`Current: ${newVersion}, Max: ${MAX_VERSION_VALUE}`
+					)
+				}
+
+				merged[versionField] = newVersion
+			}
 		}
 
 		// Normalize record shape

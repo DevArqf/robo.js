@@ -24,6 +24,7 @@ describe('FlashcoreSystem.rebuildIndexesBackground()', () => {
 		await FlashcoreSystem.init({ adapter })
 
 		const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string; score: number }>('TestModel', {
+			id: f.id(),
 			name: f.string(),
 			score: f.number().indexed()
 		})
@@ -63,6 +64,7 @@ describe('FlashcoreSystem.rebuildIndexesBackground()', () => {
 		await FlashcoreSystem.init({ adapter })
 
 		const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string }>('TestModel', {
+			id: f.id(),
 			name: f.string()
 		})
 
@@ -79,6 +81,7 @@ describe('FlashcoreSystem.rebuildIndexesBackground()', () => {
 		await FlashcoreSystem.init({ adapter })
 
 		const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string; priority: number; createdAt: number }>('TestModel', {
+			id: f.id(),
 			name: f.string(),
 			priority: f.number().indexed(),
 			createdAt: f.number().indexed()
@@ -108,6 +111,7 @@ describe('FlashcoreSystem.rebuildIndexesBackground()', () => {
 
 		const schema = FlashcoreSystem.schema('plugin')
 		const PluginModel = schema.model<{ id: string; data: string }>('PluginModel', {
+			id: f.id(),
 			data: f.string()
 		})
 
@@ -133,6 +137,7 @@ describe('FlashcoreSystem.rebuildIndexes()', () => {
 		await FlashcoreSystem.init({ adapter })
 
 		const TestModel = FlashcoreSystem.registerModel<{ id: string; name: string }>('TestModel', {
+			id: f.id(),
 			name: f.string()
 		})
 
@@ -143,8 +148,8 @@ describe('FlashcoreSystem.rebuildIndexes()', () => {
 	it('should rebuild indexes for all models when no name provided', async () => {
 		await FlashcoreSystem.init({ adapter })
 
-		const Model1 = FlashcoreSystem.registerModel<{ id: string; name: string }>('Model1', { name: f.string() })
-		const Model2 = FlashcoreSystem.registerModel<{ id: string; name: string }>('Model2', { name: f.string() })
+		const Model1 = FlashcoreSystem.registerModel<{ id: string; name: string }>('Model1', { id: f.id(), name: f.string() })
+		const Model2 = FlashcoreSystem.registerModel<{ id: string; name: string }>('Model2', { id: f.id(), name: f.string() })
 
 		await Model1.create({ name: 'Test1' })
 		await Model2.create({ name: 'Test2' })
