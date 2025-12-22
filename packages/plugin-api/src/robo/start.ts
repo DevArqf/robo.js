@@ -92,6 +92,43 @@ function createMethodDispatcher(record: HandlerRecord<ApiHandler>): RouteHandler
 }
 
 /**
+ * Creates a lazy handler for dev mode that reads from portal on each request.
+ * The handler is cached after first import, and HMR invalidates the cache
+ * when the portal reloads the handler.
+ *
+ * This enables instant HMR updates without needing explicit HMR hooks.
+ */
+function createLazyHandler(routeKey: string): RouteHandler {
+	// Cache the dispatcher after first creation
+	let cachedDispatcher: RouteHandler | null = null
+	// Track the handler reference to detect HMR invalidation
+	let cachedHandlerRef: unknown = null
+
+	return async (req: RoboRequest, reply: RoboReply): Promise<unknown> => {
+		// Get current record from portal
+		const record = portal.getRecord('server', 'api', routeKey) as HandlerRecord<ApiHandler>
+		if (!record) {
+			return reply.code(404).json({ error: 'Not Found' })
+		}
+
+		// Import handler if not already imported
+		await portal.importHandler('server', 'api', routeKey)
+
+		// Check if handler changed (HMR invalidation)
+		if (record.handler !== cachedHandlerRef) {
+			cachedDispatcher = createMethodDispatcher(record)
+			cachedHandlerRef = record.handler
+		}
+
+		if (!cachedDispatcher) {
+			return reply.code(500).json({ error: 'Handler not available' })
+		}
+
+		return cachedDispatcher(req, reply)
+	}
+}
+
+/**
  * Start hook - Registers API routes, starts the HTTP server, and optionally starts a tunnel
  *
  * Note: Engine, router, and Vite are initialized in prepare.ts
