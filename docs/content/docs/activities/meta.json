@@ -1,0 +1,7 @@
+{
+  "title": "Activities",
+  "icon": "PartyPopper",
+  "description": "Learn how to build discord activities",
+  "root": true,
+  "pages": ["index", "authentication", "beginner-guide", "credentials", "multiplayer", "proxy"]
+}

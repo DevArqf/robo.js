@@ -1,0 +1,20 @@
+{
+  "title": "Bots",
+  "icon": "Discord",
+  "description": "Learn how to build discord bots",
+  "root": true,
+  "pages": [
+    "index",
+    "beginner-guide",
+    "file-structure",
+    "commands",
+    "context-menu",
+    "events",
+    "middleware",
+    "sage",
+    "credentials",
+    "invite",
+    "debug",
+    "migrate"
+  ]
+}

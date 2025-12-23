@@ -1,0 +1,7 @@
+{
+  "title": "Framework",
+  "description": "Core framework API reference",
+  "icon": "Boxes",
+  "defaultOpen": true,
+  "pages": ["..."]
+}

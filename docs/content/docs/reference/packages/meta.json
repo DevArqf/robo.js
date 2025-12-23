@@ -1,0 +1,7 @@
+{
+  "title": "Packages",
+  "description": "Reference documentation for Robo.js packages",
+  "icon": "Boxes",
+  "defaultOpen": true,
+  "pages": ["..."]
+}

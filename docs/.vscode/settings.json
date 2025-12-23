@@ -1,0 +1,8 @@
+{
+  "json.schemas": [
+    {
+      "fileMatch": ["/content/docs/**/meta.json"],
+      "url": "./content/docs/meta.schema.json"
+    }
+  ]
+}
