@@ -9,10 +9,14 @@
 import type { ProposedChanges } from '../types/changes.js'
 
 /**
- * MCP transport type - WebContainer-first means HTTP only
- * (stdio MCP requires child_process and is Node-only)
+ * MCP transport type for @ai-sdk/mcp
+ * - 'http' for Streamable HTTP transport (recommended for WebContainer)
+ * - 'sse' for Server-Sent Events transport
+ * - 'streamable_http' is an alias for 'http' (backwards compatibility)
+ *
+ * Note: stdio MCP requires child_process and is Node-only, not supported here.
  */
-export type McpTransport = 'streamable_http'
+export type McpTransport = 'http' | 'sse' | 'streamable_http'
 
 /**
  * Special URL value indicating the server URL should be discovered
@@ -74,9 +78,15 @@ export interface McpServerConfig {
  */
 export interface McpConfig {
 	/**
-	 * Whether MCP integration is enabled
+	 * Whether MCP integration is enabled.
+	 *
+	 * - `true`: MCP is enabled
+	 * - `false`: MCP is explicitly disabled
+	 * - `undefined`: Auto-enable if servers are configured
+	 *
+	 * @default undefined (auto-enabled when servers are defined)
 	 */
-	enabled: boolean
+	enabled?: boolean
 
 	/**
 	 * Map of server IDs to server configurations
@@ -202,7 +212,7 @@ export interface McpServerInfo {
  * Default MCP configuration
  */
 export const DEFAULT_MCP_CONFIG: Partial<McpConfig> = {
-	enabled: false,
+	// enabled is undefined by default (auto-enables when servers are defined)
 	connectionTimeout: 30000,
 	toolTimeout: 60000
 }

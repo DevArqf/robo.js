@@ -1,14 +1,16 @@
 /**
  * MCP Client Manager for @robojs/code SDK
  *
- * Manages connections to MCP servers using @langchain/mcp-adapters.
+ * Manages connections to MCP servers using @ai-sdk/mcp.
  * Supports:
  * - Local MCP servers with URL discovery via LocalServiceDiscovery
  * - Remote MCP servers via backend gateway with auth headers
  * - Tool loading and lifecycle management
+ *
+ * Uses one client per server (AI SDK pattern) with manual tool name prefixing.
  */
 
-import { MultiServerMCPClient } from '@langchain/mcp-adapters'
+import { experimental_createMCPClient as createMCPClient } from '@ai-sdk/mcp'
 import { codeLogger } from '../core/logger.js'
 import type { ExecutionProvider, LocalServiceDiscovery } from '../types/execution.js'
 import type {
@@ -21,11 +23,16 @@ import type {
 } from './types.js'
 
 /**
+ * AI SDK MCP Client type (inferred from createMCPClient return)
+ */
+type AiSdkMcpClient = Awaited<ReturnType<typeof createMCPClient>>
+
+/**
  * Tool definition from MCP server
  */
 export interface McpToolDefinition {
 	/**
-	 * Tool name (may be prefixed with serverId for uniqueness)
+	 * Tool name (prefixed with serverId for uniqueness: serverId__toolName)
 	 */
 	name: string
 
@@ -77,6 +84,9 @@ export interface McpClientManagerOptions {
 
 /**
  * Manages MCP server connections and tool loading
+ *
+ * Uses one AI SDK MCP client per server, with tools prefixed by serverId
+ * for namespace isolation (format: serverId__toolName).
  */
 export class McpClientManager {
 	private readonly config: McpConfig
@@ -84,7 +94,7 @@ export class McpClientManager {
 	private readonly serviceDiscovery?: LocalServiceDiscovery
 	private readonly signal?: AbortSignal
 
-	private client: MultiServerMCPClient | null = null
+	private clients: Map<string, AiSdkMcpClient> = new Map()
 	private serverInfoMap: Map<string, McpServerInfo> = new Map()
 	private tools: Map<string, McpToolDefinition> = new Map()
 	private localSessions: Map<string, string> = new Map() // serverId -> sessionId
@@ -100,12 +110,16 @@ export class McpClientManager {
 	 * Initialize and connect to all configured MCP servers
 	 */
 	async connect(): Promise<void> {
-		if (!this.config.enabled) {
+		const serverEntries = Object.entries(this.config.servers)
+
+		// Auto-enable if servers are defined (unless explicitly disabled)
+		const isEnabled = this.config.enabled ?? serverEntries.length > 0
+
+		if (!isEnabled) {
 			codeLogger.debug('MCP is disabled, skipping connection')
 			return
 		}
 
-		const serverEntries = Object.entries(this.config.servers)
 		if (serverEntries.length === 0) {
 			codeLogger.debug('No MCP servers configured')
 			return
@@ -113,46 +127,59 @@ export class McpClientManager {
 
 		codeLogger.info(`Connecting to ${serverEntries.length} MCP server(s)`)
 
-		// Resolve URLs and prepare server configs
-		const resolvedServers: Record<string, { transport: 'http'; url: string; headers?: Record<string, string> }> = {}
-
 		for (const [serverId, serverConfig] of serverEntries) {
 			try {
 				this.updateServerStatus(serverId, 'connecting')
 				const resolvedUrl = await this.resolveServerUrl(serverId, serverConfig)
 
-				resolvedServers[serverId] = {
-					transport: 'http', // mcp-adapters uses 'http' not 'streamable_http'
-					url: resolvedUrl,
-					headers: serverConfig.headers
-				}
+				// Map transport type for backwards compatibility
+				const transportType = this.mapTransportType(serverConfig.transport)
 
+				// Create AI SDK MCP client for this server
+				const client = await createMCPClient({
+					name: `robojs-mcp-${serverId}`,
+					transport: {
+						type: transportType,
+						url: resolvedUrl,
+						headers: serverConfig.headers
+					}
+				})
+
+				this.clients.set(serverId, client)
 				this.updateServerStatus(serverId, 'connected', { resolvedUrl })
-				codeLogger.info(`Resolved MCP server '${serverId}' at ${resolvedUrl}`)
+				codeLogger.info(`Connected to MCP server '${serverId}' at ${resolvedUrl}`)
 			} catch (error) {
 				const errorMessage = error instanceof Error ? error.message : String(error)
 				this.updateServerStatus(serverId, 'error', { error: errorMessage })
-				codeLogger.error(`Failed to resolve MCP server '${serverId}': ${errorMessage}`)
+				codeLogger.error(`Failed to connect to MCP server '${serverId}': ${errorMessage}`)
 			}
 		}
 
-		// Only create client if we have at least one resolved server
-		const resolvedCount = Object.keys(resolvedServers).length
-		if (resolvedCount === 0) {
-			codeLogger.warn('No MCP servers could be resolved, MCP will be unavailable')
+		// Load tools from all connected clients
+		await this.loadTools()
+
+		const connectedCount = this.clients.size
+		if (connectedCount === 0) {
+			codeLogger.warn('No MCP servers connected, MCP will be unavailable')
 			return
 		}
 
-		try {
-			// Create the multi-server client
-			this.client = new MultiServerMCPClient(resolvedServers)
-			await this.loadTools()
-			codeLogger.info(`MCP connected: ${this.tools.size} tool(s) from ${resolvedCount} server(s)`)
-		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : String(error)
-			codeLogger.error(`Failed to create MCP client: ${errorMessage}`)
-			throw error
+		codeLogger.info(`MCP connected: ${this.tools.size} tool(s) from ${connectedCount} server(s)`)
+	}
+
+	/**
+	 * Map transport type for backwards compatibility
+	 */
+	private mapTransportType(transport: string): 'http' | 'sse' {
+		// 'streamable_http' is an alias for 'http' (backwards compatibility)
+		if (transport === 'streamable_http' || transport === 'http') {
+			return 'http'
 		}
+		if (transport === 'sse') {
+			return 'sse'
+		}
+		// Default to 'http' for unknown values
+		return 'http'
 	}
 
 	/**
@@ -172,22 +199,16 @@ export class McpClientManager {
 		}
 
 		if (!config.startCommand) {
-			throw new Error(
-				`Server '${serverId}' requires URL discovery but no startCommand is configured`
-			)
+			throw new Error(`Server '${serverId}' requires URL discovery but no startCommand is configured`)
 		}
 
 		codeLogger.debug(`Starting local MCP server '${serverId}'...`)
 
 		// Start the local MCP server as a session
-		const sessionHandle = await this.provider.startSession(
-			config.startCommand.command,
-			config.startCommand.args,
-			{
-				env: config.startCommand.env,
-				signal: this.signal
-			}
-		)
+		const sessionHandle = await this.provider.startSession(config.startCommand.command, config.startCommand.args, {
+			env: config.startCommand.env,
+			signal: this.signal
+		})
 
 		// Track the session for cleanup
 		this.localSessions.set(serverId, sessionHandle.id)
@@ -212,46 +233,54 @@ export class McpClientManager {
 	 * Load tools from all connected servers
 	 */
 	private async loadTools(): Promise<void> {
-		if (!this.client) {
-			return
-		}
-
 		this.tools.clear()
 
-		// Get tools from the client
-		const langchainTools = await this.client.getTools()
+		for (const [serverId, client] of this.clients) {
+			try {
+				// Get tools from AI SDK client - returns Record<string, Tool>
+				const aiSdkTools = await client.tools()
 
-		for (const tool of langchainTools) {
-			// Extract server ID from tool name (format: serverId__toolName)
-			const parts = tool.name.split('__')
-			const serverId = parts.length > 1 ? parts[0] : 'unknown'
-			const originalName = parts.length > 1 ? parts.slice(1).join('__') : tool.name
+				for (const [toolName, tool] of Object.entries(aiSdkTools)) {
+					const serverConfig = this.config.servers[serverId]
+					const isRemote = serverConfig?.isRemote ?? false
 
-			const serverConfig = this.config.servers[serverId]
-			const isRemote = serverConfig?.isRemote ?? false
+					// Create prefixed name for uniqueness (serverId__toolName)
+					const prefixedName = `${serverId}__${toolName}`
 
-			const metadata: McpToolMetadata = {
-				serverId,
-				isRemote,
-				originalName
-			}
+					const metadata: McpToolMetadata = {
+						serverId,
+						isRemote,
+						originalName: toolName
+					}
 
-			const toolDef: McpToolDefinition = {
-				name: tool.name,
-				description: tool.description || '',
-				inputSchema: tool.schema as Record<string, unknown>,
-				metadata,
-				execute: async (args: unknown) => {
-					return await tool.invoke(args)
+					const toolDef: McpToolDefinition = {
+						name: prefixedName,
+						description: tool.description || '',
+						inputSchema: (tool.inputSchema as Record<string, unknown>) || {},
+						metadata,
+						execute: async (args: unknown) => {
+							// AI SDK tools have execute(input, options) signature
+							if (tool.execute) {
+								// Provide minimal required options for tool execution
+								return await tool.execute(args as Record<string, unknown>, {
+									toolCallId: `mcp-${serverId}-${Date.now()}`,
+									messages: []
+								})
+							}
+							throw new Error(`Tool ${toolName} has no execute method`)
+						}
+					}
+
+					this.tools.set(prefixedName, toolDef)
+
+					// Update server info with tool count
+					const info = this.serverInfoMap.get(serverId)
+					if (info) {
+						info.toolCount = (info.toolCount || 0) + 1
+					}
 				}
-			}
-
-			this.tools.set(tool.name, toolDef)
-
-			// Update server info with tool count
-			const info = this.serverInfoMap.get(serverId)
-			if (info) {
-				info.toolCount = (info.toolCount || 0) + 1
+			} catch (error) {
+				codeLogger.error(`Failed to load tools from server '${serverId}': ${error}`)
 			}
 		}
 	}
@@ -288,24 +317,25 @@ export class McpClientManager {
 	 * Check if MCP is connected and has tools
 	 */
 	isConnected(): boolean {
-		return this.client !== null && this.tools.size > 0
+		return this.clients.size > 0 && this.tools.size > 0
 	}
 
 	/**
 	 * Disconnect and clean up all MCP connections
 	 */
 	async disconnect(): Promise<void> {
-		codeLogger.debug('Disconnecting MCP client...')
+		codeLogger.debug('Disconnecting MCP clients...')
 
-		// Close the multi-server client
-		if (this.client) {
+		// Close all AI SDK clients
+		for (const [serverId, client] of this.clients) {
 			try {
-				await this.client.close()
+				await client.close()
+				codeLogger.debug(`Closed MCP client for '${serverId}'`)
 			} catch (error) {
-				codeLogger.warn(`Error closing MCP client: ${error}`)
+				codeLogger.warn(`Error closing MCP client '${serverId}': ${error}`)
 			}
-			this.client = null
 		}
+		this.clients.clear()
 
 		// Stop local MCP server sessions
 		for (const [serverId, sessionId] of this.localSessions) {
@@ -318,28 +348,19 @@ export class McpClientManager {
 		}
 		this.localSessions.clear()
 
-		// Stop any service discovery services
-		if (this.serviceDiscovery) {
-			// Note: Services are tracked by service discovery and cleaned up there
-		}
-
 		// Clear tools and server info
 		this.tools.clear()
 		for (const [serverId] of this.serverInfoMap) {
 			this.updateServerStatus(serverId, 'disconnected')
 		}
 
-		codeLogger.info('MCP client disconnected')
+		codeLogger.info('MCP clients disconnected')
 	}
 
 	/**
 	 * Update server status and info
 	 */
-	private updateServerStatus(
-		serverId: string,
-		status: McpServerStatus,
-		extra?: Partial<McpServerInfo>
-	): void {
+	private updateServerStatus(serverId: string, status: McpServerStatus, extra?: Partial<McpServerInfo>): void {
 		const existing = this.serverInfoMap.get(serverId) || {
 			serverId,
 			status: 'disconnected' as McpServerStatus,

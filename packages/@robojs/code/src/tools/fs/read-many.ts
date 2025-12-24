@@ -73,14 +73,45 @@ export const fsReadManyTool: ToolDefinition<FsReadManyInput, FsReadManyOutput> =
 
 		for (const path of paths) {
 			try {
+				// Get file stat for stale detection tracking
+				let mtimeMs: number | null = null
+				try {
+					const stat = await context.provider.stat(path)
+					mtimeMs = stat.mtimeMs ?? null
+				} catch {
+					// Stat failed but file might still be readable
+				}
+
 				const content = await context.provider.readFile(path)
 				const size = new TextEncoder().encode(content).length
 				files.push({ path, content, size })
 				successCount++
+
+				// Record read snapshot for stale detection
+				if (context.fileTracker) {
+					context.fileTracker.record({
+						path,
+						mtimeMs,
+						size,
+						readAt: Date.now(),
+						exists: true
+					})
+				}
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error)
 				files.push({ path, error: message })
 				errorCount++
+
+				// Record non-existence for stale detection if file not found
+				if (context.fileTracker && message.includes('not found')) {
+					context.fileTracker.record({
+						path,
+						mtimeMs: null,
+						size: null,
+						readAt: Date.now(),
+						exists: false
+					})
+				}
 			}
 		}
 

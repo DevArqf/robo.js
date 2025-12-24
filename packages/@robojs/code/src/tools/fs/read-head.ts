@@ -55,9 +55,29 @@ export const fsReadHeadTool: ToolDefinition<FsReadHeadInput, FsReadHeadOutput> =
 		}
 
 		try {
+			// Get file stat for stale detection tracking
+			let mtimeMs: number | null = null
+			try {
+				const stat = await context.provider.stat(path)
+				mtimeMs = stat.mtimeMs ?? null
+			} catch {
+				// Stat failed but file might still be readable
+			}
+
 			const content = await context.provider.readFile(path)
 			const bytes = new TextEncoder().encode(content)
 			const totalSize = bytes.length
+
+			// Record read snapshot for stale detection
+			if (context.fileTracker) {
+				context.fileTracker.record({
+					path,
+					mtimeMs,
+					size: totalSize,
+					readAt: Date.now(),
+					exists: true
+				})
+			}
 
 			// Slice to maxBytes
 			const sliced = bytes.slice(0, maxBytes)

@@ -1,9 +1,9 @@
 /**
  * MCP Tool Adapter for @robojs/code SDK
  *
- * Converts MCP tools to SDK ToolDefinition format for registration
- * in the ToolRegistry. Handles:
- * - Schema conversion from JSON Schema to Zod
+ * Converts MCP tools (from @ai-sdk/mcp) to SDK ToolDefinition format
+ * for registration in the ToolRegistry. Handles:
+ * - Schema conversion from JSON Schema to Zod (passthrough)
  * - Metadata attachment for event attribution (serverId)
  * - Remote server patch-plan rule enforcement
  * - ProposedChanges validation for remote tools
@@ -36,7 +36,7 @@ export interface McpToolAdapterOptions {
  */
 const DEFAULT_OPTIONS: Required<McpToolAdapterOptions> = {
 	toolTimeout: 60000,
-	namePrefix: '' // MCP tools already have serverId prefix from @langchain/mcp-adapters
+	namePrefix: '' // MCP tools already have serverId prefix from McpClientManager
 }
 
 /**

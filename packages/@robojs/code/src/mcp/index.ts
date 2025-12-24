@@ -1,9 +1,11 @@
 /**
  * MCP (Model Context Protocol) integration for @robojs/code SDK
  *
- * This module provides optional MCP client integration via @langchain/mcp-adapters.
- * It supports:
- * - WebContainer-first: Streamable HTTP transport only
+ * This module provides MCP client integration via @ai-sdk/mcp.
+ * Uses browser-compatible HTTP transport that works in WebContainers.
+ *
+ * Features:
+ * - WebContainer-first: HTTP and SSE transports only (no stdio)
  * - Local MCP servers with URL discovery via LocalServiceDiscovery
  * - Remote MCP servers via backend gateway with auth headers
  * - MCP tools registered with same serialization + policy as core tools
@@ -18,7 +20,7 @@
  *     enabled: true,
  *     servers: {
  *       roboLocal: {
- *         transport: 'streamable_http',
+ *         transport: 'http',
  *         url: '__DISCOVERED__',
  *         startCommand: { command: 'node', args: ['mcp-server.js'] }
  *       }

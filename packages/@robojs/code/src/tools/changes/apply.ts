@@ -9,6 +9,7 @@ import { checkFilePolicy, checkDiffPolicy } from '../runtime/policy.js'
 import type { FileChange, FileDiff } from '../../types/changes.js'
 import { CodeAgentError } from '../../errors/index.js'
 import { codeLogger } from '../../core/logger.js'
+import { checkStaleness } from '../tracking/file-tracker.js'
 
 /**
  * Input schema for apply_changes
@@ -122,6 +123,45 @@ export const applyChangesTool: ToolDefinition<ApplyChangesInput, ApplyChangesOut
 				errorCode: 'POLICY_VIOLATION',
 				recoverable: false
 			})
+		}
+
+		// Phase 1.5: Check staleness for modify/delete operations
+		if (context.fileTracker) {
+			for (const change of changes) {
+				if (change.type === 'modify' || change.type === 'delete') {
+					const snapshot = context.fileTracker.get(change.path)
+					if (snapshot) {
+						// Get current file state
+						let currentState: { mtimeMs?: number; size: number; exists: boolean }
+						try {
+							const stat = await context.provider.stat(change.path)
+							currentState = { mtimeMs: stat.mtimeMs, size: stat.size, exists: true }
+						} catch {
+							currentState = { size: 0, exists: false }
+						}
+
+						const staleCheck = checkStaleness(snapshot, currentState)
+
+						if (staleCheck.isStale) {
+							codeLogger.warn('[apply_changes] Stale file detected', {
+								path: change.path,
+								reason: staleCheck.reason,
+								lastReadAt: snapshot.readAt,
+								lastMtime: snapshot.mtimeMs,
+								currentMtime: staleCheck.currentState?.mtimeMs
+							})
+
+							return errorResult(
+								`File "${change.path}" has changed since last read (${staleCheck.reason}). Please re-read affected files before applying changes.`,
+								{
+									errorCode: 'STALE_FILE',
+									recoverable: true
+								}
+							)
+						}
+					}
+				}
+			}
 		}
 
 		// Phase 2: Collect current state and generate diffs
@@ -252,6 +292,13 @@ export const applyChangesTool: ToolDefinition<ApplyChangesInput, ApplyChangesOut
 			}
 
 			codeLogger.debug(`Applied ${appliedPaths.length} file changes`)
+
+			// Clear the read tracker for all applied paths
+			if (context.fileTracker) {
+				for (const path of appliedPaths) {
+					context.fileTracker.clear(path)
+				}
+			}
 
 			return successResult({
 				applied: true,

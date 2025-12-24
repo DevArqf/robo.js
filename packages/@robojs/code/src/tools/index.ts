@@ -169,6 +169,19 @@ export {
 } from './changes/index.js'
 
 // ============================================================================
+// Tracking Exports (Stale Detection)
+// ============================================================================
+
+export {
+	FileReadTracker,
+	checkStaleness,
+	type FileReadSnapshot,
+	type StaleCheckResult,
+	type StaleReason,
+	type CurrentFileState
+} from './tracking/index.js'
+
+// ============================================================================
 // All Tools Combined
 // ============================================================================
 

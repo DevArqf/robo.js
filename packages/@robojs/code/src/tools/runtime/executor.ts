@@ -20,6 +20,7 @@ import { SerialExecutionQueue } from './serializer.js'
 import { PolicyValidator } from './policy.js'
 import { codeLogger } from '../../core/logger.js'
 import { CodeAgentError } from '../../errors/index.js'
+import { FileReadTracker } from '../tracking/file-tracker.js'
 
 /**
  * Tool executor that handles tool execution with serialization and policy enforcement.
@@ -41,7 +42,12 @@ export class ToolExecutor {
 
 	constructor(registry: ToolRegistry, config: ToolExecutorConfig) {
 		this.registry = registry
-		this.context = config.context
+		// Create FileReadTracker for stale detection if not already present
+		const fileTracker = config.context.fileTracker ?? new FileReadTracker()
+		this.context = {
+			...config.context,
+			fileTracker
+		}
 		this.policyValidator = new PolicyValidator(config.context.policy, config.context.runId)
 		this.queue = new SerialExecutionQueue()
 		this.serialize = config.serialize ?? true
@@ -238,6 +244,13 @@ export class ToolExecutor {
 	 */
 	isIdle(): boolean {
 		return this.queue.isIdle()
+	}
+
+	/**
+	 * Get the file read tracker for stale detection
+	 */
+	getFileTracker(): FileReadTracker {
+		return this.context.fileTracker!
 	}
 }
 

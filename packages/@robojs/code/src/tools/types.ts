@@ -10,6 +10,7 @@ import type { ExecutionProvider } from '../types/execution.js'
 import type { AgentPolicy } from '../types/policy.js'
 import type { AgentEvent } from '../types/events.js'
 import type { FileChange, FileDiff } from '../types/changes.js'
+import type { FileReadTracker } from './tracking/file-tracker.js'
 
 // ============================================================================
 // Tool Definition Types
@@ -43,6 +44,14 @@ export interface ToolContext {
 	 * Abort signal for cancellation
 	 */
 	signal?: AbortSignal
+
+	/**
+	 * Tracks file state from reads for stale detection
+	 *
+	 * When present, read operations record file metadata (mtime, size)
+	 * and write operations check for staleness before overwriting.
+	 */
+	fileTracker?: FileReadTracker
 }
 
 /**

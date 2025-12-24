@@ -47,8 +47,28 @@ export const fsReadTool: ToolDefinition<FsReadInput, FsReadOutput> = {
 		}
 
 		try {
+			// Get file stat for stale detection tracking
+			let mtimeMs: number | null = null
+			try {
+				const stat = await context.provider.stat(path)
+				mtimeMs = stat.mtimeMs ?? null
+			} catch {
+				// Stat failed but file might still be readable
+			}
+
 			const content = await context.provider.readFile(path)
 			const size = new TextEncoder().encode(content).length
+
+			// Record read snapshot for stale detection
+			if (context.fileTracker) {
+				context.fileTracker.record({
+					path,
+					mtimeMs,
+					size,
+					readAt: Date.now(),
+					exists: true
+				})
+			}
 
 			return successResult({
 				path,
@@ -56,6 +76,25 @@ export const fsReadTool: ToolDefinition<FsReadInput, FsReadOutput> = {
 				size
 			})
 		} catch (error) {
+			// Record non-existence for stale detection (file not found)
+			if (context.fileTracker) {
+				// Check if error indicates file doesn't exist
+				const errorMessage = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase()
+				const isNotFound =
+					errorMessage.includes('not found') ||
+					errorMessage.includes('no such file') ||
+					errorMessage.includes('enoent')
+				if (isNotFound) {
+					context.fileTracker.record({
+						path,
+						mtimeMs: null,
+						size: null,
+						readAt: Date.now(),
+						exists: false
+					})
+				}
+			}
+
 			if (CodeAgentError.isCodeAgentError(error)) {
 				return errorResult(error.message, {
 					errorCode: error.code,

@@ -8,6 +8,7 @@ import { successResult, errorResult } from '../types.js'
 import { checkFilePolicy } from '../runtime/policy.js'
 import { CodeAgentError } from '../../errors/index.js'
 import { codeLogger } from '../../core/logger.js'
+import { checkStaleness } from '../tracking/file-tracker.js'
 
 /**
  * Input schema for fs_write
@@ -51,6 +52,40 @@ export const fsWriteTool: ToolDefinition<FsWriteInput, FsWriteOutput> = {
 		}
 
 		try {
+			// Check for staleness if we have a read snapshot
+			if (context.fileTracker?.hasRead(path)) {
+				const snapshot = context.fileTracker.get(path)!
+
+				// Get current file state
+				let currentState: { mtimeMs?: number; size: number; exists: boolean }
+				try {
+					const stat = await context.provider.stat(path)
+					currentState = { mtimeMs: stat.mtimeMs, size: stat.size, exists: true }
+				} catch {
+					currentState = { size: 0, exists: false }
+				}
+
+				const staleCheck = checkStaleness(snapshot, currentState)
+
+				if (staleCheck.isStale) {
+					codeLogger.warn('[fs_write] Stale file detected', {
+						path,
+						reason: staleCheck.reason,
+						lastReadAt: snapshot.readAt,
+						lastMtime: snapshot.mtimeMs,
+						currentMtime: staleCheck.currentState?.mtimeMs
+					})
+
+					return errorResult(
+						`File "${path}" has changed since last read (${staleCheck.reason}). Please re-read the file before writing.`,
+						{
+							errorCode: 'STALE_FILE',
+							recoverable: true
+						}
+					)
+				}
+			}
+
 			// Check if file exists before writing
 			const existed = await context.provider.exists(path)
 
@@ -63,6 +98,9 @@ export const fsWriteTool: ToolDefinition<FsWriteInput, FsWriteOutput> = {
 			})
 
 			await context.provider.writeFile(path, content)
+
+			// Clear the read tracker for this path after successful write
+			context.fileTracker?.clear(path)
 
 			codeLogger.debug('[fs_write] File written successfully', { path, size })
 
