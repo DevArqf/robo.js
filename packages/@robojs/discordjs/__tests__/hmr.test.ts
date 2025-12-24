@@ -22,15 +22,15 @@ const fn = jest.fn as any
 // Import from 'robo.js' to use the mocked module
 const roboMock = (await import('robo.js')) as unknown as {
 	Env: {
-		data: jest.Mock
+		data: jest.Mock<any>
 	}
 	portal: {
-		getRecord: jest.Mock
-		importHandler: jest.Mock
-		ensureRoute: jest.Mock
-		getByType: jest.Mock
-		getPluginConfig: jest.Mock
+		getRecord: jest.Mock<any>
+		importHandler: jest.Mock<any>
+		ensureRoute: jest.Mock<any>
+		getByType: jest.Mock<any>
 	}
+	getPluginOptions: jest.Mock<any>
 	getForkedLogger: (key: string) => {
 		debug: jest.Mock
 		info: jest.Mock
@@ -40,7 +40,7 @@ const roboMock = (await import('robo.js')) as unknown as {
 	clearForkedLoggers: () => void
 }
 
-const { Env, portal, getForkedLogger } = roboMock
+const { Env, portal, getPluginOptions, getForkedLogger } = roboMock
 
 // Pre-initialize the forked logger
 const discordLogger = getForkedLogger('discordjs')
@@ -78,7 +78,7 @@ describe('HMR Hook', () => {
 		portal.importHandler.mockClear()
 		portal.ensureRoute.mockClear()
 		portal.getByType.mockClear()
-		portal.getPluginConfig.mockClear()
+		getPluginOptions.mockClear()
 
 		Env.data.mockClear()
 		Env.data.mockReturnValue({
@@ -89,7 +89,7 @@ describe('HMR Hook', () => {
 		portal.importHandler.mockResolvedValue(undefined)
 		portal.ensureRoute.mockResolvedValue(undefined)
 		portal.getByType.mockReturnValue({})
-		portal.getPluginConfig.mockReturnValue(null)
+		getPluginOptions.mockReturnValue(null)
 	})
 
 	describe('config', () => {
@@ -114,7 +114,7 @@ describe('HMR Hook', () => {
 		it('should log no changes when handlers have no definition changes', async () => {
 			const context = createMockHmrContext([])
 
-			await hmrHook(context)
+			await hmrHook(context as any)
 
 			expect(discordLogger.debug).toHaveBeenCalledWith(expect.stringContaining('No command definition changes'))
 		})
@@ -126,7 +126,7 @@ describe('HMR Hook', () => {
 				{ route: 'commands', handlers: [{ key: 'unknown' }] }
 			])
 
-			await hmrHook(context)
+			await hmrHook(context as any)
 
 			// Should not try to import handler if record not found
 			expect(portal.importHandler).not.toHaveBeenCalled()
@@ -139,7 +139,7 @@ describe('HMR Hook', () => {
 				{ route: 'commands', handlers: [{ key: 'ping' }, { key: 'pong' }] }
 			])
 
-			await hmrHook(context)
+			await hmrHook(context as any)
 
 			expect(portal.importHandler).toHaveBeenCalledTimes(2)
 			expect(portal.importHandler).toHaveBeenCalledWith('discordjs', 'commands', 'ping')
@@ -153,7 +153,7 @@ describe('HMR Hook', () => {
 			const context1 = createMockHmrContext([
 				{ route: 'commands', handlers: [{ key: 'test-cmd' }] }
 			])
-			await hmrHook(context1)
+			await hmrHook(context1 as any)
 
 			clearLoggerMocks()
 
@@ -163,7 +163,7 @@ describe('HMR Hook', () => {
 			const context2 = createMockHmrContext([
 				{ route: 'commands', handlers: [{ key: 'test-cmd' }] }
 			])
-			await hmrHook(context2)
+			await hmrHook(context2 as any)
 
 			expect(discordLogger.debug).toHaveBeenCalledWith(expect.stringContaining('Command definition changed'))
 		})
@@ -176,7 +176,7 @@ describe('HMR Hook', () => {
 			const context1 = createMockHmrContext([
 				{ route: 'commands', handlers: [{ key: 'stable-cmd' }] }
 			])
-			await hmrHook(context1)
+			await hmrHook(context1 as any)
 
 			clearLoggerMocks()
 
@@ -184,7 +184,7 @@ describe('HMR Hook', () => {
 			const context2 = createMockHmrContext([
 				{ route: 'commands', handlers: [{ key: 'stable-cmd' }] }
 			])
-			await hmrHook(context2)
+			await hmrHook(context2 as any)
 
 			// Should log no changes, not command definition changed
 			expect(discordLogger.debug).toHaveBeenCalledWith(expect.stringContaining('No command definition changes'))
@@ -200,13 +200,13 @@ describe('HMR Hook', () => {
 			const context1 = createMockHmrContext([
 				{ route: 'commands', handlers: [{ key: 'cred-test' }] }
 			])
-			await hmrHook(context1)
+			await hmrHook(context1 as any)
 
 			portal.getRecord.mockReturnValueOnce({ metadata: { v: 2 } })
 			const context2 = createMockHmrContext([
 				{ route: 'commands', handlers: [{ key: 'cred-test' }] }
 			])
-			await hmrHook(context2)
+			await hmrHook(context2 as any)
 
 			// Wait for async registration attempt
 			await new Promise((r) => setTimeout(r, 50))
@@ -230,13 +230,13 @@ describe('HMR Hook', () => {
 			const context1 = createMockHmrContext([
 				{ route: 'commands', handlers: [{ key: 'guild-test' }] }
 			])
-			await hmrHook(context1)
+			await hmrHook(context1 as any)
 
 			portal.getRecord.mockReturnValueOnce({ metadata: { v: 2 } })
 			const context2 = createMockHmrContext([
 				{ route: 'commands', handlers: [{ key: 'guild-test' }] }
 			])
-			await hmrHook(context2)
+			await hmrHook(context2 as any)
 
 			// Wait for async registration
 			await new Promise((r) => setTimeout(r, 50))
@@ -251,7 +251,7 @@ describe('HMR Hook', () => {
 				DISCORD_CLIENT_ID: '123456789'
 			})
 
-			portal.getPluginConfig.mockReturnValue({
+			getPluginOptions.mockReturnValue({
 				testServers: ['111222333']
 			})
 
@@ -264,19 +264,19 @@ describe('HMR Hook', () => {
 			const context1 = createMockHmrContext([
 				{ route: 'commands', handlers: [{ key: 'config-test' }] }
 			])
-			await hmrHook(context1)
+			await hmrHook(context1 as any)
 
 			portal.getRecord.mockReturnValueOnce({ metadata: { v: 2 } })
 			const context2 = createMockHmrContext([
 				{ route: 'commands', handlers: [{ key: 'config-test' }] }
 			])
-			await hmrHook(context2)
+			await hmrHook(context2 as any)
 
 			// Wait for async registration
 			await new Promise((r) => setTimeout(r, 50))
 
-			// Should have called getPluginConfig
-			expect(portal.getPluginConfig).toHaveBeenCalledWith('discordjs')
+			// Should have called getPluginOptions
+			expect(getPluginOptions).toHaveBeenCalledWith('@robojs/discordjs')
 		})
 
 		it('should handle registration errors gracefully', async () => {
@@ -297,13 +297,13 @@ describe('HMR Hook', () => {
 			const context1 = createMockHmrContext([
 				{ route: 'commands', handlers: [{ key: 'error-test' }] }
 			])
-			await hmrHook(context1)
+			await hmrHook(context1 as any)
 
 			portal.getRecord.mockReturnValueOnce({ metadata: { v: 2 } })
 			const context2 = createMockHmrContext([
 				{ route: 'commands', handlers: [{ key: 'error-test' }] }
 			])
-			await hmrHook(context2)
+			await hmrHook(context2 as any)
 
 			// Wait for async registration
 			await new Promise((r) => setTimeout(r, 100))
@@ -337,13 +337,13 @@ describe('HMR Hook', () => {
 			const context1 = createMockHmrContext([
 				{ route: 'commands', handlers: [{ key: 'records-test' }] }
 			])
-			await hmrHook(context1)
+			await hmrHook(context1 as any)
 
 			portal.getRecord.mockReturnValueOnce({ metadata: { v: 2 } })
 			const context2 = createMockHmrContext([
 				{ route: 'commands', handlers: [{ key: 'records-test' }] }
 			])
-			await hmrHook(context2)
+			await hmrHook(context2 as any)
 
 			// Wait for async registration
 			await new Promise((r) => setTimeout(r, 50))
@@ -373,13 +373,13 @@ describe('HMR Hook', () => {
 			const context1 = createMockHmrContext([
 				{ route: 'commands', handlers: [{ key: 'sub-test' }] }
 			])
-			await hmrHook(context1)
+			await hmrHook(context1 as any)
 
 			portal.getRecord.mockReturnValueOnce({ metadata: { v: 2 } })
 			const context2 = createMockHmrContext([
 				{ route: 'commands', handlers: [{ key: 'sub-test' }] }
 			])
-			await hmrHook(context2)
+			await hmrHook(context2 as any)
 
 			// Wait for async registration
 			await new Promise((r) => setTimeout(r, 50))
@@ -410,13 +410,13 @@ describe('HMR Hook', () => {
 			const context1 = createMockHmrContext([
 				{ route: 'context', handlers: [{ key: 'ctx-test' }] }
 			])
-			await hmrHook(context1)
+			await hmrHook(context1 as any)
 
 			portal.getRecord.mockReturnValueOnce({ metadata: { v: 2 } })
 			const context2 = createMockHmrContext([
 				{ route: 'context', handlers: [{ key: 'ctx-test' }] }
 			])
-			await hmrHook(context2)
+			await hmrHook(context2 as any)
 
 			// Wait for async registration
 			await new Promise((r) => setTimeout(r, 50))
@@ -433,6 +433,16 @@ function createMockHmrContext(routes: Array<{ route: string; handlers: Array<{ k
 			namespace: 'discordjs',
 			route: r.route,
 			handlers: r.handlers
-		}))
+		})),
+		changeType: 'change' as const,
+		files: [],
+		mode: 'development',
+		logger: {
+			debug: fn(),
+			info: fn(),
+			warn: fn(),
+			error: fn()
+		},
+		env: {}
 	}
 }

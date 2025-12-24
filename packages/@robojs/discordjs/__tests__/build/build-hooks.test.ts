@@ -24,11 +24,11 @@ const roboMock = (await import('robo.js')) as unknown as {
 		isDev: jest.Mock
 	}
 	Flashcore: {
-		$init: jest.Mock<any>
-		get: jest.Mock<any>
-		set: jest.Mock<any>
+		$init: jest.Mock<() => Promise<void>>
+		get: jest.Mock<(key: string) => Promise<unknown>>
+		set: jest.Mock<(key: string, value: unknown) => Promise<void>>
 	}
-	registerEnvPattern: jest.Mock
+	registerEnvPattern: jest.Mock<(name: string, options: Record<string, unknown>) => void>
 	getForkedLogger: (key: string) => {
 		log: jest.Mock
 		debug: jest.Mock
@@ -69,6 +69,10 @@ const { computeCommandHash } = await import('../../src/robo/build/complete.js')
 const buildStartHook = (await import('../../src/robo/build/start.js')).default
 const buildCompleteHook = (await import('../../src/robo/build/complete.js')).default
 
+// Capture registerEnvPattern calls made during module load (before jest's clearMocks runs)
+// These are called at the top level of start.ts when it's imported
+const envPatternCallsAtLoad = [...registerEnvPattern.mock.calls] as Array<[string, Record<string, unknown>]>
+
 describe('Build Hooks', () => {
 	beforeEach(() => {
 		// Don't use jest.clearAllMocks() - it would clear registerEnvPattern calls from module load
@@ -97,16 +101,12 @@ describe('Build Hooks', () => {
 
 	describe('build/start.ts', () => {
 		// Environment patterns are registered at module load time (not during hook execution)
-		// These tests verify that by checking the mock was called during the initial import
+		// We capture these calls immediately after import, before jest's clearMocks runs
 		describe('environment pattern registration (module load)', () => {
 			it('should have registered DISCORD_TOKEN pattern at module load', () => {
-				// registerEnvPattern is called at module load time, not hook execution
-				// Verify by checking the mock calls accumulated during import
-				const tokenCall = (registerEnvPattern as jest.Mock).mock.calls.find(
-					(call: unknown[]) => call[0] === 'DISCORD_TOKEN'
-				)
+				const tokenCall = envPatternCallsAtLoad.find((call) => call[0] === 'DISCORD_TOKEN')
 				expect(tokenCall).toBeDefined()
-				expect(tokenCall?.[1]).toMatchObject({
+				expect(tokenCall![1]).toMatchObject({
 					name: 'Discord Bot Token',
 					minLength: 70,
 					maxLength: 80
@@ -114,24 +114,20 @@ describe('Build Hooks', () => {
 			})
 
 			it('should have registered DISCORD_CLIENT_ID pattern at module load', () => {
-				const clientIdCall = (registerEnvPattern as jest.Mock).mock.calls.find(
-					(call: unknown[]) => call[0] === 'DISCORD_CLIENT_ID'
-				)
+				const clientIdCall = envPatternCallsAtLoad.find((call) => call[0] === 'DISCORD_CLIENT_ID')
 				expect(clientIdCall).toBeDefined()
-				expect(clientIdCall?.[1]).toMatchObject({
+				expect(clientIdCall![1]).toMatchObject({
 					name: 'Discord Client ID',
 					minLength: 17,
 					maxLength: 19
 				})
-				expect(clientIdCall?.[1].regex).toBeInstanceOf(RegExp)
+				expect(clientIdCall![1].regex).toBeInstanceOf(RegExp)
 			})
 
 			it('should have registered DISCORD_CLIENT_SECRET pattern at module load', () => {
-				const secretCall = (registerEnvPattern as jest.Mock).mock.calls.find(
-					(call: unknown[]) => call[0] === 'DISCORD_CLIENT_SECRET'
-				)
+				const secretCall = envPatternCallsAtLoad.find((call) => call[0] === 'DISCORD_CLIENT_SECRET')
 				expect(secretCall).toBeDefined()
-				expect(secretCall?.[1]).toMatchObject({
+				expect(secretCall![1]).toMatchObject({
 					name: 'Discord Client Secret',
 					minLength: 32,
 					maxLength: 32

@@ -20,19 +20,20 @@ const fn = jest.fn as any
 const { config: devConfig, before: devBefore } = await import('../../src/robo/cli/extend/dev.js')
 const { config: buildConfig, before: buildBefore } = await import('../../src/robo/cli/extend/build.js')
 
+// Import invite command (at top-level to avoid timeout issues in beforeEach)
+const { default: inviteCommand, config: inviteConfig } = await import('../../src/robo/cli/commands/invite.js')
+
 // Import from 'robo.js' to use the mocked module
 const roboMock = (await import('robo.js')) as unknown as {
 	Env: {
-		load: jest.Mock
-	}
-	env: {
-		get: jest.Mock
+		load: jest.Mock<() => Promise<void>>
+		data: jest.Mock<() => Record<string, string | undefined>>
 	}
 	Mode: {
-		get: jest.Mock
+		get: jest.Mock<() => string>
 	}
 	Manifest: {
-		metadata: jest.Mock
+		metadata: jest.Mock<(namespace: string) => unknown>
 	}
 	color: {
 		bold: (s: string) => string
@@ -43,7 +44,7 @@ const roboMock = (await import('robo.js')) as unknown as {
 	composeColors: (...fns: Array<(s: string) => string>) => (s: string) => string
 }
 
-const { Env, env, Mode, Manifest } = roboMock
+const { Env, Mode, Manifest } = roboMock
 
 // Create mock logger for tests
 function createMockLogger() {
@@ -189,20 +190,12 @@ describe('CLI Extensions', () => {
 	})
 
 	describe('invite command', () => {
-		let inviteCommand: (ctx: { logger: ReturnType<typeof createMockLogger> }) => Promise<void>
-		let inviteConfig: { description: string; options?: Array<{ name: string }> }
-
-		beforeEach(async () => {
+		beforeEach(() => {
 			// Reset mocks
 			Mode.get.mockReturnValue('development')
 			Env.load.mockResolvedValue(undefined)
-			env.get.mockReturnValue('123456789012345678')
+			Env.data.mockReturnValue({ DISCORD_CLIENT_ID: '123456789012345678' })
 			Manifest.metadata.mockReturnValue(null)
-
-			// Re-import to get fresh module
-			const inviteModule = await import('../../src/robo/cli/commands/invite.js')
-			inviteCommand = inviteModule.default
-			inviteConfig = inviteModule.config
 		})
 
 		describe('config', () => {
@@ -220,41 +213,41 @@ describe('CLI Extensions', () => {
 
 		describe('command execution', () => {
 			it('should error when DISCORD_CLIENT_ID is missing', async () => {
-				env.get.mockReturnValue(undefined)
+				Env.data.mockReturnValue({})
 
 				const logger = createMockLogger()
-				await inviteCommand({ logger })
+				await inviteCommand({ logger } as Parameters<typeof inviteCommand>[0])
 
 				expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('DISCORD_CLIENT_ID'))
 			})
 
 			it('should load environment before checking client ID', async () => {
 				const logger = createMockLogger()
-				await inviteCommand({ logger })
+				await inviteCommand({ logger } as Parameters<typeof inviteCommand>[0])
 
 				expect(Env.load).toHaveBeenCalled()
 			})
 
-			it('should get client ID from env', async () => {
+			it('should get client ID from Env.data()', async () => {
 				const logger = createMockLogger()
-				await inviteCommand({ logger })
+				await inviteCommand({ logger } as Parameters<typeof inviteCommand>[0])
 
-				expect(env.get).toHaveBeenCalledWith('discord.clientId')
+				expect(Env.data).toHaveBeenCalled()
 			})
 
 			it('should get Discord metadata from manifest', async () => {
 				const logger = createMockLogger()
-				await inviteCommand({ logger })
+				await inviteCommand({ logger } as Parameters<typeof inviteCommand>[0])
 
 				expect(Manifest.metadata).toHaveBeenCalledWith('discordjs')
 			})
 
 			it('should generate invite link with default scopes', async () => {
-				env.get.mockReturnValue('123456789012345678')
+				Env.data.mockReturnValue({ DISCORD_CLIENT_ID: '123456789012345678' })
 				Manifest.metadata.mockReturnValue(null)
 
 				const logger = createMockLogger()
-				await inviteCommand({ logger })
+				await inviteCommand({ logger } as Parameters<typeof inviteCommand>[0])
 
 				// Check log output contains invite link with client_id and default scopes
 				const logCalls = logger.log.mock.calls.flat().join('\n')
@@ -264,7 +257,7 @@ describe('CLI Extensions', () => {
 			})
 
 			it('should use scopes from metadata when available', async () => {
-				env.get.mockReturnValue('123456789012345678')
+				Env.data.mockReturnValue({ DISCORD_CLIENT_ID: '123456789012345678' })
 				Manifest.metadata.mockReturnValue({
 					namespace: 'discordjs',
 					scopes: {
@@ -273,24 +266,24 @@ describe('CLI Extensions', () => {
 				})
 
 				const logger = createMockLogger()
-				await inviteCommand({ logger })
+				await inviteCommand({ logger } as Parameters<typeof inviteCommand>[0])
 
 				const logCalls = logger.log.mock.calls.flat().join('\n')
 				expect(logCalls).toContain('identify')
 			})
 
 			it('should warn when no permissions found', async () => {
-				env.get.mockReturnValue('123456789012345678')
+				Env.data.mockReturnValue({ DISCORD_CLIENT_ID: '123456789012345678' })
 				Manifest.metadata.mockReturnValue(null)
 
 				const logger = createMockLogger()
-				await inviteCommand({ logger })
+				await inviteCommand({ logger } as Parameters<typeof inviteCommand>[0])
 
 				expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('No permissions'))
 			})
 
 			it('should aggregate permissions from metadata', async () => {
-				env.get.mockReturnValue('123456789012345678')
+				Env.data.mockReturnValue({ DISCORD_CLIENT_ID: '123456789012345678' })
 				Manifest.metadata.mockReturnValue({
 					namespace: 'discordjs',
 					permissions: {
@@ -299,7 +292,7 @@ describe('CLI Extensions', () => {
 				})
 
 				const logger = createMockLogger()
-				await inviteCommand({ logger })
+				await inviteCommand({ logger } as Parameters<typeof inviteCommand>[0])
 
 				// Verify no warning about missing permissions
 				const warnCalls = logger.warn.mock.calls.flat().join('\n')
@@ -307,11 +300,11 @@ describe('CLI Extensions', () => {
 			})
 
 			it('should output invite link in box format', async () => {
-				env.get.mockReturnValue('123456789012345678')
+				Env.data.mockReturnValue({ DISCORD_CLIENT_ID: '123456789012345678' })
 				Manifest.metadata.mockReturnValue(null)
 
 				const logger = createMockLogger()
-				await inviteCommand({ logger })
+				await inviteCommand({ logger } as Parameters<typeof inviteCommand>[0])
 
 				// Check for box characters in output
 				const logCalls = logger.log.mock.calls.flat().join('\n')
