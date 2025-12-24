@@ -3,6 +3,7 @@ import { useSession as useSessionState, useSessionDispatch, useWebSocket, type P
 import { usePlayback, usePlaybackControls, usePlaybackGuilds, usePlaybackChannels, usePlaybackMembers, usePlaybackMessages, usePlaybackTypingUsers } from '../stores/playbackStore'
 import { useUnifiedSelection } from '../stores/unifiedSelectionStore'
 import { useCurrentUser } from './useCurrentUser'
+import { MentionParser } from '../../utils/mention-parser'
 import type { ModalActionRow, ModalData } from '../components/modals/Modal'
 import type { StageMessage, StageUser, StageGuild, StageChannel, StageMember, StageRole, StageVoiceState, StageApplicationCommand } from '../types/stage'
 
@@ -369,10 +370,16 @@ export function useStageData(options?: UseStageDataOptions): StageDataResult {
 		})
 
 		try {
+			// Parse mentions from content
+			const mentions = MentionParser.parse(content)
+
 			const result = await sendCommand('send_message', {
 				channel_id: targetChannelId,
 				content,
 				author: { id: author.id, username: author.username },
+				mentions: mentions.users,
+				mention_roles: mentions.roles,
+				mention_everyone: mentions.everyone,
 				...(messageReference && { message_reference: messageReference })
 			})
 			sessionDispatch({ type: 'REMOVE_PENDING_MESSAGE', payload: pendingId })

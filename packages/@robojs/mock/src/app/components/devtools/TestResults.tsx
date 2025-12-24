@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { usePlaybackStore } from '../../stores/playbackStore'
 import { useWebSocket } from '../../stores/sessionStore'
 import { useLogsPanel } from '../../stores/logsStore'
+import { useDevTools } from './DevToolsPanel'
 import { loadRecordingToPlayback } from '../../utils/loadRecordingToPlayback'
 import { apiFetch } from '../../utils/api'
 import { useToaster } from '../common/Toaster'
@@ -257,6 +258,7 @@ export function TestResults() {
 	const [summaryCollapsed, setSummaryCollapsed] = useState(false)
 	const { showToast } = useToaster()
 	const { openWithSessionFilter } = useLogsPanel()
+	const { close: closeDevTools } = useDevTools()
 
 	const fetchRegistry = useCallback(() => {
 		setLoading(true)
@@ -325,9 +327,11 @@ export function TestResults() {
 
 	const handleViewLogs = useCallback(
 		(sessionId: string) => {
+			// Close devtools panel first, then open logs panel
+			closeDevTools()
 			openWithSessionFilter(sessionId)
 		},
-		[openWithSessionFilter]
+		[openWithSessionFilter, closeDevTools]
 	)
 
 	if (loading && !registry) {

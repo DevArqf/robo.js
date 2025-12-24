@@ -1,30 +1,63 @@
-import { useMemo } from 'react'
+import { useMemo, createContext, useContext } from 'react'
 import styles from './Markdown.module.css'
+import type { StageMember, StageRole, StageChannel } from '../../types/stage'
 
 interface MarkdownProps {
 	text: string
+	members?: StageMember[]
+	roles?: StageRole[]
+	channels?: StageChannel[]
 }
 
 interface ParsedNode {
-	type: 'text' | 'bold' | 'italic' | 'strikethrough' | 'code' | 'codeblock' | 'link' | 'h1' | 'h2' | 'h3' | 'newline'
+	type:
+		| 'text'
+		| 'bold'
+		| 'italic'
+		| 'strikethrough'
+		| 'code'
+		| 'codeblock'
+		| 'link'
+		| 'h1'
+		| 'h2'
+		| 'h3'
+		| 'newline'
+		| 'userMention'
+		| 'roleMention'
+		| 'channelMention'
+		| 'everyoneMention'
+		| 'hereMention'
 	content: string
 	language?: string
 	url?: string
+	id?: string
 }
+
+// Context for resolving mention names
+interface MentionContext {
+	members: StageMember[]
+	roles: StageRole[]
+	channels: StageChannel[]
+}
+
+const MentionCtx = createContext<MentionContext>({ members: [], roles: [], channels: [] })
 
 /**
  * Simple Discord-flavored markdown renderer
- * Supports: bold, italic, strikethrough, inline code, code blocks, links
+ * Supports: bold, italic, strikethrough, inline code, code blocks, links, mentions
  */
-export function Markdown({ text }: MarkdownProps) {
+export function Markdown({ text, members = [], roles = [], channels = [] }: MarkdownProps) {
 	const nodes = useMemo(() => parseMarkdown(text), [text])
+	const contextValue = useMemo(() => ({ members, roles, channels }), [members, roles, channels])
 
 	return (
-		<div className={styles.markdown}>
-			{nodes.map((node, i) => (
-				<MarkdownNode key={i} node={node} />
-			))}
-		</div>
+		<MentionCtx.Provider value={contextValue}>
+			<div className={styles.markdown}>
+				{nodes.map((node, i) => (
+					<MarkdownNode key={i} node={node} />
+				))}
+			</div>
+		</MentionCtx.Provider>
 	)
 }
 
@@ -58,9 +91,48 @@ function MarkdownNode({ node }: { node: ParsedNode }) {
 			)
 		case 'newline':
 			return <br />
+		case 'userMention':
+			return <UserMention id={node.id!} />
+		case 'roleMention':
+			return <RoleMention id={node.id!} />
+		case 'channelMention':
+			return <ChannelMention id={node.id!} />
+		case 'everyoneMention':
+			return <span className={styles.everyoneMention}>@everyone</span>
+		case 'hereMention':
+			return <span className={styles.hereMention}>@here</span>
 		default:
 			return <>{node.content}</>
 	}
+}
+
+function UserMention({ id }: { id: string }) {
+	const { members } = useContext(MentionCtx)
+	const member = members.find((m) => m.user?.id === id)
+	const displayName = member?.nick || member?.user?.username || 'Unknown User'
+
+	return <span className={styles.userMention}>@{displayName}</span>
+}
+
+function RoleMention({ id }: { id: string }) {
+	const { roles } = useContext(MentionCtx)
+	const role = roles.find((r) => r.id === id)
+	const displayName = role?.name || 'deleted-role'
+	const color = role?.color ? `#${role.color.toString(16).padStart(6, '0')}` : undefined
+
+	return (
+		<span className={styles.roleMention} style={color ? { color, backgroundColor: `${color}33` } : undefined}>
+			@{displayName}
+		</span>
+	)
+}
+
+function ChannelMention({ id }: { id: string }) {
+	const { channels } = useContext(MentionCtx)
+	const channel = channels.find((c) => c.id === id)
+	const displayName = channel?.name || 'unknown-channel'
+
+	return <span className={styles.channelMention}>#{displayName}</span>
 }
 
 /**
@@ -126,11 +198,17 @@ function parseTextWithHeaders(text: string, nodes: ParsedNode[]): void {
 }
 
 /**
- * Parse inline markdown (bold, italic, code, etc.)
+ * Parse inline markdown (bold, italic, code, mentions, etc.)
  */
 function parseInlineMarkdown(text: string, nodes: ParsedNode[]): void {
 	let remaining = text
 
+	// Mention regex patterns (must be checked before other patterns)
+	const userMentionRegex = /<@!?(\d{17,20})>/
+	const roleMentionRegex = /<@&(\d{17,20})>/
+	const channelMentionRegex = /<#(\d{17,20})>/
+	const everyoneMentionRegex = /@everyone/
+	const hereMentionRegex = /@here/
 	// Inline code regex: `code`
 	const inlineCodeRegex = /`([^`]+)`/
 	// Bold regex: **text**
@@ -149,8 +227,13 @@ function parseInlineMarkdown(text: string, nodes: ParsedNode[]): void {
 		let matchType: ParsedNode['type'] | 'autolink' = 'text'
 		let matchIndex = remaining.length
 
-		// Find the earliest match
+		// Find the earliest match (mentions first, then formatting)
 		const checks: Array<{ regex: RegExp; type: ParsedNode['type'] | 'autolink' }> = [
+			{ regex: userMentionRegex, type: 'userMention' },
+			{ regex: roleMentionRegex, type: 'roleMention' },
+			{ regex: channelMentionRegex, type: 'channelMention' },
+			{ regex: everyoneMentionRegex, type: 'everyoneMention' },
+			{ regex: hereMentionRegex, type: 'hereMention' },
 			{ regex: inlineCodeRegex, type: 'code' },
 			{ regex: boldRegex, type: 'bold' },
 			{ regex: italicRegex, type: 'italic' },
@@ -175,6 +258,21 @@ function parseInlineMarkdown(text: string, nodes: ParsedNode[]): void {
 
 		if (match) {
 			switch (matchType) {
+				case 'userMention':
+					nodes.push({ type: 'userMention', content: match[0], id: match[1] })
+					break
+				case 'roleMention':
+					nodes.push({ type: 'roleMention', content: match[0], id: match[1] })
+					break
+				case 'channelMention':
+					nodes.push({ type: 'channelMention', content: match[0], id: match[1] })
+					break
+				case 'everyoneMention':
+					nodes.push({ type: 'everyoneMention', content: match[0] })
+					break
+				case 'hereMention':
+					nodes.push({ type: 'hereMention', content: match[0] })
+					break
 				case 'code':
 					nodes.push({ type: 'code', content: match[1] })
 					break

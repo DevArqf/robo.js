@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, useCallback, useMemo, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from 'react'
 import type { SessionLogEntry, SessionLogLevel } from '../../types/index.js'
 import { stripAnsi } from '../components/logs/AnsiText.js'
+import { apiFetch } from '../utils/api.js'
 
 // ============================================================================
 // Constants
@@ -191,6 +192,9 @@ export function LogsProvider({ children }: LogsProviderProps) {
 		sessionId: null
 	})
 
+	// Ref to track session filter for WebSocket handler (avoids stale closure)
+	const sessionFilterRef = useRef<string | null>(null)
+
 	// Time range state (Better Stack style)
 	const [timeRange, setTimeRangeState] = useState<TimeRange>(() => {
 		if (typeof window === 'undefined') return DEFAULT_TIME_RANGE
@@ -302,14 +306,41 @@ export function LogsProvider({ children }: LogsProviderProps) {
 	}, [])
 
 	const setSessionFilter = useCallback((sessionId: string | null) => {
+		// Update ref for WebSocket handler to check
+		sessionFilterRef.current = sessionId
+		// When clearing the session filter, also clear logs so we start fresh with live logs only
+		if (sessionId === null) {
+			setLogs([])
+		}
 		setFilters((prev) => ({ ...prev, sessionId }))
 	}, [])
 
-	const openWithSessionFilter = useCallback((sessionId: string) => {
-		setFilters((prev) => ({ ...prev, sessionId }))
-		setIsOpen(true)
-		localStorage.setItem(STORAGE_KEY, 'true')
-	}, [])
+	const openWithSessionFilter = useCallback(
+		async (sessionId: string) => {
+			// Update ref for WebSocket handler to check (prevents live logs from being added)
+			sessionFilterRef.current = sessionId
+
+			// Fetch logs for this session from the server
+			try {
+				const response = await apiFetch(`/control/sessions/${sessionId}/logs?limit=10000`)
+				const data = await response.json()
+
+				if (data.logs && Array.isArray(data.logs)) {
+					// Replace logs with the fetched session logs
+					setLogs(data.logs)
+				}
+			} catch (error) {
+				console.error('Failed to fetch session logs:', error)
+				// Continue anyway - show empty logs panel
+			}
+
+			// Set the filter and open the panel
+			setFilters((prev) => ({ ...prev, sessionId }))
+			setIsOpen(true)
+			localStorage.setItem(STORAGE_KEY, 'true')
+		},
+		[]
+	)
 
 	// Time range management
 	const setTimeRange = useCallback((range: TimeRange) => {
@@ -462,6 +493,11 @@ export function LogsProvider({ children }: LogsProviderProps) {
 	// Listen for log_entry events from WebSocket
 	useEffect(() => {
 		const handleLogEntry = (event: CustomEvent<SessionLogEntry>) => {
+			// When a session filter is active, don't add live logs from WebSocket
+			// (they're from the current session, not the filtered test session)
+			if (sessionFilterRef.current !== null) {
+				return
+			}
 			addLog(event.detail)
 		}
 
@@ -474,6 +510,10 @@ export function LogsProvider({ children }: LogsProviderProps) {
 	// Listen for logs_history events (sent on state_sync with historical logs)
 	useEffect(() => {
 		const handleLogsHistory = (event: CustomEvent<SessionLogEntry[]>) => {
+			// When a session filter is active, don't add historical logs from other sessions
+			if (sessionFilterRef.current !== null) {
+				return
+			}
 			addLogs(event.detail)
 		}
 

@@ -256,3 +256,17 @@
 	background: var(--background-modifier-hover);
 	color: var(--interactive-hover);
 }
+
+/* Drag and drop styles */
+.dragOverlay {
+	background: var(--background-secondary);
+	border-radius: var(--radius-sm);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+	opacity: 0.95;
+}
+
+.dragOverlay .channel,
+.dragOverlay .voiceChannelHeader,
+.dragOverlay .categoryHeader {
+	background: var(--background-modifier-selected);
+}

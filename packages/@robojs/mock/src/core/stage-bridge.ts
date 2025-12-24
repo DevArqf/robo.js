@@ -315,6 +315,14 @@ export class StageBridge {
 			case 'MESSAGE_REACTION_REMOVE':
 				return 'message_reaction_remove'
 
+			// Channel events
+			case 'CHANNEL_UPDATE':
+				return 'channel_update'
+
+			// Guild events
+			case 'GUILD_EMOJIS_UPDATE':
+				return 'guild_emojis_update'
+
 			// We don't forward GUILD_CREATE, READY, etc. - those are internal gateway events
 			default:
 				return null

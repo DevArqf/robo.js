@@ -155,6 +155,8 @@ type SessionAction =
 	| { type: 'UPDATE_CURRENT_USER'; payload: Partial<StageUser> }
 	| { type: 'INCREMENT_UNREAD_MENTIONS'; payload: { channelId: string; count: number } }
 	| { type: 'CLEAR_UNREAD_MENTIONS'; payload: string }
+	| { type: 'REORDER_CHANNELS'; payload: { guildId: string; updates: Array<{ id: string; position: number; parent_id?: string | null }> } }
+	| { type: 'HANDLE_CHANNEL_UPDATE'; payload: StageChannel }
 
 // Initial state
 const initialState: SessionState = {
@@ -637,6 +639,34 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 			}
 		}
 
+		case 'REORDER_CHANNELS': {
+			const { guildId, updates } = action.payload
+			return {
+				...state,
+				channels: state.channels.map((c) => {
+					if (c.guild_id !== guildId) return c
+					const update = updates.find((u) => u.id === c.id)
+					if (!update) return c
+					return {
+						...c,
+						position: update.position,
+						parent_id: update.parent_id !== undefined ? update.parent_id : c.parent_id
+					}
+				})
+			}
+		}
+
+		case 'HANDLE_CHANNEL_UPDATE': {
+			const channel = action.payload
+			return {
+				...state,
+				channels: state.channels.map((c) =>
+					c.id === channel.id ? { ...c, ...channel } : c
+				),
+				eventCount: state.eventCount + 1
+			}
+		}
+
 		default:
 			return state
 	}
@@ -1012,6 +1042,48 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 				case 'log_entry': {
 					// Log entry from connected bot - emit custom event for LogsProvider
 					window.dispatchEvent(new CustomEvent('stage:log_entry', { detail: event.data }))
+					break
+				}
+
+				case 'channel_update': {
+					// Channel was updated (position, name, etc.)
+					const channelData = event.data as StageChannel
+					dispatch({
+						type: 'HANDLE_CHANNEL_UPDATE',
+						payload: channelData
+					})
+					break
+				}
+
+				case 'guild_emojis_update': {
+					// Guild emojis changed - forward to window for EmojiPicker to listen
+					window.dispatchEvent(new CustomEvent('guild_emojis_update', {
+						detail: event.data
+					}))
+					dispatch({ type: 'INCREMENT_EVENT_COUNT' })
+					break
+				}
+
+				case 'control_action': {
+					// Control action performed - show toast to all viewers
+					const actionData = event.data as {
+						action: string
+						message: string
+						toastType: 'info' | 'success' | 'warning' | 'error'
+						actor?: { type: 'user' | 'bot'; name: string }
+					}
+
+					// Format message with actor name if it's a bot
+					let displayMessage = actionData.message
+					if (actionData.actor?.type === 'bot') {
+						displayMessage = `${actionData.actor.name}: ${actionData.message}`
+					}
+
+					// Dispatch window event for Toaster to listen
+					window.dispatchEvent(new CustomEvent('show_toast', {
+						detail: { message: displayMessage, type: actionData.toastType }
+					}))
+					dispatch({ type: 'INCREMENT_EVENT_COUNT' })
 					break
 				}
 

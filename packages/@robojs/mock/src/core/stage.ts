@@ -1112,6 +1112,34 @@ export class StageServer {
 	}
 
 	/**
+	 * Broadcast a control action event for toast notifications.
+	 * Used to notify all stage clients when control panel actions occur.
+	 *
+	 * @param sessionId - The session to broadcast to
+	 * @param action - The action type (e.g., 'channel_reorder', 'emoji_create', 'emoji_delete')
+	 * @param message - Human-readable message for the toast
+	 * @param toastType - Type of toast: 'info', 'success', 'warning', 'error'
+	 * @param actor - Optional actor information (user or bot who triggered the action)
+	 */
+	broadcastControlAction(
+		sessionId: string,
+		action: string,
+		message: string,
+		toastType: 'info' | 'success' | 'warning' | 'error' = 'success',
+		actor?: { type: 'user' | 'bot'; name: string }
+	): void {
+		this.broadcastToSession(sessionId, {
+			type: 'control_action',
+			data: {
+				action,
+				message,
+				toastType,
+				actor
+			}
+		})
+	}
+
+	/**
 	 * Close the stage server
 	 */
 	close(): void {

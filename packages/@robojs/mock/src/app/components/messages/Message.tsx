@@ -9,6 +9,7 @@ import { ComponentsContainer } from './ComponentRow'
 import { Reactions } from './Reactions'
 import { EphemeralBadge } from './EphemeralBadge'
 import { useUserById } from '../../hooks/useCurrentUser'
+import { useStageData } from '../../hooks/useStageData'
 import styles from './Message.module.css'
 
 // Discord message flags
@@ -260,6 +261,8 @@ function MessageContent({
 	onAddReaction,
 	onRemoveReaction
 }: MessageContentProps) {
+	const { members, roles, channels } = useStageData()
+
 	// Type assertion for embeds and attachments - they come as unknown[] from StageMessage
 	const typedEmbeds = embeds as Array<{
 		color?: number
@@ -295,7 +298,7 @@ function MessageContent({
 			{/* V2 replaces content and embeds - only render these in V1 mode */}
 			{!isV2 && content && (
 				<div className={styles.textContent}>
-					<Markdown text={content} />
+					<Markdown text={content} members={members} roles={roles} channels={channels} />
 					{editedTimestamp && (
 						<span
 							className={styles.edited}

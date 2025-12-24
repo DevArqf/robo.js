@@ -64,6 +64,15 @@ export type StageEventType =
 	// Permissions (Phase 3 - Permissions Admin UI)
 	| 'permission_denied'      // Permission check failed
 
+	// Channel events
+	| 'channel_update'         // Channel position/properties changed
+
+	// Guild events
+	| 'guild_emojis_update'    // Guild emojis changed
+
+	// Control actions (toast notifications)
+	| 'control_action'         // Action performed (for toast broadcasts)
+
 /**
  * Command types sent from stage clients to server
  */

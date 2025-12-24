@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import styles from './Toaster.module.css'
 
 export type ToastType = 'info' | 'success' | 'warning' | 'error'
@@ -46,6 +46,19 @@ export function ToasterProvider({ children }: ToasterProviderProps) {
 	const dismissToast = useCallback((id: string) => {
 		setToasts((prev) => prev.filter((t) => t.id !== id))
 	}, [])
+
+	// Listen for show_toast window events from sessionStore (control_action events)
+	useEffect(() => {
+		const handleShowToast = (event: Event) => {
+			const customEvent = event as CustomEvent<{ message: string; type?: ToastType }>
+			if (customEvent.detail?.message) {
+				showToast(customEvent.detail.message, customEvent.detail.type ?? 'info')
+			}
+		}
+
+		window.addEventListener('show_toast', handleShowToast)
+		return () => window.removeEventListener('show_toast', handleShowToast)
+	}, [showToast])
 
 	return (
 		<ToasterContext.Provider value={{ showToast }}>
