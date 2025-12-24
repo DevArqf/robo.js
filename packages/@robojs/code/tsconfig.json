@@ -1,0 +1,25 @@
+{
+	"compilerOptions": {
+		"target": "ESNext",
+		"lib": ["ESNext"],
+		"baseUrl": ".",
+		"paths": {
+			"~/*": ["src/*"]
+		},
+		"allowJs": true,
+		"skipLibCheck": true,
+		"strict": true,
+		"forceConsistentCasingInFileNames": true,
+		"esModuleInterop": true,
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"incremental": true,
+		"declaration": true,
+		"declarationMap": true,
+		"sourceMap": true
+	},
+	"include": ["src/**/*.ts", "__tests__/**/*.ts"],
+	"exclude": ["node_modules", ".robo", "dist"]
+}

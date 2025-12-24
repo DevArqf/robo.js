@@ -1,0 +1,118 @@
+{
+	"name": "@robojs/code",
+	"description": "SDK for building agentic coding experiences with WebContainer and LangGraph",
+	"version": "0.1.0",
+	"type": "module",
+	"private": false,
+	"keywords": [
+		"agent",
+		"ai",
+		"code",
+		"coding",
+		"discord",
+		"langgraph",
+		"llm",
+		"robo",
+		"robo.js",
+		"sdk",
+		"typescript",
+		"webcontainer"
+	],
+	"main": ".robo/build/index.js",
+	"exports": {
+		".": {
+			"import": "./.robo/build/index.js",
+			"types": "./.robo/build/index.d.ts"
+		},
+		"./types": {
+			"import": "./.robo/build/types/index.js",
+			"types": "./.robo/build/types/index.d.ts"
+		},
+		"./providers": {
+			"import": "./.robo/build/providers/index.js",
+			"types": "./.robo/build/providers/index.d.ts"
+		},
+		"./providers/node": {
+			"import": "./.robo/build/providers/node/index.js",
+			"types": "./.robo/build/providers/node/index.d.ts"
+		},
+		"./providers/webcontainer": {
+			"import": "./.robo/build/providers/webcontainer/index.js",
+			"types": "./.robo/build/providers/webcontainer/index.d.ts"
+		},
+		"./tools": {
+			"import": "./.robo/build/tools/index.js",
+			"types": "./.robo/build/tools/index.d.ts"
+		},
+		"./mcp": {
+			"import": "./.robo/build/mcp/index.js",
+			"types": "./.robo/build/mcp/index.d.ts"
+		}
+	},
+	"license": "MIT",
+	"author": "Robo.js",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/robojs/robo.js.git",
+		"directory": "packages/@robojs/code"
+	},
+	"files": [
+		".robo/",
+		"src/",
+		"config/",
+		"LICENSE",
+		"README.md"
+	],
+	"publishConfig": {
+		"access": "public",
+		"registry": "https://registry.npmjs.org/"
+	},
+	"scripts": {
+		"build": "robo build plugin",
+		"dev": "robo build plugin --watch",
+		"typecheck": "tsc --noEmit",
+		"typecheck:browser": "tsc --noEmit -p tsconfig.browser.json",
+		"test": "NODE_OPTIONS=\"--experimental-vm-modules --disable-warning=ExperimentalWarning\" jest",
+		"test:e2e": "playwright test",
+		"test:e2e:ui": "playwright test --ui",
+		"lint:style": "prettier --write .",
+		"prepublishOnly": "robo build plugin"
+	},
+	"devDependencies": {
+		"@playwright/test": "^1.49.0",
+		"@swc/core": "^1.15.7",
+		"@types/jest": "^29.5.14",
+		"@types/node": "^22.10.2",
+		"@types/uuid": "^10.0.0",
+		"discord.js": "^14.18.0",
+		"esbuild": "^0.24.2",
+		"jest": "^29.7.0",
+		"prettier": "^3.7.4",
+		"robo.js": "workspace:*",
+		"serve": "^14.2.4",
+		"ts-jest": "^29.2.5",
+		"typescript": "^5.7.2"
+	},
+	"peerDependencies": {
+		"@webcontainer/api": "^1.4.0",
+		"robo.js": "^0.10.1"
+	},
+	"peerDependenciesMeta": {
+		"@webcontainer/api": {
+			"optional": true
+		},
+		"robo.js": {
+			"optional": false
+		}
+	},
+	"dependencies": {
+		"@langchain/core": "^1.0.1",
+		"@langchain/langgraph": "^1.0.7",
+		"uuid": "^11.1.0",
+		"zod": "^3.25.32",
+		"zod-to-json-schema": "^3.25.0"
+	},
+	"optionalDependencies": {
+		"@langchain/mcp-adapters": "^1.1.1"
+	}
+}

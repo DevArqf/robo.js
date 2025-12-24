@@ -1,0 +1,21 @@
+{
+	"name": "mockbot-ts",
+	"version": "1.0.0",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"build": "robo build",
+		"dev": "robo dev",
+		"start": "robo start",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"discord.js": "^14.15.0",
+		"robo.js": "^0.10.1"
+	},
+	"devDependencies": {
+		"@robojs/mock": "workspace:*",
+		"typescript": "^5.0.0",
+		"vitest": "^1.0.0"
+	}
+}
