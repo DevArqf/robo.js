@@ -5,7 +5,7 @@
  */
 
 import { computeSchemaChecksum, compareChecksums } from '../../../src/flashcore/schema/checksum.js'
-import { f } from '../../../src/flashcore/schema/field.js'
+import { f, compoundUnique } from '../../../src/flashcore/schema/field.js'
 import type { SchemaFields } from '../../../src/flashcore/schema/types.js'
 
 describe('Schema Checksum', () => {
@@ -165,6 +165,21 @@ describe('Schema Checksum', () => {
 
 			const schema2: SchemaFields = {
 				status: f.enum(['pending', 'active', 'inactive'])
+			}
+
+			expect(computeSchemaChecksum(schema1)).not.toBe(computeSchemaChecksum(schema2))
+		})
+
+		it('should change when a compound unique constraint is added', () => {
+			const schema1: SchemaFields = {
+				a: f.string(),
+				b: f.string()
+			}
+
+			const schema2: SchemaFields = {
+				a: f.string(),
+				b: f.string(),
+				_compound: compoundUnique(['a', 'b'])
 			}
 
 			expect(computeSchemaChecksum(schema1)).not.toBe(computeSchemaChecksum(schema2))

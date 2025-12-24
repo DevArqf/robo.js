@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals'
-import { f, FlashcoreSystem, MemoryAdapter } from '../../../src/flashcore/index.js'
+import { f, FlashcoreSystem, MemoryAdapter, UniqueConstraintError } from '../../../src/flashcore/index.js'
 
 describe('Phase 9: Compound Unique Constraints', () => {
 	beforeEach(async () => {
@@ -18,6 +18,33 @@ describe('Phase 9: Compound Unique Constraints', () => {
 	})
 
 	describe('Junction Table Uniqueness', () => {
+		it('should prevent duplicate junction relationships (compound unique)', async () => {
+			const Tag = FlashcoreSystem.registerModel<{ id: string; name: string }>('Tag', {
+				id: f.id(),
+				name: f.string(),
+				posts: f.manyToMany('Post')
+			})
+
+			const Post = FlashcoreSystem.registerModel<{ id: string; title: string }>('Post', {
+				id: f.id(),
+				title: f.string(),
+				tags: f.manyToMany('Tag')
+			})
+
+			const tag = await Tag.create({ name: 'JavaScript' })
+			const post = await Post.create({ title: 'Hello' })
+
+			await Post.update({
+				where: { id: post.id },
+				data: { tags: { connect: [{ id: tag.id }] } } as unknown as { title?: string }
+			})
+
+			await expect(Post.update({
+				where: { id: post.id },
+				data: { tags: { connect: [{ id: tag.id }] } } as unknown as { title?: string }
+			})).rejects.toThrow(UniqueConstraintError)
+		})
+
 		it('should support models with multiple indexed fields', async () => {
 			// This simulates a junction table pattern
 			const Enrollment = FlashcoreSystem.registerModel<{

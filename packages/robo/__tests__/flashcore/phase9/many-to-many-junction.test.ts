@@ -6,7 +6,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals'
-import { f, FlashcoreSystem, MemoryAdapter, JUNCTION_PREFIX } from '../../../src/flashcore/index.js'
+import {
+	f,
+	FlashcoreSystem,
+	MemoryAdapter,
+	JUNCTION_PREFIX,
+	getJunctionTableDef,
+	UniqueConstraintError
+} from '../../../src/flashcore/index.js'
 
 describe('Phase 9: Many-to-Many Junction Tables', () => {
 	beforeEach(async () => {
@@ -22,8 +29,8 @@ describe('Phase 9: Many-to-Many Junction Tables', () => {
 			expect(JUNCTION_PREFIX).toBe('_junction_')
 		})
 
-		it('should define manyToMany relation fields', async () => {
-			const Student = FlashcoreSystem.registerModel<{
+		it('should auto-register a junction model with compound unique', async () => {
+			FlashcoreSystem.registerModel<{
 				id: string
 				name: string
 			}>('Student', {
@@ -32,7 +39,7 @@ describe('Phase 9: Many-to-Many Junction Tables', () => {
 				courses: f.manyToMany('Course')
 			})
 
-			const Course = FlashcoreSystem.registerModel<{
+			FlashcoreSystem.registerModel<{
 				id: string
 				title: string
 			}>('Course', {
@@ -41,17 +48,23 @@ describe('Phase 9: Many-to-Many Junction Tables', () => {
 				students: f.manyToMany('Student')
 			})
 
-			// Models should be registered
-			const student = await Student.create({ name: 'Alice' })
-			const course = await Course.create({ title: 'Math 101' })
+			const junctionDef = getJunctionTableDef('Student', 'Course')
+			const junction = FlashcoreSystem.getModel(junctionDef.name) as {
+				schema: { compoundUniques: Array<{ fields: string[] }> }
+			} | undefined
 
-			expect(student).toBeDefined()
-			expect(course).toBeDefined()
+			expect(junction).toBeDefined()
+			expect(junctionDef.name.startsWith(JUNCTION_PREFIX)).toBe(true)
+			expect(junction?.schema.compoundUniques).toHaveLength(1)
+			expect(junction?.schema.compoundUniques[0].fields).toEqual([
+				junctionDef.foreignKeyA,
+				junctionDef.foreignKeyB
+			])
 		})
 	})
 
-	describe('Connect Operations', () => {
-		it('should connect many-to-many records', async () => {
+	describe('Connect / Disconnect / Set', () => {
+		it('should connect, disconnect, set, and disconnectAll', async () => {
 			const Tag = FlashcoreSystem.registerModel<{
 				id: string
 				name: string
@@ -75,51 +88,102 @@ describe('Phase 9: Many-to-Many Junction Tables', () => {
 			const tag2 = await Tag.create({ name: 'TypeScript' })
 			const post = await Post.create({ title: 'Learn JS' })
 
-			// Connect tags to post (implementation may vary based on API design)
-			// This test validates the schema definition works
-			expect(tag1).toBeDefined()
-			expect(tag2).toBeDefined()
-			expect(post).toBeDefined()
+			// Connect both tags
+			await Post.update({
+				where: { id: post.id },
+				data: {
+					tags: {
+						connect: [{ id: tag1.id }, { id: tag2.id }]
+					}
+				} as unknown as { title?: string }
+			})
+
+			const withBoth = await Post.findUnique(
+				{ where: { id: post.id }, include: { tags: true } }
+			) as unknown as { tags: Array<{ id: string }> } | null
+			expect(withBoth?.tags).toHaveLength(2)
+			expect((withBoth?.tags ?? []).map(t => t.id).sort()).toEqual([tag1.id, tag2.id].sort())
+
+			// Disconnect one
+			await Post.update({
+				where: { id: post.id },
+				data: {
+					tags: {
+						disconnect: [{ id: tag1.id }]
+					}
+				} as unknown as { title?: string }
+			})
+
+			const withOne = await Post.findUnique(
+				{ where: { id: post.id }, include: { tags: true } }
+			) as unknown as { tags: Array<{ id: string }> } | null
+			expect(withOne?.tags).toHaveLength(1)
+			expect(withOne?.tags?.[0].id).toBe(tag2.id)
+
+			// Set exact relations
+			await Post.update({
+				where: { id: post.id },
+				data: {
+					tags: {
+						set: [{ id: tag1.id }]
+					}
+				} as unknown as { title?: string }
+			})
+
+			const withSet = await Post.findUnique(
+				{ where: { id: post.id }, include: { tags: true } }
+			) as unknown as { tags: Array<{ id: string }> } | null
+			expect(withSet?.tags).toHaveLength(1)
+			expect(withSet?.tags?.[0].id).toBe(tag1.id)
+
+			// Disconnect all
+			await Post.update({
+				where: { id: post.id },
+				data: {
+					tags: {
+						disconnect: true
+					}
+				} as unknown as { title?: string }
+			})
+
+			const withNone = await Post.findUnique(
+				{ where: { id: post.id }, include: { tags: true } }
+			) as unknown as { tags: Array<{ id: string }> } | null
+			expect(withNone?.tags).toHaveLength(0)
 		})
 	})
 
-	describe('Disconnect Operations', () => {
-		it('should allow independent records to exist', async () => {
-			const Author = FlashcoreSystem.registerModel<{
-				id: string
-				name: string
-			}>('Author', {
+	describe('Duplicate Prevention', () => {
+		it('should enforce compound unique on junction relationships', async () => {
+			const Tag = FlashcoreSystem.registerModel<{ id: string; name: string }>('Tag', {
 				id: f.id(),
 				name: f.string(),
-				books: f.manyToMany('Book')
+				posts: f.manyToMany('Post')
 			})
 
-			const Book = FlashcoreSystem.registerModel<{
-				id: string
-				title: string
-			}>('Book', {
+			const Post = FlashcoreSystem.registerModel<{ id: string; title: string }>('Post', {
 				id: f.id(),
 				title: f.string(),
-				authors: f.manyToMany('Author')
+				tags: f.manyToMany('Tag')
 			})
 
-			// Create independent records
-			await Author.create({ name: 'Author 1' })
-			await Author.create({ name: 'Author 2' })
-			await Book.create({ title: 'Book 1' })
-			await Book.create({ title: 'Book 2' })
+			const tag = await Tag.create({ name: 'dup' })
+			const post = await Post.create({ title: 'dup post' })
 
-			// All records should exist independently
-			const authors = await Author.findMany()
-			const books = await Book.findMany()
+			await Post.update({
+				where: { id: post.id },
+				data: { tags: { connect: [{ id: tag.id }] } } as unknown as { title?: string }
+			})
 
-			expect(authors).toHaveLength(2)
-			expect(books).toHaveLength(2)
+			await expect(Post.update({
+				where: { id: post.id },
+				data: { tags: { connect: [{ id: tag.id }] } } as unknown as { title?: string }
+			})).rejects.toThrow(UniqueConstraintError)
 		})
 	})
 
 	describe('Cleanup on Delete', () => {
-		it('should handle deletion of records with manyToMany relations', async () => {
+		it('should remove junction entries when a record is deleted', async () => {
 			const Category = FlashcoreSystem.registerModel<{
 				id: string
 				name: string
@@ -142,6 +206,20 @@ describe('Phase 9: Many-to-Many Junction Tables', () => {
 			const category = await Category.create({ name: 'Electronics' })
 			const product = await Product.create({ name: 'Phone' })
 
+			// Connect
+			await Product.update({
+				where: { id: product.id },
+				data: { categories: { connect: [{ id: category.id }] } } as unknown as { name?: string }
+			})
+
+			const junctionDef = getJunctionTableDef('Category', 'Product')
+			const junction = FlashcoreSystem.getModel(junctionDef.name) as {
+				findMany: (args?: unknown) => Promise<Array<{ id: string }>>
+			} | undefined
+
+			expect(junction).toBeDefined()
+			expect(await junction!.findMany()).toHaveLength(1)
+
 			// Delete product
 			await Product.delete({ where: { id: product.id } })
 
@@ -152,6 +230,9 @@ describe('Phase 9: Many-to-Many Junction Tables', () => {
 			// Product should be deleted
 			const deletedProduct = await Product.findUnique({ where: { id: product.id } })
 			expect(deletedProduct).toBeNull()
+
+			// Junction entries should be cleaned up
+			expect(await junction!.findMany()).toHaveLength(0)
 		})
 
 		it('should not delete related records on manyToMany delete', async () => {
@@ -175,8 +256,14 @@ describe('Phase 9: Many-to-Many Junction Tables', () => {
 
 			// Create records
 			const artist = await Artist.create({ name: 'Band' })
-			await Song.create({ title: 'Song 1' })
-			await Song.create({ title: 'Song 2' })
+			const song1 = await Song.create({ title: 'Song 1' })
+			const song2 = await Song.create({ title: 'Song 2' })
+
+			// Connect songs to artist
+			await Artist.update({
+				where: { id: artist.id },
+				data: { songs: { connect: [{ id: song1.id }, { id: song2.id }] } } as unknown as { name?: string }
+			})
 
 			// Delete artist
 			await Artist.delete({ where: { id: artist.id } })
@@ -187,8 +274,56 @@ describe('Phase 9: Many-to-Many Junction Tables', () => {
 		})
 	})
 
+	describe('Non-ACID Adapter Fallback', () => {
+		it('should clean junction entries even when deleteMany is not supported', async () => {
+			// Override the default MemoryAdapter from beforeEach.
+			await FlashcoreSystem._reset()
+
+			const store = new Map<string, unknown>()
+			await FlashcoreSystem.init({
+				adapter: {
+					get: async (key: string) => store.get(key),
+					set: async (key: string, value: unknown) => { store.set(key, value); return true },
+					delete: async (key: string) => store.delete(key),
+					has: async (key: string) => store.has(key),
+					clear: async () => { store.clear() }
+				}
+			})
+
+			const A = FlashcoreSystem.registerModel<{ id: string; name: string }>('A', {
+				id: f.id(),
+				name: f.string(),
+				bs: f.manyToMany('B')
+			})
+
+			const B = FlashcoreSystem.registerModel<{ id: string; label: string }>('B', {
+				id: f.id(),
+				label: f.string(),
+				as: f.manyToMany('A')
+			})
+
+			const a = await A.create({ name: 'a' })
+			const b = await B.create({ label: 'b' })
+
+			await A.update({
+				where: { id: a.id },
+				data: { bs: { connect: [{ id: b.id }] } } as unknown as { name?: string }
+			})
+
+			const junctionDef = getJunctionTableDef('A', 'B')
+			const junction = FlashcoreSystem.getModel(junctionDef.name) as { findMany: (args?: unknown) => Promise<Array<{ id: string }>> } | undefined
+
+			expect(junction).toBeDefined()
+			expect(await junction!.findMany()).toHaveLength(1)
+
+			// Should not throw (falls back from deleteMany to per-record delete)
+			await A.delete({ where: { id: a.id } })
+			expect(await junction!.findMany()).toHaveLength(0)
+		})
+	})
+
 	describe('Query Through Junction', () => {
-		it('should support querying both sides of manyToMany', async () => {
+		it('should support querying through include on both sides', async () => {
 			const User = FlashcoreSystem.registerModel<{
 				id: string
 				username: string
@@ -208,31 +343,50 @@ describe('Phase 9: Many-to-Many Junction Tables', () => {
 			})
 
 			// Create users and groups
-			await User.create({ username: 'alice' })
+			const alice = await User.create({ username: 'alice' })
 			await User.create({ username: 'bob' })
-			await Group.create({ name: 'Admins' })
+			const admins = await Group.create({ name: 'Admins' })
 			await Group.create({ name: 'Users' })
 
-			// Query both sides
-			const users = await User.findMany()
-			const groups = await Group.findMany()
+			// Connect alice -> admins
+			await User.update({
+				where: { id: alice.id },
+				data: { groups: { connect: [{ id: admins.id }] } } as unknown as { username?: string }
+			})
 
-			expect(users).toHaveLength(2)
-			expect(groups).toHaveLength(2)
+			const userWithGroups = await User.findUnique(
+				{ where: { id: alice.id }, include: { groups: true } }
+			) as unknown as { groups: Array<{ id: string }> } | null
+			expect(userWithGroups?.groups).toHaveLength(1)
+			expect(userWithGroups?.groups?.[0].id).toBe(admins.id)
+
+			const groupWithMembers = await Group.findUnique(
+				{ where: { id: admins.id }, include: { members: true } }
+			) as unknown as { members: Array<{ id: string }> } | null
+			expect(groupWithMembers?.members).toHaveLength(1)
+			expect(groupWithMembers?.members?.[0].id).toBe(alice.id)
 		})
 	})
 
 	describe('Multiple ManyToMany Relations', () => {
-		it('should support multiple manyToMany relations on same model', async () => {
+		it('should support multiple manyToMany relations to different models', async () => {
 			const Person = FlashcoreSystem.registerModel<{
 				id: string
 				name: string
 			}>('Person', {
 				id: f.id(),
 				name: f.string(),
-				followedBy: f.manyToMany('Person'),
-				following: f.manyToMany('Person'),
+				teams: f.manyToMany('Team'),
 				likedPosts: f.manyToMany('BlogPost')
+			})
+
+			const Team = FlashcoreSystem.registerModel<{
+				id: string
+				name: string
+			}>('Team', {
+				id: f.id(),
+				name: f.string(),
+				members: f.manyToMany('Person')
 			})
 
 			const BlogPost = FlashcoreSystem.registerModel<{
@@ -248,10 +402,12 @@ describe('Phase 9: Many-to-Many Junction Tables', () => {
 			const person1 = await Person.create({ name: 'Alice' })
 			const person2 = await Person.create({ name: 'Bob' })
 			const post = await BlogPost.create({ content: 'Hello World' })
+			const team = await Team.create({ name: 'Builders' })
 
 			expect(person1).toBeDefined()
 			expect(person2).toBeDefined()
 			expect(post).toBeDefined()
+			expect(team).toBeDefined()
 
 			// Query should work
 			const people = await Person.findMany()

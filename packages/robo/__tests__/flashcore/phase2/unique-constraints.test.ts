@@ -195,6 +195,73 @@ describe('Unique Constraints', () => {
 		})
 	})
 
+	describe('update/delete by unique where', () => {
+		it('should update by unique field', async () => {
+			const User = FlashcoreSystem.registerModel<{ id: string; email: string; name: string }>('User', {
+				id: f.id(),
+				email: f.string().unique(),
+				name: f.string()
+			})
+
+			await User.create({ email: 'alice@example.com', name: 'Alice' })
+
+			const updated = await User.update({
+				where: { email: 'alice@example.com' },
+				data: { name: 'Alicia' }
+			})
+
+			expect(updated).not.toBeNull()
+			expect(updated?.name).toBe('Alicia')
+		})
+
+		it('should return null when updating by missing unique value', async () => {
+			const User = FlashcoreSystem.registerModel<{ id: string; email: string; name: string }>('User', {
+				id: f.id(),
+				email: f.string().unique(),
+				name: f.string()
+			})
+
+			await User.create({ email: 'alice@example.com', name: 'Alice' })
+
+			const updated = await User.update({
+				where: { email: 'missing@example.com' },
+				data: { name: 'Nope' }
+			})
+
+			expect(updated).toBeNull()
+		})
+
+		it('should delete by unique field and release constraint', async () => {
+			const User = FlashcoreSystem.registerModel<{ id: string; email: string; name: string }>('User', {
+				id: f.id(),
+				email: f.string().unique(),
+				name: f.string()
+			})
+
+			await User.create({ email: 'alice@example.com', name: 'Alice' })
+
+			const deleted = await User.delete({ where: { email: 'alice@example.com' } })
+			expect(deleted).not.toBeNull()
+
+			// Should be able to recreate with the same email
+			const recreated = await User.create({ email: 'alice@example.com', name: 'New Alice' })
+			expect(recreated.email).toBe('alice@example.com')
+		})
+
+		it('should return null when deleting by missing unique value', async () => {
+			const User = FlashcoreSystem.registerModel<{ id: string; email: string; name: string }>('User', {
+				id: f.id(),
+				email: f.string().unique(),
+				name: f.string()
+			})
+
+			await User.create({ email: 'alice@example.com', name: 'Alice' })
+
+			const deleted = await User.delete({ where: { email: 'missing@example.com' } })
+			expect(deleted).toBeNull()
+		})
+	})
+
 	describe('delete releases constraint', () => {
 		it('should release unique constraint on delete', async () => {
 			const User = FlashcoreSystem.registerModel<{ id: string; email: string; name: string }>('User', {

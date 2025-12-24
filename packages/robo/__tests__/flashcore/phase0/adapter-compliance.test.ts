@@ -9,8 +9,12 @@ import {
 	createMemoryAdapter,
 	KeyvAdapter,
 	createKeyvAdapter,
+	LegacyFileAdapter,
 	normalizeCapabilities
 } from '../../../src/flashcore/index.js'
+import fs from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 describe('MemoryAdapter', () => {
 	let adapter: MemoryAdapter
@@ -291,5 +295,69 @@ describe('KeyvAdapter', () => {
 		const mockKeyv = createMockKeyv()
 		const adapter = createKeyvAdapter(mockKeyv)
 		expect(adapter).toBeInstanceOf(KeyvAdapter)
+	})
+})
+
+describe('LegacyFileAdapter', () => {
+	let dir: string
+	let adapter: LegacyFileAdapter<string, unknown>
+
+	beforeEach(async () => {
+		dir = await fs.mkdtemp(join(tmpdir(), 'flashcore-legacy-'))
+		adapter = new LegacyFileAdapter({ dataDir: dir })
+		await adapter.init()
+	})
+
+	afterEach(async () => {
+		await fs.rm(dir, { recursive: true, force: true })
+	})
+
+	it('should get/set values', async () => {
+		await adapter.set('key1', 'value1')
+		expect(await adapter.get('key1')).toBe('value1')
+	})
+
+	it('should return undefined for missing keys', async () => {
+		expect(await adapter.get('missing')).toBeUndefined()
+	})
+
+	it('should return true for falsy values in has()', async () => {
+		await adapter.set('zero', 0)
+		await adapter.set('false', false)
+		await adapter.set('empty', '')
+		await adapter.set('null', null)
+
+		expect(await adapter.has('zero')).toBe(true)
+		expect(await adapter.has('false')).toBe(true)
+		expect(await adapter.has('empty')).toBe(true)
+		expect(await adapter.has('null')).toBe(true)
+
+		expect(await adapter.get('zero')).toBe(0)
+		expect(await adapter.get('false')).toBe(false)
+		expect(await adapter.get('empty')).toBe('')
+		expect(await adapter.get('null')).toBeNull()
+	})
+
+	it('should not leave temp files after set()', async () => {
+		await adapter.set('key', { ok: true })
+		const files = await fs.readdir(dir)
+		expect(files.some(f => f.includes('.tmp.'))).toBe(false)
+	})
+
+	it('should delete keys and return correct boolean', async () => {
+		await adapter.set('key', 'value')
+		expect(await adapter.delete('key')).toBe(true)
+		expect(await adapter.delete('key')).toBe(false)
+		expect(await adapter.get('key')).toBeUndefined()
+	})
+
+	it('should clear all data', async () => {
+		await adapter.set('key1', 'value1')
+		await adapter.set('key2', 'value2')
+
+		await adapter.clear()
+
+		expect(await adapter.has('key1')).toBe(false)
+		expect(await adapter.has('key2')).toBe(false)
 	})
 })
