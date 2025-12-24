@@ -3,12 +3,15 @@
  */
 
 import { AIMessage, HumanMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages'
-import type { AgentState, AgentStateUpdate } from '../state.js'
+import type { AgentState, AgentStateUpdate, TokenUsage } from '../state.js'
+import { DEFAULT_TOKEN_USAGE } from '../state.js'
 import type { ToolSchema } from '../../tools/types.js'
 import type { CodeAgentContext } from '../types.js'
 import { codeLogger } from '../../core/logger.js'
 import { ContextCompactor } from '../compaction/index.js'
 import { createSystemPromptEvent, createLlmMetaEvent, createTokenUsageEvent, createContextCompactedEvent } from '../events/debug-events.js'
+import { countContextTokens, countMessagesTokens } from '../token-counter.js'
+import { getModelContextLimit } from '../token-limits.js'
 
 /**
  * Creates the agent node
@@ -36,37 +39,80 @@ export function agentNode(context: CodeAgentContext) {
 
 		const { llm, toolRegistry, policy } = context
 
-		// Phase 5: Context compaction check
-		// If messages exceed threshold, compact for context but keep full history in state
+		// Get model context limit for token tracking
+		const modelContextLimit = policy.context?.modelContextLimit ?? getModelContextLimit(context.modelAlias)
+
+		// Get tool schemas for binding (only in execute mode) - needed for token counting
+		const toolSchemas: ToolSchema[] =
+			state.mode === 'execute' ? toolRegistry.getSchemas() : []
+
+		// Build system prompt for token counting (will rebuild after potential compaction)
+		const stateForPrompt = state.summary ? state : state
+		const systemPromptForCounting = buildSystemPrompt(stateForPrompt, context)
+
+		// Count current context tokens BEFORE compaction decision
+		const preCompactionTokens = countContextTokens(
+			systemPromptForCounting,
+			state.messages,
+			toolSchemas
+		)
+
+		codeLogger.debug('[Agent] Pre-compaction token count', {
+			systemPromptTokens: preCompactionTokens.systemPromptTokens,
+			messagesTokens: preCompactionTokens.messagesTokens,
+			toolSchemaTokens: preCompactionTokens.toolSchemaTokens,
+			totalTokens: preCompactionTokens.totalTokens,
+			modelLimit: modelContextLimit
+		})
+
+		// Context compaction check - token-based (preferred) or message-based (fallback)
 		let messagesForContext = state.messages
 		let newSummary: string | null = null
+		let compactionResult: { beforeTokens?: number; afterTokens?: number } | null = null
 
 		if (policy.context?.enableCompaction) {
-			const compactor = new ContextCompactor(policy.context)
+			const compactor = new ContextCompactor(policy.context, context.modelAlias)
 
-			if (compactor.shouldCompact(state)) {
-				codeLogger.debug('Compacting context', { messageCount: state.messages.length })
-				const result = compactor.compact(state)
+			// Check if compaction needed (token-based check with actual token count)
+			if (compactor.shouldCompact(state, preCompactionTokens.totalTokens)) {
+				codeLogger.debug('Token-based compaction triggered', {
+					currentTokens: preCompactionTokens.totalTokens,
+					threshold: compactor.getTokenThreshold(),
+					modelLimit: modelContextLimit
+				})
+
+				// Use token-aware compaction to reach target
+				const result = compactor.compactWithTokenTarget(state)
 
 				// Use compacted messages for LLM context
 				messagesForContext = result.trimmedMessages
 
-				// Store summary for future reference (includes previous summary)
+				// Store summary for future reference
 				newSummary = result.summary
+
+				// Store token info for debug event
+				compactionResult = {
+					beforeTokens: result.beforeTokens,
+					afterTokens: result.afterTokens
+				}
 
 				codeLogger.debug('Compaction complete', {
 					originalCount: state.messages.length,
 					compactedCount: result.trimmedMessages.length,
-					droppedCount: result.droppedCount
+					droppedCount: result.droppedCount,
+					beforeTokens: result.beforeTokens,
+					afterTokens: result.afterTokens
 				})
 
-				// Debug event: emit context compaction details
+				// Debug event: emit context compaction details with token info
 				if (context.debugMode) {
 					context.onEvent?.(createContextCompactedEvent(
 						result.droppedCount,
 						result.summary,
 						state.messages.length,
-						result.trimmedMessages.length
+						result.trimmedMessages.length,
+						result.beforeTokens,
+						result.afterTokens
 					))
 				}
 			}
@@ -74,12 +120,8 @@ export function agentNode(context: CodeAgentContext) {
 
 		// Build system prompt based on mode and context
 		// Note: If we have a new summary, create a modified state for prompt building
-		const stateForPrompt = newSummary ? { ...state, summary: newSummary } : state
-		const systemPrompt = buildSystemPrompt(stateForPrompt, context)
-
-		// Get tool schemas for binding (only in execute mode)
-		const toolSchemas: ToolSchema[] =
-			state.mode === 'execute' ? toolRegistry.getSchemas() : []
+		const finalStateForPrompt = newSummary ? { ...state, summary: newSummary } : state
+		const systemPrompt = buildSystemPrompt(finalStateForPrompt, context)
 
 		// Convert messages to LLM format (use compacted messages if available)
 		const llmMessages = convertMessages(messagesForContext)
@@ -127,6 +169,31 @@ export function agentNode(context: CodeAgentContext) {
 			durationMs: llmDurationMs
 		})
 
+		// Calculate cumulative token usage
+		const previousTokenUsage = state.tokenUsage ?? DEFAULT_TOKEN_USAGE
+		const newTokenUsage: TokenUsage = {
+			totalPromptTokens: previousTokenUsage.totalPromptTokens + (response.usage?.promptTokens ?? 0),
+			totalCompletionTokens: previousTokenUsage.totalCompletionTokens + (response.usage?.completionTokens ?? 0),
+			totalTokens: previousTokenUsage.totalTokens + (response.usage?.totalTokens ?? 0),
+			lastCallPromptTokens: response.usage?.promptTokens ?? 0,
+			lastCallCompletionTokens: response.usage?.completionTokens ?? 0,
+			peakContextTokens: Math.max(previousTokenUsage.peakContextTokens, preCompactionTokens.totalTokens)
+		}
+
+		codeLogger.debug('[Agent] Token usage updated', {
+			thisCall: {
+				prompt: response.usage?.promptTokens ?? 0,
+				completion: response.usage?.completionTokens ?? 0,
+				total: response.usage?.totalTokens ?? 0
+			},
+			cumulative: {
+				prompt: newTokenUsage.totalPromptTokens,
+				completion: newTokenUsage.totalCompletionTokens,
+				total: newTokenUsage.totalTokens,
+				peak: newTokenUsage.peakContextTokens
+			}
+		})
+
 		// Debug events: emit LLM metadata and token usage
 		if (context.debugMode) {
 			context.onEvent?.(createLlmMetaEvent(
@@ -140,7 +207,8 @@ export function agentNode(context: CodeAgentContext) {
 					response.usage.promptTokens ?? 0,
 					response.usage.completionTokens ?? 0,
 					response.usage.totalTokens ?? 0,
-					response.model ?? 'unknown'
+					response.model ?? 'unknown',
+					newTokenUsage
 				))
 			}
 		}
@@ -178,10 +246,17 @@ export function agentNode(context: CodeAgentContext) {
 			tool_calls: parsedToolCalls
 		})
 
+		// Calculate final context token count (after potential compaction)
+		const finalContextTokens = compactionResult
+			? (compactionResult.afterTokens ?? preCompactionTokens.totalTokens)
+			: preCompactionTokens.totalTokens
+
 		// Build state update
 		const stateUpdate: AgentStateUpdate = {
 			messages: [aiMessage],
-			phase: 'agent_done'
+			phase: 'agent_done',
+			tokenUsage: newTokenUsage,
+			currentContextTokens: finalContextTokens
 		}
 
 		// Include summary update if compaction occurred

@@ -291,6 +291,9 @@ importers:
       '@webcontainer/api':
         specifier: ^1.4.0
         version: 1.4.0
+      js-tiktoken:
+        specifier: ^1.0.18
+        version: 1.0.21
       uuid:
         specifier: ^11.1.0
         version: 11.1.0

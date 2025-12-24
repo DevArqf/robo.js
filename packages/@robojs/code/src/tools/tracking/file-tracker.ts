@@ -1,9 +1,12 @@
 /**
- * File read tracking for stale detection
+ * File read tracking for stale detection and content eviction
  *
  * Tracks file state (mtime, size) when files are read to detect
  * when files have changed before writes occur. This prevents the
  * LLM from writing outdated content to modified files.
+ *
+ * Also tracks turn numbers for recency-based content eviction,
+ * allowing old file contents to be summarized during compaction.
  */
 
 /**
@@ -34,6 +37,18 @@ export interface FileReadSnapshot {
 	 * Whether the file existed at read time
 	 */
 	exists: boolean
+
+	/**
+	 * Turn number when this file was read.
+	 * Used for recency-based content eviction.
+	 */
+	turnNumber?: number
+
+	/**
+	 * Size of content stored in context messages.
+	 * May differ from file size if truncated.
+	 */
+	contentSizeInMessage?: number
 }
 
 /**
@@ -92,10 +107,14 @@ export interface CurrentFileState {
 
 /**
  * Tracks file state from read operations to detect staleness on write
+ * and manage content recency for eviction.
  *
  * Usage:
  * ```typescript
  * const tracker = new FileReadTracker()
+ *
+ * // Increment turn at start of each agent cycle
+ * tracker.incrementTurn()
  *
  * // Record when a file is read
  * tracker.record({
@@ -103,8 +122,14 @@ export interface CurrentFileState {
  *   mtimeMs: 1234567890,
  *   size: 1000,
  *   readAt: Date.now(),
- *   exists: true
+ *   exists: true,
+ *   turnNumber: tracker.getTurn()
  * })
+ *
+ * // Check if file is still "active" (recently read)
+ * if (!tracker.isActive('/src/app.ts', 5)) {
+ *   // File content can be summarized - not accessed in last 5 turns
+ * }
  *
  * // Check before writing
  * if (tracker.hasRead('/src/app.ts')) {
@@ -118,18 +143,49 @@ export interface CurrentFileState {
  */
 export class FileReadTracker {
 	private snapshots = new Map<string, FileReadSnapshot>()
+	private currentTurn = 0
 
 	/**
-	 * Record a file read snapshot
+	 * Increment the turn counter.
+	 * Call this at the start of each agent→tools cycle.
 	 *
-	 * If a snapshot already exists for this path, it will be overwritten.
+	 * @returns The new turn number
 	 */
-	record(snapshot: FileReadSnapshot): void {
-		this.snapshots.set(snapshot.path, snapshot)
+	incrementTurn(): number {
+		return ++this.currentTurn
 	}
 
 	/**
-	 * Get the last read snapshot for a path
+	 * Get the current turn number.
+	 */
+	getTurn(): number {
+		return this.currentTurn
+	}
+
+	/**
+	 * Set the turn number (for restoring state).
+	 */
+	setTurn(turn: number): void {
+		this.currentTurn = turn
+	}
+
+	/**
+	 * Record a file read snapshot.
+	 *
+	 * If a snapshot already exists for this path, it will be overwritten.
+	 * Automatically sets turnNumber to current turn if not provided.
+	 */
+	record(snapshot: FileReadSnapshot): void {
+		// Auto-set turn number if not provided
+		const snapshotWithTurn: FileReadSnapshot = {
+			...snapshot,
+			turnNumber: snapshot.turnNumber ?? this.currentTurn
+		}
+		this.snapshots.set(snapshot.path, snapshotWithTurn)
+	}
+
+	/**
+	 * Get the last read snapshot for a path.
 	 *
 	 * @returns The snapshot, or undefined if the path was never read
 	 */
@@ -138,14 +194,69 @@ export class FileReadTracker {
 	}
 
 	/**
-	 * Check if a file has been read (has a snapshot)
+	 * Check if a file has been read (has a snapshot).
 	 */
 	hasRead(path: string): boolean {
 		return this.snapshots.has(path)
 	}
 
 	/**
-	 * Clear tracking for a specific path
+	 * Check if a file is "active" (recently accessed).
+	 *
+	 * A file is active if it was read within the last N turns.
+	 * Active files should keep their full content in context.
+	 * Inactive files can have their content summarized during compaction.
+	 *
+	 * @param path - File path to check
+	 * @param recencyThreshold - Number of turns to consider "recent" (default: 5)
+	 * @returns true if the file is active (recently accessed)
+	 */
+	isActive(path: string, recencyThreshold: number = 5): boolean {
+		const snapshot = this.snapshots.get(path)
+		if (!snapshot || snapshot.turnNumber === undefined) {
+			return false
+		}
+		return (this.currentTurn - snapshot.turnNumber) <= recencyThreshold
+	}
+
+	/**
+	 * Get all files that are no longer active (can be evicted/summarized).
+	 *
+	 * @param recencyThreshold - Number of turns to consider "recent"
+	 * @returns Array of snapshots for inactive files
+	 */
+	getInactiveFiles(recencyThreshold: number = 5): FileReadSnapshot[] {
+		const inactive: FileReadSnapshot[] = []
+		for (const snapshot of this.snapshots.values()) {
+			if (snapshot.turnNumber !== undefined) {
+				if ((this.currentTurn - snapshot.turnNumber) > recencyThreshold) {
+					inactive.push(snapshot)
+				}
+			}
+		}
+		return inactive
+	}
+
+	/**
+	 * Get all files that are still active.
+	 *
+	 * @param recencyThreshold - Number of turns to consider "recent"
+	 * @returns Array of snapshots for active files
+	 */
+	getActiveFiles(recencyThreshold: number = 5): FileReadSnapshot[] {
+		const active: FileReadSnapshot[] = []
+		for (const snapshot of this.snapshots.values()) {
+			if (snapshot.turnNumber !== undefined) {
+				if ((this.currentTurn - snapshot.turnNumber) <= recencyThreshold) {
+					active.push(snapshot)
+				}
+			}
+		}
+		return active
+	}
+
+	/**
+	 * Clear tracking for a specific path.
 	 *
 	 * Call this after a successful write to reset the baseline.
 	 */
@@ -154,24 +265,32 @@ export class FileReadTracker {
 	}
 
 	/**
-	 * Clear all tracking data
+	 * Clear all tracking data.
 	 */
 	clearAll(): void {
 		this.snapshots.clear()
+		this.currentTurn = 0
 	}
 
 	/**
-	 * Get the number of tracked files
+	 * Get the number of tracked files.
 	 */
 	get size(): number {
 		return this.snapshots.size
 	}
 
 	/**
-	 * Get all tracked paths
+	 * Get all tracked paths.
 	 */
 	getPaths(): string[] {
 		return Array.from(this.snapshots.keys())
+	}
+
+	/**
+	 * Get all tracked snapshots.
+	 */
+	getAll(): FileReadSnapshot[] {
+		return Array.from(this.snapshots.values())
 	}
 }
 

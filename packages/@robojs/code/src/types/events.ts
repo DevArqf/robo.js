@@ -179,20 +179,34 @@ export type DebugEvent =
 	// State field changes with before/after
 	| { type: 'debug_state_update'; field: string; oldValue: unknown; newValue: unknown; timestamp: number }
 
-	// Context compaction happened
+	// Context compaction happened (with optional token info)
 	| {
 			type: 'debug_context_compacted'
 			droppedCount: number
 			summary: string
 			beforeMessageCount: number
 			afterMessageCount: number
+			beforeTokens?: number
+			afterTokens?: number
 	  }
 
 	// Graph routing decision
 	| { type: 'debug_decision'; node: string; decision: string; reason: string }
 
-	// Token usage tracking
-	| { type: 'debug_token_usage'; promptTokens: number; completionTokens: number; totalTokens: number; model: string }
+	// Token usage tracking (with optional cumulative data)
+	| {
+			type: 'debug_token_usage'
+			promptTokens: number
+			completionTokens: number
+			totalTokens: number
+			model: string
+			cumulative?: {
+				totalPromptTokens: number
+				totalCompletionTokens: number
+				totalTokens: number
+				peakContextTokens: number
+			}
+	  }
 
 	// LLM response metadata
 	| { type: 'debug_llm_meta'; model: string; finishReason: string; temperature?: number; durationMs: number }

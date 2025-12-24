@@ -60,24 +60,91 @@ export interface NetworkPolicy {
  */
 export interface ContextPolicy {
 	/**
-	 * Whether to enable automatic context compaction
+	 * Whether to enable automatic context compaction.
+	 * Default: true (enabled for safety)
 	 */
 	enableCompaction: boolean
 
 	/**
-	 * Maximum messages before triggering compaction
+	 * Maximum messages before triggering compaction.
+	 * Used as fallback when token-based compaction isn't available.
+	 * @deprecated Prefer token-based compaction via modelContextLimit
 	 */
 	maxMessagesBeforeCompaction: number
 
 	/**
-	 * Number of recent messages to always keep
+	 * Number of recent messages/turns to always keep.
+	 * Used as minimum preservation during compaction.
 	 */
 	keepLastMessages: number
 
 	/**
-	 * Maximum characters for the compaction summary
+	 * Maximum characters for the compaction summary.
 	 */
 	maxSummaryChars: number
+
+	// === Token-based compaction settings ===
+
+	/**
+	 * Context limit in tokens for the model being used.
+	 * Common values: 200000 (Claude), 128000 (GPT-4).
+	 * If not set, falls back to message-based compaction.
+	 */
+	modelContextLimit?: number
+
+	/**
+	 * Percentage of modelContextLimit at which to trigger compaction.
+	 * Default: 0.70 (70%)
+	 * Range: 0.5 - 0.95
+	 */
+	tokenThresholdPercent?: number
+
+	/**
+	 * Tokens reserved for completion output.
+	 * Subtracted from available context.
+	 * Default: 8192
+	 */
+	reservedOutputTokens?: number
+
+	/**
+	 * Minimum tokens to keep after compaction.
+	 * Ensures we don't over-compact.
+	 * Default: 10000
+	 */
+	minTokensAfterCompaction?: number
+}
+
+/**
+ * File read policy for content size management.
+ *
+ * Controls how file reads are handled to prevent context overflow.
+ */
+export interface FileReadPolicy {
+	/**
+	 * Maximum bytes to return from a single fs_read call.
+	 * Files larger than this will be truncated with guidance to use fs_read_range.
+	 * Default: 65536 (64KB)
+	 */
+	maxReadBytes?: number
+
+	/**
+	 * Number of turns after which file content becomes eligible for summarization.
+	 * Default: 5
+	 */
+	contentRecencyTurns?: number
+
+	/**
+	 * Maximum characters for a file summary.
+	 * Default: 500
+	 */
+	maxSummaryChars?: number
+
+	/**
+	 * Whether to auto-summarize large files on read.
+	 * If true, files > maxReadBytes return outline + head instead of truncated content.
+	 * Default: false
+	 */
+	autoSummarizeLargeFiles?: boolean
 }
 
 /**
@@ -152,6 +219,11 @@ export interface AgentPolicy {
 	 * Context compaction policy
 	 */
 	context?: ContextPolicy
+
+	/**
+	 * File read policy for content size management
+	 */
+	fileEviction?: FileReadPolicy
 }
 
 /**
@@ -175,5 +247,23 @@ export const DEFAULT_POLICY: Partial<AgentPolicy> = {
 			{ command: 'npx' },
 			{ command: 'npm', argsPrefix: ['run'] }
 		]
+	},
+	// Token-based context compaction (enabled by default for safety)
+	context: {
+		enableCompaction: true,
+		maxMessagesBeforeCompaction: 50, // Fallback only
+		keepLastMessages: 10,
+		maxSummaryChars: 2000,
+		modelContextLimit: 200000, // Claude default
+		tokenThresholdPercent: 0.7, // Trigger at 70%
+		reservedOutputTokens: 8192,
+		minTokensAfterCompaction: 10000
+	},
+	// File content size management
+	fileEviction: {
+		maxReadBytes: 65536, // 64KB - truncate larger files
+		contentRecencyTurns: 5,
+		maxSummaryChars: 500,
+		autoSummarizeLargeFiles: false // Truncate with guidance
 	}
 }

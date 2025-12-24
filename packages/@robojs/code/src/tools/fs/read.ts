@@ -18,12 +18,29 @@ export const fsReadSchema = z.object({
 export type FsReadInput = z.infer<typeof fsReadSchema>
 
 /**
+ * Default max read bytes (64KB)
+ */
+const DEFAULT_MAX_READ_BYTES = 65536
+
+/**
  * Output type for fs_read
  */
 export interface FsReadOutput {
 	path: string
 	content: string
 	size: number
+	/**
+	 * Total file size in bytes (may differ from size if truncated)
+	 */
+	totalSize?: number
+	/**
+	 * Whether the content was truncated due to size limits
+	 */
+	truncated?: boolean
+	/**
+	 * Guidance for accessing full content if truncated
+	 */
+	truncationNote?: string
 }
 
 /**
@@ -46,35 +63,67 @@ export const fsReadTool: ToolDefinition<FsReadInput, FsReadOutput> = {
 			})
 		}
 
+		// Get max read bytes from policy (default 64KB)
+		const maxReadBytes = context.policy.fileEviction?.maxReadBytes ?? DEFAULT_MAX_READ_BYTES
+
 		try {
-			// Get file stat for stale detection tracking
+			// Get file stat for size check and stale detection
 			let mtimeMs: number | null = null
+			let totalSize: number | null = null
 			try {
 				const stat = await context.provider.stat(path)
 				mtimeMs = stat.mtimeMs ?? null
+				totalSize = stat.size ?? null
 			} catch {
 				// Stat failed but file might still be readable
 			}
 
 			const content = await context.provider.readFile(path)
-			const size = new TextEncoder().encode(content).length
+			const contentBytes = new TextEncoder().encode(content)
+			const actualSize = contentBytes.length
+
+			// Check if truncation is needed
+			let finalContent = content
+			let finalSize = actualSize
+			let truncated = false
+			let truncationNote: string | undefined
+
+			if (actualSize > maxReadBytes) {
+				// Truncate to maxReadBytes
+				const truncatedBytes = contentBytes.slice(0, maxReadBytes)
+				finalContent = new TextDecoder().decode(truncatedBytes)
+				finalSize = maxReadBytes
+				truncated = true
+				truncationNote = `File is ${actualSize} bytes (${Math.round(actualSize / 1024)}KB). ` +
+					`Showing first ${maxReadBytes} bytes (${Math.round(maxReadBytes / 1024)}KB). ` +
+					`Use fs_read_range to read specific sections, or fs_read_head/fs_read_tail for previews.`
+			}
 
 			// Record read snapshot for stale detection
 			if (context.fileTracker) {
 				context.fileTracker.record({
 					path,
 					mtimeMs,
-					size,
+					size: actualSize,
 					readAt: Date.now(),
 					exists: true
 				})
 			}
 
-			return successResult({
+			// Build result
+			const result: FsReadOutput = {
 				path,
-				content,
-				size
-			})
+				content: finalContent,
+				size: finalSize
+			}
+
+			if (truncated) {
+				result.totalSize = actualSize
+				result.truncated = true
+				result.truncationNote = truncationNote
+			}
+
+			return successResult(result)
 		} catch (error) {
 			// Record non-existence for stale detection (file not found)
 			if (context.fileTracker) {

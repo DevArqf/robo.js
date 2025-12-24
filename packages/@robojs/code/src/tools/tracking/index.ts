@@ -1,5 +1,5 @@
 /**
- * File tracking module for stale detection
+ * File tracking module for stale detection and content eviction
  */
 
 export {
@@ -10,3 +10,10 @@ export {
 	type StaleReason,
 	type CurrentFileState
 } from './file-tracker.js'
+
+export {
+	FileSummarizer,
+	createFileSummarizer,
+	type FileSummary,
+	type OutlineSymbol
+} from './file-summarizer.js'

@@ -6,6 +6,7 @@
  */
 
 import type { DebugEvent } from '../../types/events.js'
+import type { TokenUsage } from '../state.js'
 
 /**
  * Create a tool timing debug event
@@ -38,15 +39,36 @@ export function createLlmMetaEvent(
 }
 
 /**
- * Create a token usage debug event
+ * Create a token usage debug event with optional cumulative data
  */
 export function createTokenUsageEvent(
 	promptTokens: number,
 	completionTokens: number,
 	totalTokens: number,
-	model: string
+	model: string,
+	cumulative?: TokenUsage
 ): DebugEvent {
-	return { type: 'debug_token_usage', promptTokens, completionTokens, totalTokens, model }
+	const event: DebugEvent = {
+		type: 'debug_token_usage',
+		promptTokens,
+		completionTokens,
+		totalTokens,
+		model
+	}
+
+	if (cumulative) {
+		return {
+			...event,
+			cumulative: {
+				totalPromptTokens: cumulative.totalPromptTokens,
+				totalCompletionTokens: cumulative.totalCompletionTokens,
+				totalTokens: cumulative.totalTokens,
+				peakContextTokens: cumulative.peakContextTokens
+			}
+		}
+	}
+
+	return event
 }
 
 /**
@@ -69,15 +91,25 @@ export function createVerificationDetailEvent(
 }
 
 /**
- * Create a context compaction debug event
+ * Create a context compaction debug event with optional token info
  */
 export function createContextCompactedEvent(
 	droppedCount: number,
 	summary: string,
 	beforeMessageCount: number,
-	afterMessageCount: number
+	afterMessageCount: number,
+	beforeTokens?: number,
+	afterTokens?: number
 ): DebugEvent {
-	return { type: 'debug_context_compacted', droppedCount, summary, beforeMessageCount, afterMessageCount }
+	return {
+		type: 'debug_context_compacted',
+		droppedCount,
+		summary,
+		beforeMessageCount,
+		afterMessageCount,
+		beforeTokens,
+		afterTokens
+	}
 }
 
 /**

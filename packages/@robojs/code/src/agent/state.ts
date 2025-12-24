@@ -14,6 +14,53 @@ import type { ProjectIndex, ProjectOverview } from '../types/scale.js'
 import type { FileChange, FileDiff } from '../types/changes.js'
 
 /**
+ * Token usage tracking for budget management
+ */
+export interface TokenUsage {
+	/**
+	 * Total prompt tokens consumed across all LLM calls
+	 */
+	totalPromptTokens: number
+
+	/**
+	 * Total completion tokens consumed across all LLM calls
+	 */
+	totalCompletionTokens: number
+
+	/**
+	 * Total tokens (prompt + completion) across all LLM calls
+	 */
+	totalTokens: number
+
+	/**
+	 * Prompt tokens from the last LLM call
+	 */
+	lastCallPromptTokens: number
+
+	/**
+	 * Completion tokens from the last LLM call
+	 */
+	lastCallCompletionTokens: number
+
+	/**
+	 * Peak context tokens seen during the run (for monitoring)
+	 */
+	peakContextTokens: number
+}
+
+/**
+ * Default token usage values
+ */
+export const DEFAULT_TOKEN_USAGE: TokenUsage = {
+	totalPromptTokens: 0,
+	totalCompletionTokens: 0,
+	totalTokens: 0,
+	lastCallPromptTokens: 0,
+	lastCallCompletionTokens: 0,
+	peakContextTokens: 0
+}
+
+/**
  * Pending question state for Question Gate interrupt
  */
 export interface PendingQuestion {
@@ -222,6 +269,26 @@ export const AgentStateAnnotation = Annotation.Root({
 	summary: Annotation<string | null>({
 		reducer: replaceReducer,
 		default: () => null
+	}),
+
+	// === Token budget tracking ===
+
+	/**
+	 * Cumulative token usage across the run.
+	 * Updated after each LLM call with response.usage values.
+	 */
+	tokenUsage: Annotation<TokenUsage>({
+		reducer: replaceReducer,
+		default: () => DEFAULT_TOKEN_USAGE
+	}),
+
+	/**
+	 * Current context tokens (messages + system prompt + tools).
+	 * Updated before each LLM call using actual token counting.
+	 */
+	currentContextTokens: Annotation<number>({
+		reducer: replaceReducer,
+		default: () => 0
 	}),
 
 	// === Approval state ===

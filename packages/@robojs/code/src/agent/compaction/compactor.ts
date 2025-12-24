@@ -7,12 +7,18 @@
  * - Never drops structured fields (plan, profile, verification, projectOverview, acceptance)
  * - Never drops incomplete tool-call turns (AIMessage with tool_calls + all ToolMessages)
  * - Summary includes: goals, decisions, changed files, last verification status
+ *
+ * Supports both:
+ * - Token-based compaction (preferred): Triggers at % of model context limit
+ * - Message-based compaction (fallback): Triggers at message count threshold
  */
 
 import { AIMessage, ToolMessage, HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages'
 import type { AgentState } from '../state.js'
 import type { ContextPolicy } from '../../types/policy.js'
 import { codeLogger } from '../../core/logger.js'
+import { countMessageTokens } from '../token-counter.js'
+import { getModelContextLimit, calculateTokenThreshold, calculateTargetAfterCompaction, DEFAULT_TOKEN_POLICY } from '../token-limits.js'
 
 /**
  * Result of a compaction operation
@@ -32,6 +38,16 @@ export interface CompactionResult {
 	 * Number of messages dropped
 	 */
 	droppedCount: number
+
+	/**
+	 * Token count before compaction (if token-based)
+	 */
+	beforeTokens?: number
+
+	/**
+	 * Token count after compaction (if token-based)
+	 */
+	afterTokens?: number
 }
 
 /**
@@ -47,10 +63,14 @@ interface MessageTurn {
  * Default compaction policy values
  */
 const DEFAULT_COMPACTION_POLICY: ContextPolicy = {
-	enableCompaction: false,
+	enableCompaction: true, // Enabled by default for safety
 	maxMessagesBeforeCompaction: 50,
 	keepLastMessages: 10,
-	maxSummaryChars: 2000
+	maxSummaryChars: 2000,
+	modelContextLimit: 200000, // Claude default
+	tokenThresholdPercent: 0.7,
+	reservedOutputTokens: 8192,
+	minTokensAfterCompaction: 10000
 }
 
 /**
@@ -63,22 +83,91 @@ const DEFAULT_COMPACTION_POLICY: ContextPolicy = {
  * 4. Never split a turn in the middle
  * 5. Keep the last N turns as specified by policy
  * 6. Summarize dropped turns into a structured summary
+ *
+ * Token-based compaction (preferred):
+ * - Triggers at % of model context limit
+ * - Compacts to target % to give headroom
  */
 export class ContextCompactor {
 	private readonly policy: ContextPolicy
+	private readonly modelContextLimit: number
 
-	constructor(policy?: Partial<ContextPolicy>) {
+	constructor(policy?: Partial<ContextPolicy>, modelId?: string) {
 		this.policy = { ...DEFAULT_COMPACTION_POLICY, ...policy }
+		// Use policy limit if provided, otherwise detect from model ID
+		this.modelContextLimit = this.policy.modelContextLimit ?? getModelContextLimit(modelId)
 	}
 
 	/**
-	 * Check if compaction is needed based on message count
+	 * Check if compaction is needed.
+	 *
+	 * Priority:
+	 * 1. Token-based check (if currentTokens provided or modelContextLimit configured)
+	 * 2. Fallback to message count check
 	 */
-	shouldCompact(state: AgentState): boolean {
+	shouldCompact(state: AgentState, currentTokens?: number): boolean {
 		if (!this.policy.enableCompaction) {
 			return false
 		}
+
+		// Token-based check (preferred)
+		if (this.modelContextLimit > 0) {
+			const threshold = this.getTokenThreshold()
+			const tokens = currentTokens ?? this.countMessagesTokens(state.messages)
+
+			if (tokens >= threshold) {
+				codeLogger.debug('Token-based compaction triggered', {
+					currentTokens: tokens,
+					threshold,
+					modelLimit: this.modelContextLimit
+				})
+				return true
+			}
+		}
+
+		// Fallback to message count
 		return state.messages.length > this.policy.maxMessagesBeforeCompaction
+	}
+
+	/**
+	 * Get the token threshold for triggering compaction.
+	 */
+	getTokenThreshold(): number {
+		return calculateTokenThreshold(
+			this.modelContextLimit,
+			this.policy.tokenThresholdPercent ?? DEFAULT_TOKEN_POLICY.tokenThresholdPercent,
+			this.policy.reservedOutputTokens ?? DEFAULT_TOKEN_POLICY.reservedOutputTokens
+		)
+	}
+
+	/**
+	 * Get the target token count after compaction.
+	 */
+	getTargetTokensAfterCompaction(): number {
+		return calculateTargetAfterCompaction(
+			this.modelContextLimit,
+			DEFAULT_TOKEN_POLICY.targetAfterCompactionPercent,
+			this.policy.reservedOutputTokens ?? DEFAULT_TOKEN_POLICY.reservedOutputTokens,
+			this.policy.minTokensAfterCompaction ?? DEFAULT_TOKEN_POLICY.minTokensAfterCompaction
+		)
+	}
+
+	/**
+	 * Get the model context limit being used.
+	 */
+	getModelContextLimit(): number {
+		return this.modelContextLimit
+	}
+
+	/**
+	 * Count tokens in messages array.
+	 */
+	private countMessagesTokens(messages: BaseMessage[]): number {
+		let total = 0
+		for (const msg of messages) {
+			total += countMessageTokens(msg)
+		}
+		return total
 	}
 
 	/**
@@ -92,6 +181,9 @@ export class ContextCompactor {
 	compact(state: AgentState): CompactionResult {
 		const { messages } = state
 		const keepCount = this.policy.keepLastMessages
+
+		// Calculate tokens before compaction
+		const beforeTokens = this.countMessagesTokens(messages)
 
 		codeLogger.debug(`Compacting messages: ${messages.length} -> keep last ${keepCount} turns`)
 
@@ -109,15 +201,99 @@ export class ContextCompactor {
 		// Count dropped messages
 		const droppedCount = dropTurns.reduce((sum, t) => sum + t.messages.length, 0)
 
+		// Calculate tokens after compaction
+		const afterTokens = this.countMessagesTokens(trimmedMessages)
+
 		// Generate summary from dropped turns and state
 		const summary = this.generateSummary(state, dropTurns)
 
-		codeLogger.debug(`Compaction complete: dropped ${droppedCount} messages, ${dropTurns.length} turns`)
+		codeLogger.debug(`Compaction complete: dropped ${droppedCount} messages, ${dropTurns.length} turns`, {
+			beforeTokens,
+			afterTokens,
+			tokensSaved: beforeTokens - afterTokens
+		})
 
 		return {
 			summary,
 			trimmedMessages,
-			droppedCount
+			droppedCount,
+			beforeTokens,
+			afterTokens
+		}
+	}
+
+	/**
+	 * Perform token-aware compaction to reach a target token count.
+	 *
+	 * Drops turns from the beginning until the total is under the target,
+	 * while respecting keepLastMessages as a minimum.
+	 */
+	compactWithTokenTarget(state: AgentState, targetTokens?: number): CompactionResult {
+		const { messages } = state
+		const target = targetTokens ?? this.getTargetTokensAfterCompaction()
+		const minKeepTurns = this.policy.keepLastMessages
+
+		// Calculate tokens before compaction
+		const beforeTokens = this.countMessagesTokens(messages)
+
+		codeLogger.debug(`Token-aware compaction: ${beforeTokens} tokens -> target ${target}`)
+
+		// Group messages into turns
+		const turns = this.groupMessagesIntoTurns(messages)
+
+		// Calculate tokens per turn
+		const turnTokens: Array<{ turn: MessageTurn; tokens: number }> = turns.map(turn => ({
+			turn,
+			tokens: turn.messages.reduce((sum, msg) => sum + countMessageTokens(msg), 0)
+		}))
+
+		// Keep turns from the end until we hit the target or minimum
+		let keptTokens = 0
+		let keepIndex = turnTokens.length
+
+		for (let i = turnTokens.length - 1; i >= 0; i--) {
+			const turnInfo = turnTokens[i]
+
+			// Always keep minimum turns
+			if (turnTokens.length - i <= minKeepTurns) {
+				keptTokens += turnInfo.tokens
+				keepIndex = i
+				continue
+			}
+
+			// Check if adding this turn would exceed target
+			if (keptTokens + turnInfo.tokens > target) {
+				break
+			}
+
+			keptTokens += turnInfo.tokens
+			keepIndex = i
+		}
+
+		const keepTurns = turns.slice(keepIndex)
+		const dropTurns = turns.slice(0, keepIndex)
+
+		const trimmedMessages = keepTurns.flatMap(t => t.messages)
+		const droppedCount = dropTurns.reduce((sum, t) => sum + t.messages.length, 0)
+		const afterTokens = keptTokens
+
+		const summary = this.generateSummary(state, dropTurns)
+
+		codeLogger.debug(`Token-aware compaction complete`, {
+			droppedMessages: droppedCount,
+			droppedTurns: dropTurns.length,
+			beforeTokens,
+			afterTokens,
+			targetTokens: target,
+			tokensSaved: beforeTokens - afterTokens
+		})
+
+		return {
+			summary,
+			trimmedMessages,
+			droppedCount,
+			beforeTokens,
+			afterTokens
 		}
 	}
 

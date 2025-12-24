@@ -567,8 +567,13 @@ export class CodeAgent {
 
 		if (request.approval) {
 			// Resuming from approval
+			// IMPORTANT: Only set the approval, do NOT clear awaitingApproval here!
+			// The approval_gate node needs awaitingApproval=true to:
+			// 1. Detect that approval was granted
+			// 2. Add the ToolMessage for apply_changes
+			// 3. Clear awaitingApproval after processing
+			// If we clear it here, routeAfterTools skips approval_gate entirely
 			stateUpdate.approved = request.approval
-			stateUpdate.awaitingApproval = false
 		}
 
 		if (request.answer) {

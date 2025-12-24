@@ -109,6 +109,7 @@
 		"@ai-sdk/mcp": "^1.0.1",
 		"@langchain/core": "^1.0.1",
 		"@langchain/langgraph": "^1.0.7",
+		"js-tiktoken": "^1.0.18",
 		"uuid": "^11.1.0",
 		"zod": "^3.25.32",
 		"zod-to-json-schema": "^3.25.0"
