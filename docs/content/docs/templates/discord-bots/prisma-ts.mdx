@@ -1,0 +1,73 @@
+---
+title: "Prisma"
+description: A Discord bot template using Prisma ORM for data persistence.
+---
+
+# Prisma
+
+A bot using **Prisma ORM** and TypeScript for type-safe database access.
+
+<Cards>
+  <Card href="https://www.prisma.io/" title="Prisma" description="Next-generation ORM." />
+  <Card href="/docs/discord-bots" title="Documentation" description="Getting started with Robo.js" />
+</Cards>
+
+## Getting Started
+
+Create a project with this template:
+
+```package-install
+npx create-robo <project-name> --template discord-bots/prisma-ts
+```
+
+Then navigate into your project directory:
+
+```bash
+cd <project-name>
+```
+
+Configure database connection in `.env`:
+
+```bash
+DATABASE_URL="postgresql://user:password@localhost:5432/mybot"
+```
+
+Run migrations:
+
+```bash
+npx prisma migrate dev
+```
+
+Run development mode:
+
+```bash
+npm run dev
+```
+
+## Features
+
+- Prisma ORM integration
+- Type-safe database queries
+- Auto-generated client
+- Database migrations
+
+## Schema Example
+
+```prisma title="prisma/schema.prisma"
+model User {
+  id        String   @id
+  balance   Int      @default(0)
+  createdAt DateTime @default(now())
+}
+```
+
+## Hosting
+
+```bash
+npm run deploy
+```
+
+<Cards>
+  <Card href="/docs/hosting/roboplay" title="RoboPlay" description="Deploy with as little as one command." />
+  <Card href="https://github.com/Wave-Play/robo.js/tree/main/templates/discord-bots/prisma-ts" title="GitHub Repository" description="Explore source code on GitHub." />
+</Cards>

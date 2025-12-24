@@ -1,7 +1,7 @@
 import { loader } from "fumadocs-core/source"
-import { createMDXSource } from "fumadocs-mdx"
-import { createElement } from "react"
+import { createElement, type ComponentType } from "react"
 import { directory, docs } from "@/.source"
+import { toFumadocsSource } from "fumadocs-mdx/runtime/server"
 import * as icons from "@/components/ui/icons"
 
 // `loader()` also assign a URL to your pages
@@ -14,11 +14,16 @@ export const source = loader({
       return
     }
 
-    if (icon in icons) return createElement(icons[icon as keyof typeof icons])
+    if (icon in icons) {
+      const IconComponent = icons[icon as keyof typeof icons] as ComponentType
+      return createElement(IconComponent)
+    }
   },
 })
 
+// directory is a doc collection (array), not a docs collection
+// Use standalone toFumadocsSource with empty metas
 export const directorySource = loader({
   baseUrl: "/directory",
-  source: createMDXSource(directory),
+  source: toFumadocsSource(directory, []),
 })

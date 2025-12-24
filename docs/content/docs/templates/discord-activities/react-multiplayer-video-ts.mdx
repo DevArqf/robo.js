@@ -1,0 +1,55 @@
+---
+title: "Multiplayer Video"
+description: A Discord Activity template for synchronized video watching.
+---
+
+# Multiplayer Video
+
+Control a video player with friends using React. Everyone in the activity sees the same playback state.
+
+<Cards>
+  <Card href="/docs/discord-activities" title="Documentation" description="Getting started with Robo.js" />
+  <Card href="/docs/plugins/sync" title="@robojs/sync" description="Real-time state synchronization." />
+</Cards>
+
+## Getting Started
+
+Create a project with this template:
+
+```package-install
+npx create-robo <project-name> --template discord-activities/react-multiplayer-video-ts
+```
+
+Then navigate into your project directory:
+
+```bash
+cd <project-name>
+```
+
+Run development mode:
+
+```bash
+npm run dev
+```
+
+## Features
+
+- Synchronized video playback
+- Play/pause/seek controls
+- Real-time state sync across all participants
+- TypeScript support
+
+## How It Works
+
+The template uses **[@robojs/sync](/docs/plugins/sync)** to synchronize video state across all connected clients. When anyone interacts with the video controls, all participants see the same change.
+
+## Hosting
+
+```bash
+npm run deploy
+```
+
+<Cards>
+  <Card href="/docs/hosting/roboplay" title="RoboPlay" description="Deploy with as little as one command." />
+  <Card href="https://github.com/Wave-Play/robo.js/tree/main/templates/discord-activities/react-multiplayer-video-ts" title="GitHub Repository" description="Explore source code on GitHub." />
+</Cards>

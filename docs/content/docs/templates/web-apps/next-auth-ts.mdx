@@ -1,0 +1,63 @@
+---
+title: "Next.js + Auth"
+description: A Next.js template with authentication using @robojs/auth and Prisma.
+---
+
+# Next.js + Auth
+
+Next.js with **[@robojs/auth](/docs/plugins/auth)** and Prisma for authentication.
+
+<Cards>
+  <Card href="/docs/plugins/auth" title="@robojs/auth" description="Authentication plugin." />
+  <Card href="https://www.prisma.io/" title="Prisma" description="Database ORM." />
+</Cards>
+
+## Getting Started
+
+Create a project with this template:
+
+```package-install
+npx create-robo <project-name> --template web-apps/next-auth-ts
+```
+
+Then navigate into your project directory:
+
+```bash
+cd <project-name>
+```
+
+Configure your database in `.env`:
+
+```bash
+DATABASE_URL="postgresql://user:password@localhost:5432/myapp"
+```
+
+Run migrations:
+
+```bash
+npx prisma migrate dev
+```
+
+Run development mode:
+
+```bash
+npm run dev
+```
+
+## Features
+
+- Discord OAuth authentication
+- Session management
+- User database with Prisma
+- Protected routes
+
+## Hosting
+
+```bash
+npm run deploy
+```
+
+<Cards>
+  <Card href="/docs/hosting/roboplay" title="RoboPlay" description="Deploy with as little as one command." />
+  <Card href="https://github.com/Wave-Play/robo.js/tree/main/templates/web-apps/next-auth-ts" title="GitHub Repository" description="Explore source code on GitHub." />
+</Cards>

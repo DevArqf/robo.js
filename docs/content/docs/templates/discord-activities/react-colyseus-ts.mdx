@@ -1,0 +1,68 @@
+---
+title: "Colyseus Multiplayer"
+description: A multiplayer Discord Activity template using Colyseus.
+---
+
+# Colyseus Multiplayer
+
+A multiplayer-ready Discord Activity template using **[Colyseus](https://colyseus.io/)** - a powerful multiplayer game server framework.
+
+<Cards>
+  <Card href="https://colyseus.io/" title="Colyseus" description="Powerful multiplayer game server." />
+  <Card href="/docs/discord-activities" title="Documentation" description="Getting started with Robo.js" />
+</Cards>
+
+## Getting Started
+
+Create a project with this template:
+
+```package-install
+npx create-robo <project-name> --template discord-activities/react-colyseus-ts
+```
+
+Then navigate into your project directory:
+
+```bash
+cd <project-name>
+```
+
+Run development mode:
+
+```bash
+npm run dev
+```
+
+## Multiplayer Features
+
+This template comes with Colyseus pre-configured for:
+
+- Real-time state synchronization
+- Room-based multiplayer sessions
+- Automatic reconnection handling
+- Schema-based state management
+
+## How It Works
+
+Colyseus manages game state on the server while clients receive synchronized updates. The template includes:
+
+- **Server**: Colyseus room definitions in `/src/rooms`
+- **Client**: React components with Colyseus client integration
+- **Schema**: Shared state definitions for type-safe synchronization
+
+## Hosting
+
+```bash
+npm run deploy
+```
+
+<Cards>
+  <Card href="/docs/hosting/roboplay" title="RoboPlay" description="Deploy with as little as one command." />
+  <Card href="/docs/hosting" title="Self-Hosting" description="Learn how to host and maintain it yourself." />
+</Cards>
+
+## Learn More
+
+<Cards>
+  <Card href="/templates" title="Explore Templates" description="Discover more templates for a quick start." />
+  <Card href="https://github.com/Wave-Play/robo.js/tree/main/templates/discord-activities/react-colyseus-ts" title="GitHub Repository" description="Explore source code on GitHub." />
+</Cards>

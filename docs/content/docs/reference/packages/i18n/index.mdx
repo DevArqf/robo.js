@@ -1,0 +1,76 @@
+---
+title: "@robojs/i18n"
+description: API reference for the internationalization plugin.
+---
+
+# @robojs/i18n
+
+Internationalization support with locale management and translation utilities.
+
+<Cards>
+  <Card href="/docs/plugins/i18n" title="Plugin Guide" description="Full documentation and usage examples." />
+</Cards>
+
+## Main Exports
+
+### t (Translate)
+
+Main translation function.
+
+```typescript
+import { t } from '@robojs/i18n'
+
+// Simple translation
+const greeting = t('hello')
+
+// With interpolation
+const message = t('welcome', { name: 'User' })
+
+// With locale override
+const spanish = t('hello', { lng: 'es' })
+```
+
+### getLocale
+
+Get the current locale for a user or guild.
+
+```typescript
+import { getLocale } from '@robojs/i18n'
+
+const locale = await getLocale(userId, guildId)
+```
+
+### setLocale
+
+Set the locale for a user or guild.
+
+```typescript
+import { setLocale } from '@robojs/i18n'
+
+await setLocale(userId, guildId, 'es')
+```
+
+## Translation Files
+
+Place translation files in `/src/i18n`:
+
+```
+/src/i18n
+├── en.json
+├── es.json
+├── fr.json
+└── de.json
+```
+
+Example translation file:
+
+```json title="/src/i18n/en.json"
+{
+  "hello": "Hello!",
+  "welcome": "Welcome, {{name}}!"
+}
+```
+
+<Cards>
+  <Card href="/docs/plugins/i18n" title="Plugin Guide" description="See full configuration options." />
+</Cards>

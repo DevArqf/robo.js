@@ -1,0 +1,57 @@
+---
+title: "Firebase"
+description: A Discord Activity template with Firebase Firestore integration.
+---
+
+# Firebase
+
+A Discord Activity starter with **Firebase Firestore** pre-configured for real-time data storage and synchronization.
+
+<Cards>
+  <Card href="https://firebase.google.com/" title="Firebase" description="Google's app development platform." />
+  <Card href="/docs/discord-activities" title="Documentation" description="Getting started with Robo.js" />
+</Cards>
+
+## Getting Started
+
+Create a project with this template:
+
+```package-install
+npx create-robo <project-name> --template discord-activities/react-firebase-ts
+```
+
+Then navigate into your project directory:
+
+```bash
+cd <project-name>
+```
+
+Run development mode:
+
+```bash
+npm run dev
+```
+
+## Firebase Setup
+
+1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
+2. Enable Firestore Database
+3. Copy your Firebase config to the `.env` file
+
+## Features
+
+- Real-time Firestore database
+- User authentication with Discord
+- Automatic data synchronization
+- TypeScript support
+
+## Hosting
+
+```bash
+npm run deploy
+```
+
+<Cards>
+  <Card href="/docs/hosting/roboplay" title="RoboPlay" description="Deploy with as little as one command." />
+  <Card href="https://github.com/Wave-Play/robo.js/tree/main/templates/discord-activities/react-firebase-ts" title="GitHub Repository" description="Explore source code on GitHub." />
+</Cards>

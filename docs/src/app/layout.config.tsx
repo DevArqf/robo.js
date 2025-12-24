@@ -74,6 +74,16 @@ const navLinks = [
     type: "main",
   },
   {
+    text: "Plugins",
+    url: "/plugins",
+    type: "main",
+  },
+  {
+    text: "Templates",
+    url: "/templates",
+    type: "main",
+  },
+  {
     text: "Discord",
     url: "https://discord.gg/robojs",
     type: "icon",

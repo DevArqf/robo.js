@@ -15,7 +15,7 @@ export default async function Page({ params }: PropsWithParams) {
 
   return (
     <>
-      <div className="container rounded-xl border py-12 md:px-8">
+      <div className="container mx-auto rounded-xl border py-12 px-4 md:px-8">
         <h1 className="mb-2 text-3xl font-bold">{page.data.title}</h1>
         <p className="mb-4 text-fd-muted-foreground">{page.data.description}</p>
         <div className="flex flex-wrap gap-2 mb-4">
@@ -24,7 +24,7 @@ export default async function Page({ params }: PropsWithParams) {
         </div>
         <Link href="/directory">Back to Directory</Link>
       </div>
-      <article className="container flex flex-col px-4 py-8">
+      <article className="container mx-auto flex flex-col px-4 py-8">
         <div className="prose min-w-0 dark:prose-invert">
           <InlineTOC items={page.data.toc} />
           <Mdx components={getMDXComponents()} />

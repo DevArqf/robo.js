@@ -15,22 +15,24 @@ export const blog = defineCollections({
   }),
 })
 
+const directorySchema = frontmatterSchema.extend({
+  author: z.string(),
+  sourceType: z.enum(["official", "community"]),
+  itemType: z.enum(["plugin", "template"]),
+  date: z.string().date().or(z.date()).optional(),
+  language: z.array(z.enum(["typescript", "javascript"])),
+  type: z.enum(["bot", "web", "activity", "plugin"]),
+  image: z.string().optional(),
+  stars: z.number().optional(),
+})
+
 export const directory = defineCollections({
   type: "doc",
   dir: "content/directory",
-  schema: frontmatterSchema.extend({
-    author: z.string(),
-    sourceType: z.enum(["official", "community"]),
-    itemType: z.enum(["plugin", "template"]),
-    date: z.string().date().or(z.date()).optional(),
-    language: z.array(z.enum(["typescript", "javascript"])),
-    type: z.enum(["bot", "web", "activity", "plugin"]),
-    image: z.string().optional(),
-    stars: z.number().optional(),
-  }),
+  schema: directorySchema,
 })
 
-export type DirectoryItem = z.infer<typeof directory._type.schema>
+export type DirectoryItem = z.infer<typeof directorySchema>
 
 export default defineConfig({
   mdxOptions: {

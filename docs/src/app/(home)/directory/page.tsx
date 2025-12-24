@@ -56,8 +56,8 @@ export default async function DirectoryPage({ searchParams }: { searchParams: Pr
   })
 
   return (
-    <main className="container py-16">
-      <section className="flex flex-col gap-6 py-8 pl-16">
+    <main className="container mx-auto px-4 py-16">
+      <section className="flex flex-col gap-6 py-8">
         <div className="space-y-3">
           <h1 className="text-4xl font-bold text-primary md:text-5xl">Directory</h1>
           <p className="text-xl text-foreground/80 max-w-2xl">

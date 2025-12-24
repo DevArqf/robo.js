@@ -1,0 +1,57 @@
+---
+title: "React (JavaScript)"
+description: A JavaScript web app template using React and Robo.js.
+---
+
+# React (JavaScript)
+
+A JavaScript web app using React and Robo.js.
+
+<Cards>
+  <Card href="/docs/web-apps" title="Documentation" description="Getting started with Robo.js" />
+</Cards>
+
+## Getting Started
+
+Create a project with this template:
+
+```package-install
+npx create-robo <project-name> --template web-apps/react-js
+```
+
+Then navigate into your project directory:
+
+```bash
+cd <project-name>
+```
+
+Run development mode:
+
+```bash
+npm run dev
+```
+
+## App Development
+
+Build your web app in the `/src/app` folder using React.
+
+## Backend Development
+
+Your server-side code is in the `/src/api` folder:
+
+```js title="/src/api/health.js"
+export default () => {
+	return { status: 'ok' }
+}
+```
+
+## Hosting
+
+```bash
+npm run deploy
+```
+
+<Cards>
+  <Card href="/docs/hosting/roboplay" title="RoboPlay" description="Deploy with as little as one command." />
+  <Card href="https://github.com/Wave-Play/robo.js/tree/main/templates/web-apps/react-js" title="GitHub Repository" description="Explore source code on GitHub." />
+</Cards>

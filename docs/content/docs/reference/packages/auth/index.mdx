@@ -1,0 +1,73 @@
+---
+title: "@robojs/auth"
+description: API reference for the authentication plugin.
+---
+
+# @robojs/auth
+
+User authentication and authorization including OAuth2 support.
+
+<Cards>
+  <Card href="/docs/plugins/auth" title="Plugin Guide" description="Full documentation and usage examples." />
+</Cards>
+
+## Main Exports
+
+### Auth
+
+Main authentication utilities.
+
+```typescript
+import { Auth } from '@robojs/auth'
+
+// Get current user
+const user = await Auth.getUser(request)
+
+// Verify session
+const session = await Auth.verifySession(token)
+
+// Generate auth URL
+const url = Auth.getAuthUrl('discord')
+```
+
+### Session
+
+Session management.
+
+```typescript
+import { Session } from '@robojs/auth'
+
+// Create session
+const session = await Session.create(userId)
+
+// Destroy session
+await Session.destroy(sessionId)
+```
+
+### Providers
+
+OAuth provider configuration.
+
+```typescript
+import { DiscordProvider } from '@robojs/auth/providers'
+
+const discord = new DiscordProvider({
+  clientId: process.env.DISCORD_CLIENT_ID,
+  clientSecret: process.env.DISCORD_CLIENT_SECRET
+})
+```
+
+## Configuration
+
+```javascript title="config/plugins/robojs/auth.mjs"
+export default {
+  providers: ['discord'],
+  session: {
+    maxAge: 86400 // 24 hours
+  }
+}
+```
+
+<Cards>
+  <Card href="/docs/plugins/auth" title="Plugin Guide" description="See full configuration options." />
+</Cards>

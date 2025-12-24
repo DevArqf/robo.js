@@ -1,0 +1,147 @@
+---
+title: "Starter (TypeScript)"
+description: A basic TypeScript Discord bot template using Robo.js.
+---
+
+# Starter (TypeScript)
+
+Welcome to your fresh **[Robo.js](https://robojs.dev)** project!
+
+Build, deploy, and maintain your Discord bots with ease. With Robo.js as your guide, you'll experience a seamless, [file-based setup](/docs/discord-bots/file-structure), an [integrated database](/docs/robojs/flashcore), [TypeScript support](/docs/robojs/typescript), and a multitude of [plugin-powered skills](/docs/plugins) to unlock along the way.
+
+<Cards>
+  <Card href="/docs/discord-bots" title="Documentation" description="Getting started with Robo.js" />
+  <Card href="https://robojs.dev/discord" title="Discord" description="Robo - Imagine Magic" />
+</Cards>
+
+## Getting Started
+
+Create a project with this template:
+
+```package-install
+npx create-robo <project-name> --template discord-bots/starter-ts
+```
+
+Then navigate into your project directory:
+
+```bash
+cd <project-name>
+```
+
+Run development mode:
+
+```bash
+npm run dev
+```
+
+<Cards>
+  <Card href="/docs/discord-bots/beginner-guide" title="Beginner Guide" description="New to Discord Bots with Robo? Start here!" />
+  <Card href="/docs/robojs/mode#default-modes" title="Run Modes" description="Define profiles for your Robo session." />
+</Cards>
+
+## Development
+
+Creating a **[Slash Command](/docs/discord-bots/commands)** is as easy as creating files.
+
+Let's say you want a new `/hello` command. Just create a file in the `/src/commands` directory named `hello.ts` and export a default function that returns something.
+
+```typescript title="/src/commands/hello.ts"
+export default (interaction) => {
+	interaction.reply('Hello World!')
+}
+```
+
+Your `/hello` command is now ready to use! **Robo.js** takes care of registration for you.
+
+Ever clicked on an avatar or message and seen an _Apps_ section? Those are **[Context Commands](/docs/discord-bots/context-menu)**!
+
+Create a file in `/src/context/message` named after the command. For example, `Quote.ts`.
+
+```typescript title="/src/context/message/Quote.ts"
+export default (interaction, message) => {
+	interaction.reply(`${message.author} said:\n\n> ${message.content}`)
+}
+```
+
+<Cards>
+  <Card href="/docs/discord-bots/commands" title="Slash Commands" description="Your bot follows best practices by default." />
+  <Card href="/docs/discord-bots/events" title="Events" description="Know and respond to everything that happens." />
+  <Card href="/docs/discord-bots/context-menu" title="Context Commands" description="Extend right click and long press behavior." />
+  <Card href="/docs/robojs/flashcore" title="Flashcore Database" description="Persist data in your Robo with ease." />
+</Cards>
+
+## Debugging
+
+**Discord Bots** made with **Robo.js** come with a built-in **[Debugger](/docs/discord-bots/debug)**.
+
+Whenever your bot crashes in development mode, the debugger shows an interactive error message - all within **Discord**!
+
+You even get `/dev` **[Subcommands](/docs/discord-bots/commands#subcommands)** for quick access to logs, system info, and more. Just set your test server's ID as an **environment variable** called `DISCORD_GUILD_ID`.
+
+<Cards>
+  <Card href="/docs/discord-bots/debug" title="Debugging" description="Troubleshoot right within Discord." />
+  <Card href="/docs/discord-bots/credentials#optional-variables" title="Credentials" description="Secure your Discord Bot credentials." />
+</Cards>
+
+## Client Configuration
+
+**Robo.js** manages your **Discord.js** `Client` instance. You may import `client` anywhere in your project.
+
+```typescript
+import { client } from 'robo.js'
+
+export default () => {
+	return `My name is ${client.user.username}`
+}
+```
+
+Intents or other configurations can be set in the `config/robo.mjs` file.
+
+```javascript title="/config/robo.mjs"
+export default {
+	clientOptions: {
+		intents: ['Guilds', 'GuildMessages']
+	}
+}
+```
+
+<Cards>
+  <Card href="/docs/robojs/config" title="Configuration" description="Customize behavior and features." />
+</Cards>
+
+## Robo Ecosystem
+
+By building with **Robo.js**, you gain access to a growing ecosystem of **[plugins](/plugins)**, **[templates](/templates)**, and **[tools](/docs/framework/cli)**. **[Robo Plugins](/docs/plugins)** are special. They can add features with one command.
+
+```bash
+npx robo add @robojs/ai @robojs/moderation
+```
+
+Plugins integrate seamlessly thanks to the **[Robo File Structure](/docs/discord-bots/file-structure)**. What's more, anyone can **[create a plugin](/docs/framework/plugins/create)**.
+
+<Cards>
+  <Card href="/docs/framework/plugins/install" title="Robo Plugins" description="Add features to your Robo seamlessly." />
+  <Card href="/docs/framework/plugins/create" title="Creating Plugins" description="Make your own plugins for Robo.js." />
+</Cards>
+
+## Hosting
+
+**Hosting** your project keeps it running 24/7. No need to keep your computer on at all times, or worry about your Internet connection.
+
+You can host on any platform that supports **Node.js**, or run `robo deploy` to host on **[RoboPlay](https://roboplay.dev)** - a hosting platform optimized for **Robo.js**.
+
+```bash
+npm run deploy
+```
+
+<Cards>
+  <Card href="/docs/hosting/roboplay" title="RoboPlay" description="Deploy with as little as one command." />
+  <Card href="/docs/hosting" title="Self-Hosting" description="Learn how to host and maintain it yourself." />
+</Cards>
+
+## Learn More
+
+<Cards>
+  <Card href="/templates" title="Explore Templates" description="Discover more templates for a quick start." />
+  <Card href="https://github.com/Wave-Play/robo.js/tree/main/templates/discord-bots/starter-ts" title="GitHub Repository" description="Explore source code on GitHub." />
+</Cards>

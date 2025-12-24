@@ -11,6 +11,15 @@
   --card: oklch(0.99 0 0);
   --card-foreground: oklch(0.2 0 0);
   --popover: oklch(0.99 0 0);
+
+  /* Exa Design System */
+  --exa-gold-border: #FFD600;
+  --exa-gold-fill: #F0B90B;
+  --exa-accent: #489178;
+  --exa-slope-sm: 12px;
+  --exa-slope-md: 24px;
+  --exa-border-opacity: 0.69;
+  --exa-fill-opacity: 0.54;
   --popover-foreground: oklch(0.44 0 0);
   --primary: oklch(0.55 0.11 155.52);
   --primary-foreground: oklch(1 0 0);
@@ -178,4 +187,26 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Exa Button Styling */
+.exa-button-container {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.exa-button-text {
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+  margin: 0px;
+}
+
+.exa-button-link {
+  text-decoration: none;
 }
