@@ -2,10 +2,6 @@ import { color } from './color.js'
 import { getModeColor } from './mode.js'
 import type { DrainHandle } from '../types/config.js'
 
-// Re-export file drain utilities
-export { createFileDrain, formatTimestamp } from './file-drain.js'
-export type { FileDrainOptions, TimestampFormat, FileOutputConfig, DrainHandle } from '../types/config.js'
-
 // Compute mode label color
 let ModeLabel: string
 const hasProcess = typeof process !== 'undefined'
@@ -481,7 +477,8 @@ export function consoleDrain(_logger: Logger, level: string, ...data: unknown[])
  *
  * @example
  * ```typescript
- * import { createMultiDrain, consoleDrain, createFileDrain } from 'robo.js/logger.js'
+ * import { createMultiDrain, consoleDrain } from 'robo.js/logger'
+ * import { createFileDrain } from 'robo.js/logger/drains'
  *
  * const fileDrain = createFileDrain({ path: 'logs/app.log' })
  * const multiDrain = createMultiDrain([consoleDrain, fileDrain])
@@ -516,6 +513,9 @@ export function createMultiDrain(drains: LogDrain[]): LogDrain {
  *
  * @example
  * ```typescript
+ * import { createLevelFilteredDrain, createMultiDrain, consoleDrain } from 'robo.js/logger'
+ * import { createFileDrain } from 'robo.js/logger/drains'
+ *
  * const filteredConsole = createLevelFilteredDrain(consoleDrain, 'info')
  * const fileDrain = createFileDrain({ path: 'logs/app.log', level: 'debug' })
  * const multiDrain = createMultiDrain([filteredConsole, fileDrain])
@@ -802,7 +802,8 @@ export class Logger {
 	 *
 	 * @example
 	 * ```typescript
-	 * import { logger, createFileDrain } from 'robo.js/logger.js'
+	 * import { logger } from 'robo.js/logger'
+	 * import { createFileDrain } from 'robo.js/logger/drains'
 	 *
 	 * const drain = createFileDrain({ path: 'logs/test.log', blocking: true })
 	 * const handle = logger().addDrain(drain, 'test-logger')

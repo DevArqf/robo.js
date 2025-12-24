@@ -35,6 +35,10 @@
 			"import": "./logger.js",
 			"types": "./logger.d.ts"
 		},
+		"./logger/drains": {
+			"import": "./dist/core/drains.js",
+			"types": "./dist/core/drains.d.ts"
+		},
 		"./types": {
 			"import": "./types.js",
 			"types": "./types.d.ts"

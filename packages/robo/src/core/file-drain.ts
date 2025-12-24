@@ -335,8 +335,8 @@ function rotateFile(filePath: string, maxFiles: number, hasColorMap: boolean = f
  *
  * @example
  * ```typescript
- * import { createFileDrain } from 'robo.js/logger.js'
- * import { logger } from 'robo.js'
+ * import { logger } from 'robo.js/logger'
+ * import { createFileDrain } from 'robo.js/logger/drains'
  *
  * const drain = createFileDrain({
  *   path: 'logs/app.log',
