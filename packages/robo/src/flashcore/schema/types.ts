@@ -64,7 +64,7 @@ export interface SchemaField {
 /**
  * Schema fields object (model schema definition).
  */
-export type SchemaFields = Record<string, SchemaField>
+export type SchemaFields = Record<string, SchemaField | CompoundUniqueConstraint>
 
 /**
  * Model options for registration.

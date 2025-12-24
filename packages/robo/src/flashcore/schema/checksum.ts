@@ -5,7 +5,7 @@
  * Uses FNV-1a 32-bit hash for fast, stable hashing.
  */
 
-import type { SchemaFields, FieldDef, RelationDef } from './types.js'
+import type { SchemaFields, FieldDef, RelationDef, CompoundUniqueConstraint } from './types.js'
 
 /**
  * Compute a deterministic checksum for a schema.
@@ -39,6 +39,14 @@ function normalizeSchemaForChecksum(schema: SchemaFields): string {
 	for (const key of sortedKeys) {
 		const field = schema[key]
 
+		// Compound unique constraints
+		if (isCompoundUnique(field)) {
+			// Include the constraint fields in the checksum so schema change detection
+			// catches compound unique additions/removals/changes.
+			parts.push(`${key}:cuniq:${field.fields.join(',')}`)
+			continue
+		}
+
 		if (!field || typeof field !== 'object' || !('_def' in field)) {
 			continue
 		}
@@ -69,6 +77,18 @@ function normalizeSchemaForChecksum(schema: SchemaFields): string {
 	}
 
 	return parts.join('|')
+}
+
+/**
+ * Type guard for compound unique constraints.
+ */
+function isCompoundUnique(value: unknown): value is CompoundUniqueConstraint {
+	return (
+		typeof value === 'object' &&
+		value !== null &&
+		'_type' in value &&
+		(value as { _type: string })._type === 'compoundUnique'
+	)
 }
 
 /**

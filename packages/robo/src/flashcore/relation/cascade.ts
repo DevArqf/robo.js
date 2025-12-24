@@ -212,13 +212,37 @@ export async function executeCascadeOperations(
 	const junctionOps = ops.filter(op => op.type === 'junction')
 	for (const op of junctionOps) {
 		const junctionModel = ctx.getModel(op.junctionModel!) as {
-			deleteMany: (args: unknown) => Promise<unknown>
+			deleteMany?: (args: unknown) => Promise<unknown>
+			findMany?: (args: unknown) => Promise<Array<{ id: string } | Record<string, unknown>>>
+			delete?: (args: unknown) => Promise<unknown>
 		} | undefined
 
 		if (junctionModel) {
-			await junctionModel.deleteMany({
-				where: { [op.foreignKey]: parentId }
-			})
+			// Prefer deleteMany when available (fast on acid adapters).
+			try {
+				if (typeof junctionModel.deleteMany === 'function') {
+					await junctionModel.deleteMany({
+						where: { [op.foreignKey]: parentId }
+					})
+					continue
+				}
+			} catch {
+				// Fall back to per-record deletion below.
+			}
+
+			// Fallback path for non-acid adapters: find and delete individually.
+			if (typeof junctionModel.findMany === 'function' && typeof junctionModel.delete === 'function') {
+				const entries = await junctionModel.findMany({
+					where: { [op.foreignKey]: parentId }
+				})
+
+				for (const entry of entries) {
+					const id = (entry as { id?: unknown }).id
+					if (typeof id === 'string') {
+						await junctionModel.delete({ where: { id } })
+					}
+				}
+			}
 		}
 	}
 

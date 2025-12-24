@@ -75,6 +75,89 @@ import {
 import { getPluginContext } from '../plugin/context.js'
 import { executeWithMiddleware } from '../plugin/middleware.js'
 import type { PluginContext } from '../plugin/types.js'
+import { JunctionTableManager } from '../relation/junction.js'
+import { ValidationError as FlashcoreValidationError } from '../core/errors.js'
+
+interface ParsedManyToManyMutation {
+	connect: string[]
+	disconnect: string[]
+	set: string[] | null
+	disconnectAll: boolean
+}
+
+function parseRelationIdInput(value: unknown, field: string): string[] {
+	if (value === undefined || value === null) return []
+
+	if (typeof value === 'string') {
+		return [value]
+	}
+
+	if (Array.isArray(value)) {
+		const ids: string[] = []
+		for (const entry of value) {
+			ids.push(...parseRelationIdInput(entry, field))
+		}
+		return ids
+	}
+
+	if (typeof value === 'object' && value !== null && 'id' in value) {
+		const id = (value as { id?: unknown }).id
+		if (typeof id === 'string') {
+			return [id]
+		}
+	}
+
+	throw new FlashcoreValidationError(
+		`Invalid relation id input for '${field}'. Expected string, { id: string }, or array.`,
+		{ field }
+	)
+}
+
+function parseManyToManyMutation(value: unknown, field: string): ParsedManyToManyMutation | null {
+	if (value === undefined || value === null) return null
+
+	// For include clauses users may pass `true`, but mutation data must be an object.
+	if (value === true) return null
+
+	if (typeof value !== 'object') {
+		throw new FlashcoreValidationError(
+			`Invalid manyToMany mutation for '${field}'. Expected an object.`,
+			{ field }
+		)
+	}
+
+	const obj = value as Record<string, unknown>
+
+	const disconnectAll = obj.disconnect === true
+	const connect = parseRelationIdInput(obj.connect, field)
+	const disconnect = disconnectAll ? [] : parseRelationIdInput(obj.disconnect, field)
+	const set = obj.set !== undefined ? parseRelationIdInput(obj.set, field) : null
+
+	// Validate mutually exclusive operations for predictable semantics.
+	if (set && (connect.length > 0 || disconnect.length > 0 || disconnectAll)) {
+		throw new FlashcoreValidationError(
+			`Invalid manyToMany mutation for '${field}'. 'set' cannot be combined with 'connect'/'disconnect'.`,
+			{ field }
+		)
+	}
+
+	if (disconnectAll && connect.length > 0) {
+		throw new FlashcoreValidationError(
+			`Invalid manyToMany mutation for '${field}'. 'disconnect: true' cannot be combined with 'connect'. Use 'set' instead.`,
+			{ field }
+		)
+	}
+
+	// Dedupe inputs to avoid redundant operations.
+	const dedupe = (ids: string[]) => Array.from(new Set(ids))
+
+	return {
+		connect: dedupe(connect),
+		disconnect: dedupe(disconnect),
+		set: set ? dedupe(set) : null,
+		disconnectAll
+	}
+}
 
 /**
  * Model options for registration.
@@ -237,6 +320,76 @@ export class FlashcoreModel<T extends { id: string } = { id: string }> {
 		await this.adapter.set(catalogKey, data)
 	}
 
+	/**
+	 * Apply many-to-many relation mutations after a successful create/update.
+	 *
+	 * Supports Prisma-like mutation shapes:
+	 * - `{ connect: [{ id }] }`
+	 * - `{ disconnect: [{ id }] }`
+	 * - `{ disconnect: true }` (disconnect all)
+	 * - `{ set: [{ id }] }` (replace all)
+	 */
+	private async _applyManyToManyMutations(recordId: string, data: unknown): Promise<void> {
+		if (!this._getModel) return
+		if (!data || typeof data !== 'object') return
+
+		const input = data as Record<string, unknown>
+
+		// Fast path: check if any manyToMany fields are present in input.
+		let hasMutations = false
+		for (const [field, relation] of this.schema.relations) {
+			if (relation.type !== 'manyToMany') continue
+			if (field in input) {
+				hasMutations = true
+				break
+			}
+		}
+
+		if (!hasMutations) return
+
+		const manager = new JunctionTableManager(
+			this.adapter,
+			(modelName: string) => this._getModel!(modelName)
+		)
+
+		for (const [field, relation] of this.schema.relations) {
+			if (relation.type !== 'manyToMany') continue
+			if (!(field in input)) continue
+
+			const mutation = parseManyToManyMutation(input[field], field)
+			if (!mutation) continue
+
+			// Ensure target model exists before attempting junction operations.
+			const targetModel = this._getModel(relation.model)
+			if (!targetModel) {
+				throw new FlashcoreValidationError(
+					`Cannot apply manyToMany mutation for '${this.name}.${field}': ` +
+					`target model '${relation.model}' is not registered.`,
+					{ field }
+				)
+			}
+
+			// Apply operations in a predictable order.
+			if (mutation.set) {
+				await manager.setRelations(this.name, recordId, relation.model, mutation.set)
+				continue
+			}
+
+			if (mutation.disconnectAll) {
+				await manager.setRelations(this.name, recordId, relation.model, [])
+				continue
+			}
+
+			for (const targetId of mutation.disconnect) {
+				await manager.removeRelation(this.name, recordId, relation.model, targetId)
+			}
+
+			for (const targetId of mutation.connect) {
+				await manager.addRelation(this.name, recordId, relation.model, targetId)
+			}
+		}
+	}
+
 	// ========================================================================
 	// CRUD Operations
 	// ========================================================================
@@ -283,11 +436,16 @@ export class FlashcoreModel<T extends { id: string } = { id: string }> {
 		}
 
 		// Phase 10: Execute through middleware pipeline
+		const opArgs = { data }
 		return executeWithMiddleware(
 			'create',
 			this as unknown as FlashcoreModel<{ id: string }>,
-			{ data },
-			() => executeCreate(ctx, data)
+			opArgs,
+			async () => {
+				const created = await executeCreate(ctx, opArgs.data)
+				await this._applyManyToManyMutations(created.id, opArgs.data as unknown)
+				return created
+			}
 		) as Promise<T>
 	}
 
@@ -369,7 +527,13 @@ export class FlashcoreModel<T extends { id: string } = { id: string }> {
 			'update',
 			this as unknown as FlashcoreModel<{ id: string }>,
 			args,
-			() => executeUpdate(ctx, args)
+			async () => {
+				const updated = await executeUpdate(ctx, args)
+				if (updated) {
+					await this._applyManyToManyMutations(updated.id, args.data as unknown)
+				}
+				return updated
+			}
 		) as Promise<T | null>
 	}
 

@@ -137,7 +137,30 @@ export function validateRelationsSchema(
 	const errors: RelationValidationError[] = []
 
 	for (const [modelName, schema] of models) {
+		// Track manyToMany target models so we can surface ambiguous duplicates.
+		// Without additional metadata (relation name / explicit junction config),
+		// multiple manyToMany fields to the same target would be indistinguishable.
+		const seenManyToManyTargets = new Map<string, string>() // targetModel -> fieldName
+
 		for (const [fieldName, relation] of schema.relations) {
+			if (relation.type === 'manyToMany') {
+				const previousField = seenManyToManyTargets.get(relation.model)
+				if (previousField) {
+					errors.push({
+						model: modelName,
+						field: fieldName,
+						message:
+							`Duplicate manyToMany relation to '${relation.model}' found. ` +
+							`Fields '${previousField}' and '${fieldName}' would share the same junction table.`,
+						suggestion:
+							'Remove one relation field or use an explicit junction model for multiple distinct relationships.',
+						level: 'error'
+					})
+				} else {
+					seenManyToManyTargets.set(relation.model, fieldName)
+				}
+			}
+
 			// Check target model exists
 			const targetSchema = models.get(relation.model)
 			if (!targetSchema) {

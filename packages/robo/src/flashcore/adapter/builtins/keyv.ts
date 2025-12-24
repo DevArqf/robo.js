@@ -6,6 +6,7 @@
  */
 
 import type { FlashcoreAdapter } from '../types.js'
+import { logger } from '../../core/logger.js'
 
 /**
  * Keyv instance interface.
@@ -84,8 +85,8 @@ export class KeyvAdapter<V = unknown> implements FlashcoreAdapter<string, V> {
 		}
 
 		// Fallback: check if get returns a value
-		// Note: This has the same truthiness bug as old Flashcore,
-		// but we can't do better without native has support
+		// Keyv returns `undefined` for missing keys, so this correctly handles
+		// stored falsy values (0, false, '', null).
 		const value = await this.keyv.get(key)
 		return value !== undefined
 	}
@@ -103,7 +104,7 @@ export class KeyvAdapter<V = unknown> implements FlashcoreAdapter<string, V> {
 		// Optionally register error handler
 		if (typeof this.keyv.on === 'function') {
 			this.keyv.on('error', (err: unknown) => {
-				console.error('[KeyvAdapter] Error:', err)
+				logger.error('[KeyvAdapter] Error', err)
 			})
 		}
 	}

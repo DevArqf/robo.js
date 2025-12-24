@@ -108,11 +108,17 @@ export async function executeDelete<T extends { id: string }>(
 		throw new ValidationError('delete requires a where clause')
 	}
 
-	// Extract ID from where clause
-	const id = extractIdFromWhere(args.where)
+	// Extract ID from where clause (supports unique field lookup)
+	const { id, hadUniqueField } = await extractIdFromWhere(args.where, ctx)
 
+	// If no id/unique field was provided, throw
+	if (!hadUniqueField) {
+		throw new ValidationError('delete where clause must include id or a unique field')
+	}
+
+	// If unique field was used but not found, return null
 	if (!id) {
-		throw new ValidationError('delete where clause must include id')
+		return null
 	}
 
 	// Check if record exists and get storage info
@@ -325,9 +331,58 @@ export async function executeDelete<T extends { id: string }>(
 /**
  * Extract ID from where clause.
  */
-function extractIdFromWhere(where: Record<string, unknown>): string | null {
+interface ExtractIdResult {
+	id: string | null
+	hadUniqueField: boolean
+}
+
+/**
+ * Extract ID from a where clause.
+ *
+ * Supports:
+ * - Direct ID lookup
+ * - Primary key lookup (if not 'id')
+ * - Unique field lookups via UniqueIndexManager
+ */
+async function extractIdFromWhere<T>(
+	where: Record<string, unknown>,
+	ctx: DeleteContext<T>
+): Promise<ExtractIdResult> {
+	const schema = ctx.schema
+
+	// Direct ID lookup
 	if ('id' in where && typeof where.id === 'string') {
-		return where.id
+		return { id: where.id, hadUniqueField: true }
 	}
-	return null
+
+	// Primary key lookup (if not 'id')
+	if (schema.primaryKey !== 'id' && schema.primaryKey in where) {
+		const pkValue = where[schema.primaryKey]
+		if (typeof pkValue === 'string') {
+			return { id: pkValue, hadUniqueField: true }
+		}
+	}
+
+	// Unique field lookups via UniqueIndexManager
+	if (ctx.uniqueIndexManager && schema.uniqueFields.length > 0) {
+		for (const field of schema.uniqueFields) {
+			if (field in where) {
+				const value = where[field]
+
+				// Skip null/undefined values
+				if (value === null || value === undefined) {
+					continue
+				}
+
+				const id = await ctx.uniqueIndexManager.lookup(
+					{ modelName: ctx.modelName, namespace: ctx.namespace, field },
+					value
+				)
+
+				return { id, hadUniqueField: true }
+			}
+		}
+	}
+
+	return { id: null, hadUniqueField: false }
 }

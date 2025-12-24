@@ -17,6 +17,7 @@ import type {
 	PluginContext
 } from './types.js'
 import { getPluginManager } from './manager.js'
+import { logger as flashcoreLogger } from '../core/logger.js'
 
 /**
  * Middleware entry in the chain.
@@ -109,7 +110,9 @@ async function executeChain<Op extends OperationType>(
  * Useful for debugging.
  */
 export function createLoggingMiddleware(
-	logger: (message: string, ...args: unknown[]) => void = console.log
+	logger: (message: string, ...args: unknown[]) => void = (message, ...args) => {
+		flashcoreLogger.info(message, ...args)
+	}
 ): MiddlewareFn<OperationType> {
 	return async (params, next) => {
 		const startTime = Date.now()

@@ -33,6 +33,7 @@ import { RepairEngine, type RepairOptions, type FullRepairResult, type RepairRes
 import { IndexPersistenceManager, setIndexPersistenceManager } from '../index/persistence.js'
 import type { CuckooFilter } from '../index/filter.js'
 import type { SortedIndex } from '../index/sorted.js'
+import { createJunctionSchema, getJunctionTableDef } from '../relation/junction.js'
 
 // Phase 7: Migration imports
 import { SchemaMetadataManager } from '../migration/metadata.js'
@@ -504,6 +505,13 @@ const FlashcoreSystemBase = {
 			)
 		}
 
+		if (name.includes('::')) {
+			throw new FlashcoreError(
+				`Invalid model name "${name}". Model names must not include "::" (reserved for namespaces).`,
+				'INVALID_MODEL_NAME'
+			)
+		}
+
 		// Build model key
 		const modelKey = options?.namespace ? `${options.namespace}::${name}` : name
 
@@ -516,6 +524,14 @@ const FlashcoreSystemBase = {
 		}
 
 		// Create model instance with relation lookup callbacks (Phase 9)
+		// Relations are resolved relative to the model's namespace.
+		const resolveModelKey = (ref: string): string => {
+			// Explicitly-qualified refs are treated as model keys.
+			if (ref.includes('::')) return ref
+
+			return options?.namespace ? `${options.namespace}::${ref}` : ref
+		}
+
 		const model = new FlashcoreModel<T>(
 			name,
 			schema,
@@ -525,8 +541,8 @@ const FlashcoreSystemBase = {
 				methods: options?.methods,
 				hooks: options?.hooks,
 				// Phase 9: Provide getModel and getSchema for relations
-				getModel: (modelName: string) => state.models.get(modelName),
-				getSchema: (modelName: string) => state.models.get(modelName)?.schema
+				getModel: (modelName: string) => state.models.get(resolveModelKey(modelName)),
+				getSchema: (modelName: string) => state.models.get(resolveModelKey(modelName))?.schema
 			}
 		)
 
@@ -535,6 +551,45 @@ const FlashcoreSystemBase = {
 
 		// Apply any pending plugin marks (Phase 10)
 		state.pluginManager.applyPendingMarks(model as unknown as FlashcoreModel<{ id: string }>)
+
+		// Phase 9: Auto-register junction models for manyToMany relations.
+		// Junction tables are internal models named `_junction_{modelA}_{modelB}`.
+		const seenManyToManyTargets = new Set<string>()
+		for (const relation of model.schema.relations.values()) {
+			if (relation.type !== 'manyToMany') continue
+
+			if (relation.model.includes('::')) {
+				throw new FlashcoreError(
+					`Model "${modelKey}" defines a manyToMany relation to "${relation.model}". ` +
+					'Many-to-many relation targets must be un-namespaced model names. ' +
+					'Register related models in the same Flashcore namespace and reference them by name.',
+					'INVALID_RELATION'
+				)
+			}
+
+			// Prevent ambiguous duplicates within a single model.
+			if (seenManyToManyTargets.has(relation.model)) {
+				throw new FlashcoreError(
+					`Model "${modelKey}" defines multiple manyToMany relations to "${relation.model}". ` +
+					`This is ambiguous without explicit relation configuration.`,
+					'INVALID_RELATION'
+				)
+			}
+			seenManyToManyTargets.add(relation.model)
+
+			const junctionDef = getJunctionTableDef(name, relation.model)
+			const junctionName = junctionDef.name
+			const junctionKey = options?.namespace ? `${options.namespace}::${junctionName}` : junctionName
+
+			// Junction models are registered once per pair of models.
+			if (!state.models.has(junctionKey)) {
+				FlashcoreSystem.registerModel(
+					junctionName,
+					createJunctionSchema(junctionDef.modelA, junctionDef.modelB),
+					options?.namespace ? { namespace: options.namespace } : undefined
+				)
+			}
+		}
 
 		state.logger.debug(`Registered model: ${modelKey}`)
 

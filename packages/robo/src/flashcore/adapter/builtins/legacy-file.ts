@@ -9,12 +9,14 @@
  */
 
 import { createHash } from 'node:crypto'
-import { createReadStream, createWriteStream } from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { pipeline } from 'node:stream/promises'
+import { promisify } from 'node:util'
 import zlib from 'node:zlib'
 import type { FlashcoreAdapter } from '../types.js'
+
+const gzipAsync = promisify(zlib.gzip)
+const gunzipAsync = promisify(zlib.gunzip)
 
 export interface LegacyFileAdapterOptions {
 	/**
@@ -51,29 +53,41 @@ export class LegacyFileAdapter<K = string, V = unknown> implements FlashcoreAdap
 	async get(key: K): Promise<V | undefined> {
 		try {
 			const fileName = this.getFilePath(key)
-			const gunzip = zlib.createGunzip()
-
-			await pipeline(createReadStream(fileName), gunzip)
-
-			const decompressed = gunzip.read()
-			return decompressed ? (JSON.parse(decompressed.toString()) as V) : undefined
-		} catch {
-			return undefined
+			const compressed = await fs.readFile(fileName)
+			const decompressed = await gunzipAsync(compressed)
+			return JSON.parse(decompressed.toString('utf-8')) as V
+		} catch (e) {
+			// Missing key
+			if (this.isNodeError(e) && e.code === 'ENOENT') {
+				return undefined
+			}
+			// Corruption or IO errors should surface so callers can handle appropriately.
+			throw e
 		}
 	}
 
 	async set(key: K, value: V): Promise<boolean> {
+		const fileName = this.getFilePath(key)
+		const tempPath = `${fileName}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`
+
+		const json = JSON.stringify(value)
+		const compressed = await gzipAsync(json)
+
 		try {
-			const fileName = this.getFilePath(key)
-			const gzip = zlib.createGzip()
+			await fs.mkdir(this.dataDir, { recursive: true })
 
-			gzip.write(JSON.stringify(value))
-			gzip.end()
-
-			await pipeline(gzip, createWriteStream(fileName))
+			// Atomic write: temp file + rename.
+			await fs.writeFile(tempPath, compressed)
+			await fs.rename(tempPath, fileName)
 			return true
-		} catch {
-			return false
+		} catch (e) {
+			// Clean up temp file on failure
+			try {
+				await fs.unlink(tempPath)
+			} catch {
+				// Ignore cleanup errors
+			}
+			throw e
 		}
 	}
 
@@ -87,8 +101,7 @@ export class LegacyFileAdapter<K = string, V = unknown> implements FlashcoreAdap
 			if (this.isNodeError(e) && e.code === 'ENOENT') {
 				return false
 			}
-			// Other errors are logged but don't throw
-			return false
+			throw e
 		}
 	}
 
@@ -113,8 +126,8 @@ export class LegacyFileAdapter<K = string, V = unknown> implements FlashcoreAdap
 			await fs.rm(this.dataDir, { recursive: true, force: true })
 			await fs.mkdir(this.dataDir, { recursive: true })
 			return true
-		} catch {
-			return false
+		} catch (e) {
+			throw e
 		}
 	}
 
@@ -158,7 +171,12 @@ export class LegacyFileAdapter<K = string, V = unknown> implements FlashcoreAdap
 	 * Type guard for Node.js errors with code property.
 	 */
 	private isNodeError(error: unknown): error is NodeJS.ErrnoException {
-		return error instanceof Error && 'code' in error
+		return (
+			typeof error === 'object' &&
+			error !== null &&
+			'code' in error &&
+			typeof (error as { code?: unknown }).code === 'string'
+		)
 	}
 }
 

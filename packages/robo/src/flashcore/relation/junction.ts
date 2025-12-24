@@ -5,11 +5,31 @@
  */
 
 import type { FlashcoreAdapter } from '../adapter/types.js'
+import { scanKeysToArray } from '../adapter/scan.js'
 import type { SchemaFields } from '../schema/types.js'
 import type { JunctionTableDef } from './types.js'
 import { JUNCTION_PREFIX } from '../core/constants.js'
 import { f, compoundUnique } from '../schema/field.js'
-import { FlashcoreError, UniqueConstraintError } from '../core/errors.js'
+import { FeatureNotSupportedError, FlashcoreError, UniqueConstraintError, ValidationError } from '../core/errors.js'
+
+function getJunctionForeignKeys(modelA: string, modelB: string): { fkA: string; fkB: string } {
+	const fkBase = (name: string) =>
+		`${name.charAt(0).toLowerCase()}${name.slice(1)}Id`
+
+	// Self-referential many-to-many needs distinct FK field names.
+	// We use a deterministic A/B suffix for stability.
+	if (modelA === modelB) {
+		return {
+			fkA: `${fkBase(modelA)}A`,
+			fkB: `${fkBase(modelB)}B`
+		}
+	}
+
+	return {
+		fkA: fkBase(modelA),
+		fkB: fkBase(modelB)
+	}
+}
 
 /**
  * Get deterministic junction model name for two models.
@@ -63,15 +83,15 @@ export function parseJunctionModelName(junctionName: string): [string, string] |
  * @returns Junction table schema fields
  */
 export function createJunctionSchema(modelA: string, modelB: string): SchemaFields {
-	const fkA = `${modelA}Id`
-	const fkB = `${modelB}Id`
+	const { fkA, fkB } = getJunctionForeignKeys(modelA, modelB)
 
-	// Note: Compound unique constraint stored separately from fields
 	return {
 		id: f.id(),
 		[fkA]: f.string().indexed(),
 		[fkB]: f.string().indexed(),
-		createdAt: f.date().default(() => new Date())
+		createdAt: f.date().default(() => new Date()),
+		// Compound unique constraint prevents duplicate relationships
+		_compound: compoundUnique([fkA, fkB])
 	}
 }
 
@@ -79,8 +99,7 @@ export function createJunctionSchema(modelA: string, modelB: string): SchemaFiel
  * Get compound unique constraint for a junction schema.
  */
 export function getJunctionCompoundUnique(modelA: string, modelB: string) {
-	const fkA = `${modelA}Id`
-	const fkB = `${modelB}Id`
+	const { fkA, fkB } = getJunctionForeignKeys(modelA, modelB)
 	return compoundUnique([fkA, fkB])
 }
 
@@ -94,13 +113,14 @@ export function getJunctionCompoundUnique(modelA: string, modelB: string) {
 export function getJunctionTableDef(sourceModel: string, targetModel: string): JunctionTableDef {
 	const sorted = [sourceModel, targetModel].sort()
 	const [modelA, modelB] = sorted
+	const { fkA, fkB } = getJunctionForeignKeys(modelA, modelB)
 
 	return {
 		name: getJunctionModelName(modelA, modelB),
 		modelA,
 		modelB,
-		foreignKeyA: `${modelA}Id`,
-		foreignKeyB: `${modelB}Id`
+		foreignKeyA: fkA,
+		foreignKeyB: fkB
 	}
 }
 
@@ -110,10 +130,35 @@ export function getJunctionTableDef(sourceModel: string, targetModel: string): J
  * Provides methods to add, remove, and query junction table entries.
  */
 export class JunctionTableManager {
+	private readonly adapter: FlashcoreAdapter
 	private readonly getModel: (name: string) => unknown | undefined
 
-	constructor(_adapter: FlashcoreAdapter, getModel: (name: string) => unknown | undefined) {
+	constructor(adapter: FlashcoreAdapter, getModel: (name: string) => unknown | undefined) {
+		this.adapter = adapter
 		this.getModel = getModel
+	}
+
+	private getNamespaceForModel(modelName: string): string | undefined {
+		const model = this.getModel(modelName) as { namespace?: string } | undefined
+		return model?.namespace
+	}
+
+	private async ensureExists(modelName: string, recordId: string): Promise<void> {
+		const model = this.getModel(modelName) as {
+			findUnique: (args: { where: { id: string } }) => Promise<unknown | null>
+		} | undefined
+
+		if (!model) {
+			throw new FlashcoreError(`Model '${modelName}' not registered.`)
+		}
+
+		const record = await model.findUnique({ where: { id: recordId } })
+		if (!record) {
+			throw new ValidationError(
+				`Foreign key constraint failed: '${modelName}' record with id '${recordId}' does not exist.`,
+				{ field: 'id', value: recordId }
+			)
+		}
 	}
 
 	/**
@@ -132,6 +177,12 @@ export class JunctionTableManager {
 		targetModel: string,
 		targetId: string
 	): Promise<void> {
+		// Referential integrity: ensure both records exist before inserting into junction.
+		await Promise.all([
+			this.ensureExists(sourceModel, sourceId),
+			this.ensureExists(targetModel, targetId)
+		])
+
 		const junctionDef = getJunctionTableDef(sourceModel, targetModel)
 		const junctionModel = this.getModel(junctionDef.name) as {
 			findFirst: (args: unknown) => Promise<unknown>
@@ -230,13 +281,22 @@ export class JunctionTableManager {
 	 * @returns Number of relationships removed
 	 */
 	async removeAllRelations(model: string, recordId: string): Promise<number> {
+		if (typeof this.adapter.scan !== 'function') {
+			throw new FeatureNotSupportedError(
+				'removeAllRelations requires adapter.scan to discover junction models.',
+				{ feature: 'scan', requiredCapability: 'scan' }
+			)
+		}
+
 		// Find all junction models that involve this model
-		const junctionModels = this.findJunctionModelsFor(model)
+		const junctionModels = await this.findJunctionModelsFor(model)
 		let count = 0
 
 		for (const junctionName of junctionModels) {
 			const junctionModel = this.getModel(junctionName) as {
-				deleteMany: (args: unknown) => Promise<{ count: number }>
+				deleteMany?: (args: unknown) => Promise<{ count: number }>
+				findMany?: (args: unknown) => Promise<Array<{ id: string } | Record<string, unknown>>>
+				delete?: (args: unknown) => Promise<unknown>
 			} | undefined
 
 			if (!junctionModel) continue
@@ -245,15 +305,37 @@ export class JunctionTableManager {
 			if (!parsed) continue
 
 			const [modelA, modelB] = parsed
-			const fkField = modelA === model ? `${modelA}Id` : `${modelB}Id`
+			if (modelA !== model && modelB !== model) continue
 
+			const junctionDef = getJunctionTableDef(modelA, modelB)
+			const fkField = modelA === model ? junctionDef.foreignKeyA : junctionDef.foreignKeyB
+
+			// Prefer deleteMany when available (fast on acid adapters).
 			try {
-				const result = await junctionModel.deleteMany({
+				if (typeof junctionModel.deleteMany === 'function') {
+					const result = await junctionModel.deleteMany({
+						where: { [fkField]: recordId }
+					})
+					count += result.count
+					continue
+				}
+			} catch {
+				// Fall back to per-record deletion below.
+			}
+
+			// Fallback path for non-acid adapters: find and delete individually.
+			if (typeof junctionModel.findMany === 'function' && typeof junctionModel.delete === 'function') {
+				const entries = await junctionModel.findMany({
 					where: { [fkField]: recordId }
 				})
-				count += result.count
-			} catch {
-				// Ignore errors (junction model might not support deleteMany yet)
+
+				for (const entry of entries) {
+					const id = (entry as { id?: unknown }).id
+					if (typeof id === 'string') {
+						await junctionModel.delete({ where: { id } })
+						count++
+					}
+				}
 			}
 		}
 
@@ -307,6 +389,10 @@ export class JunctionTableManager {
 		targetModel: string,
 		targetIds: string[]
 	): Promise<void> {
+		// Referential integrity: ensure both source and all targets exist.
+		await this.ensureExists(sourceModel, sourceId)
+		await Promise.all(targetIds.map(id => this.ensureExists(targetModel, id)))
+
 		const junctionDef = getJunctionTableDef(sourceModel, targetModel)
 		const junctionModel = this.getModel(junctionDef.name) as {
 			findMany: (args: unknown) => Promise<{ id: string; [key: string]: unknown }[]>
@@ -359,10 +445,34 @@ export class JunctionTableManager {
 	 * For now, it returns an empty array - actual implementation will
 	 * be integrated with the model registry in system.ts.
 	 */
-	private findJunctionModelsFor(_model: string): string[] {
-		// This will be implemented when integrated with system.ts
-		// which maintains the model registry
-		return []
+	private async findJunctionModelsFor(model: string): Promise<string[]> {
+		const namespace = this.getNamespaceForModel(model)
+		if (namespace === undefined && !this.getModel(model)) {
+			throw new FlashcoreError(`Model '${model}' not registered.`)
+		}
+
+		const prefix = namespace
+			? `_model:${namespace}::${JUNCTION_PREFIX}`
+			: `_model:${JUNCTION_PREFIX}`
+
+		const keys = await scanKeysToArray(this.adapter, prefix)
+		const basePrefix = namespace ? `_model:${namespace}::` : '_model:'
+
+		// scanKeysToArray yields *all keys* with this prefix (catalog/chunks/indexes/etc).
+		// Extract the model name segment and de-dupe.
+		const models = new Set<string>()
+		for (const key of keys as unknown as string[]) {
+			if (!key.startsWith(basePrefix)) continue
+			const rest = key.slice(basePrefix.length)
+			const colon = rest.indexOf(':')
+			if (colon === -1) continue
+			const modelName = rest.slice(0, colon)
+			if (modelName.startsWith(JUNCTION_PREFIX)) {
+				models.add(modelName)
+			}
+		}
+
+		return Array.from(models)
 	}
 }
 
