@@ -186,7 +186,7 @@ export function CommandAutocomplete({ search, commands, onSelect, onClose: _onCl
 
 			<div className={styles.commandList}>
 				{filteredCommands.length === 0 ? (
-					<div className={styles.empty}>No commands found</div>
+					<div className={styles.empty}>No commands registered</div>
 				) : (
 					filteredCommands.map((cmd, index) => (
 						<ListItem

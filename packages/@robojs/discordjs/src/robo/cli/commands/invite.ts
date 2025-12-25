@@ -6,7 +6,7 @@
  */
 
 import type { CliCommandConfig, CliContext } from 'robo.js'
-import { color, composeColors, Env, env, Manifest, Mode } from 'robo.js'
+import { color, composeColors, Env, Manifest, Mode } from 'robo.js'
 import type { AggregatedMetadata } from 'robo.js'
 
 // Permission flag bits for Discord (same as discord.js PermissionFlagsBits)
@@ -101,7 +101,8 @@ export default async function inviteCommand({ logger }: CliContext) {
 	await Env.load({ mode: defaultMode })
 
 	// Throw error if no client ID is set
-	const clientId = env.get('discord.clientId')
+	const envData = Env.data()
+	const clientId = envData?.DISCORD_CLIENT_ID
 	if (!clientId) {
 		logger.error(`No client ID set. Please set the ${color.bold('DISCORD_CLIENT_ID')} environment variable.`)
 		return

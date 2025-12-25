@@ -43,6 +43,15 @@ export default async function startHook(): Promise<void> {
 	discordLogger.debug('Logging in to Discord...')
 	await client.login(token)
 
+	// Register commands in mock mode (build/complete skips, so we do it at runtime)
+	// Use dynamic import to avoid loading command registration code in production
+	if (process.env.ROBO_MOCK_MODE === 'true') {
+		discordLogger.debug('Mock mode - registering commands at runtime')
+		const { registerCommandsAtRuntime } = await import('../core/commands.js')
+		// Use force: false - mock mode doesn't need to delete existing commands
+		await registerCommandsAtRuntime({ force: false })
+	}
+
 	// Log ready message and check intents once the client is fully ready
 	client.once('clientReady', () => {
 		discordLogger.ready(`On standby as ${color.bold(client.user?.tag ?? 'Unknown')}`)

@@ -753,3 +753,155 @@ function hasProjectPackage(name: string): boolean {
 		return false
 	}
 }
+
+/**
+ * Helper to create REST instance with mock API support.
+ * Applies DISCORD_REST_API env var when set.
+ */
+export function createConfiguredRest(token: string): REST {
+	const options: { version: '10'; api?: string } = { version: '10' }
+	if (process.env.DISCORD_REST_API) {
+		options.api = process.env.DISCORD_REST_API
+	}
+	return new REST(options).setToken(token)
+}
+
+/**
+ * Convert portal records to command entry format.
+ * Used by both HMR and mock mode runtime registration.
+ */
+export function recordsToCommands(
+	records: Record<string, { metadata: Record<string, unknown> }>
+): Record<string, CommandEntry> {
+	const commands: Record<string, CommandEntry> = {}
+
+	for (const [key, record] of Object.entries(records)) {
+		const keyParts = key.split(' ')
+		const rootName = keyParts[0]
+
+		if (keyParts.length === 1) {
+			// Top-level command
+			commands[rootName] = record.metadata as CommandEntry
+		} else if (keyParts.length === 2) {
+			// Subcommand
+			if (!commands[rootName]) {
+				commands[rootName] = { subcommands: {} } as CommandEntry
+			}
+			if (!commands[rootName].subcommands) {
+				commands[rootName].subcommands = {}
+			}
+			commands[rootName].subcommands![keyParts[1]] = record.metadata as CommandEntry
+		} else if (keyParts.length === 3) {
+			// Subcommand group
+			if (!commands[rootName]) {
+				commands[rootName] = { subcommands: {} } as CommandEntry
+			}
+			if (!commands[rootName].subcommands) {
+				commands[rootName].subcommands = {}
+			}
+			if (!commands[rootName].subcommands![keyParts[1]]) {
+				commands[rootName].subcommands![keyParts[1]] = { subcommands: {} } as CommandEntry
+			}
+			if (!commands[rootName].subcommands![keyParts[1]].subcommands) {
+				commands[rootName].subcommands![keyParts[1]].subcommands = {}
+			}
+			commands[rootName].subcommands![keyParts[1]].subcommands![keyParts[2]] = record.metadata as CommandEntry
+		}
+	}
+
+	return commands
+}
+
+/**
+ * Convert portal records to context menu format.
+ */
+export function recordsToContext(
+	records: Record<string, { metadata: Record<string, unknown> }>,
+	type: 'user' | 'message'
+): Record<string, ContextEntry> {
+	const contextType = type === 'user' ? 2 : 3
+	const result: Record<string, ContextEntry> = {}
+
+	for (const [key, record] of Object.entries(records)) {
+		if (record.metadata.contextType === contextType) {
+			result[key] = record.metadata as ContextEntry
+		}
+	}
+
+	return result
+}
+
+/**
+ * Options for runtime command registration.
+ */
+export interface RuntimeRegistrationOptions {
+	/** Changed keys for HMR logging (optional) */
+	changedKeys?: string[]
+	/** Custom timeout in milliseconds (HMR uses 10000ms) */
+	timeout?: number
+	/** Force register (skip hash check) - default true */
+	force?: boolean
+}
+
+/**
+ * Register commands at runtime.
+ * Used by mock mode (start.ts) and HMR (hmr.ts).
+ * Builds command data from portal and registers via REST API.
+ */
+export async function registerCommandsAtRuntime(options?: RuntimeRegistrationOptions): Promise<void> {
+	const { changedKeys, timeout, force = true } = options ?? {}
+
+	// Dynamic imports to reduce overhead when not used
+	const { getPluginOptions, portal } = await import('robo.js')
+
+	// Read directly from process.env to pick up runtime changes (e.g., mock token override)
+	const clientId = process.env.DISCORD_CLIENT_ID
+	const token = process.env.DISCORD_TOKEN
+	const config = getPluginOptions('@robojs/discordjs') as DiscordConfig | undefined
+	const guildId = process.env.DISCORD_GUILD_ID ?? config?.testServers?.[0]
+
+	if (!token || !clientId) {
+		discordLogger.warn('Cannot register commands: missing credentials')
+		return
+	}
+
+	// Ensure routes are loaded
+	await portal.ensureRoute('discordjs', 'commands')
+	await portal.ensureRoute('discordjs', 'context')
+
+	// Get command records from portal
+	const commandRecords = portal.getByType('discordjs:commands') as Record<string, { metadata: Record<string, unknown> }>
+	const contextRecords = portal.getByType('discordjs:context') as Record<string, { metadata: Record<string, unknown> }>
+
+	// Build command data
+	const commands = recordsToCommands(commandRecords)
+	const userContext = recordsToContext(contextRecords, 'user')
+	const messageContext = recordsToContext(contextRecords, 'message')
+
+	const slashCommands = buildSlashCommands(commands, config, true)
+	const userContextCommands = buildContextCommands(userContext, 'user', config, true)
+	const messageContextCommands = buildContextCommands(messageContext, 'message', config, true)
+
+	const commandData = [
+		...slashCommands.map((cmd) => cmd.toJSON()),
+		...userContextCommands.map((cmd) => cmd.toJSON()),
+		...messageContextCommands.map((cmd) => cmd.toJSON())
+	]
+
+	if (commandData.length === 0) {
+		discordLogger.debug('No commands to register')
+		return
+	}
+
+	// Create REST with mock API URL if set
+	const rest = createConfiguredRest(token)
+
+	// Register with Discord/mock API
+	await registerCommandsToDiscord(rest, clientId, guildId, commandData, force, {
+		timeout: timeout ?? 30000
+	})
+
+	const scope = guildId ? 'guild' : 'global'
+	const countInfo = changedKeys ? `${changedKeys.length} changed` : `${commandData.length}`
+	discordLogger.info(`Registered ${countInfo} ${scope} command(s)`)
+}

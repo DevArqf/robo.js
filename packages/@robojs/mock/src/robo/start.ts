@@ -1,9 +1,8 @@
 import { execSync } from 'node:child_process'
 import { getServerEngine } from '@robojs/server'
-import type { StartContext, HandlerEntry, DrainHandle } from 'robo.js'
-import { Manifest, getPluginOptions, logger } from 'robo.js'
+import type { StartContext, DrainHandle } from 'robo.js'
+import { logger } from 'robo.js'
 import { getStageBridge } from '../core/stage-bridge.js'
-import { getStageServer } from '../core/stage.js'
 import { startVoiceGateway, VOICE_GATEWAY_PORT } from '../core/voice-gateway.js'
 import { mockLogger } from '../core/logger.js'
 import { getMockModeState } from './init.js'
@@ -136,6 +135,12 @@ export default async (context: StartContext<MockPluginConfig>) => {
 			config: sessionConfig
 		})
 
+		// Override DISCORD_TOKEN with the mock session token.
+		// This ensures @robojs/discordjs uses the correct token format for REST API calls.
+		// The mock server expects tokens in a specific format that includes the session ID.
+		process.env.DISCORD_TOKEN = mockModeSession.token
+		mockLogger.debug('Set DISCORD_TOKEN to mock session token for REST API authentication')
+
 		// Wire log drain to capture logs from the Robo process
 		// This enables the Stage UI to display logs in real-time
 		const sessionForDrain = mockModeSession
@@ -166,13 +171,8 @@ export default async (context: StartContext<MockPluginConfig>) => {
 
 		mockLogger.debug('Log drain installed for dev mode')
 
-		// Register commands to mock server via HTTP
-		await registerCommandsToMockServer(mockModeSession)
-
-		// Refresh Stage UI state after commands are registered
-		// This ensures connected clients see the real commands, not stale seed data
-		const stageServer = getStageServer()
-		stageServer.refreshSessionState(mockModeSession.id)
+		// Commands are registered by @robojs/discordjs in its start hook
+		// Stage UI gets state via state_sync when it connects
 
 		// Log the Stage UI URL for easy access
 		const stageUrl = getStageUIUrl(mockModeSession.token)
@@ -210,147 +210,6 @@ function openBrowser(url: string): void {
 	}
 
 	execSync(command, { stdio: 'ignore', windowsHide: true })
-}
-
-/**
- * Register commands to the mock server via HTTP.
- * Uses the same Discord.js REST client but pointed at the mock server.
- * This ensures the mock server's REST API is properly tested.
- */
-async function registerCommandsToMockServer(session: Session): Promise<void> {
-	try {
-		// Dynamically import @robojs/discordjs (it's optional but expected in mock mode)
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const discordjs: any = await import('@robojs/discordjs' as string).catch(() => null)
-		if (!discordjs) {
-			mockLogger.debug('Skipping command registration - @robojs/discordjs not installed')
-			return
-		}
-
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const { REST, Routes } = await import('discord.js') as any
-
-		// Load command entries from manifest
-		const commandEntries = await Manifest.routes('discordjs', 'commands')
-		const contextEntries = await Manifest.routes('discordjs', 'context')
-
-		if (commandEntries.length === 0 && contextEntries.length === 0) {
-			mockLogger.debug('No commands to register to mock server')
-			return
-		}
-
-		// Convert entries to command format
-		const commands = entriesToCommands(commandEntries)
-		const userContext = entriesToContext(contextEntries, 'user')
-		const messageContext = entriesToContext(contextEntries, 'message')
-
-		// Get Discord config for defaults
-		const discordConfig = getPluginOptions('@robojs/discordjs') as Record<string, unknown> | undefined
-
-		// Build command structures using @robojs/discordjs utilities
-		const slashCommands = discordjs.buildSlashCommands(commands, discordConfig)
-		const userContextCommands = discordjs.buildContextCommands(userContext, 'user', discordConfig)
-		const messageContextCommands = discordjs.buildContextCommands(messageContext, 'message', discordConfig)
-
-		const commandData = [
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			...slashCommands.map((cmd: any) => cmd.toJSON()),
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			...userContextCommands.map((cmd: any) => cmd.toJSON()),
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			...messageContextCommands.map((cmd: any) => cmd.toJSON())
-		]
-
-		if (commandData.length === 0) {
-			mockLogger.debug('No commands to register')
-			return
-		}
-
-		// Create REST client pointed at mock server
-		const mockApiUrl = process.env.DISCORD_REST_API
-		if (!mockApiUrl) {
-			mockLogger.warn('DISCORD_REST_API not set - cannot register commands to mock server')
-			return
-		}
-
-		const rest = new REST({ version: '10' }).setToken(session.token)
-
-		// Override the API URL to point to mock server
-		rest.options.api = mockApiUrl
-
-		// Register commands using bulk PUT (same as Discord API)
-		const clientId = session.state.applicationId
-		await rest.put(Routes.applicationCommands(clientId), { body: commandData })
-
-		mockLogger.info(`Registered ${commandData.length} commands to mock server`)
-	} catch (error) {
-		mockLogger.warn(`Failed to register commands to mock server: ${(error as Error).message}`)
-		mockLogger.debug('Command registration error:', error)
-	}
-}
-
-/**
- * Convert handler entries to command format.
- * Copied from @robojs/discordjs build/complete.ts to avoid tight coupling.
- */
-function entriesToCommands(entries: HandlerEntry[]): Record<string, Record<string, unknown>> {
-	const commands: Record<string, Record<string, unknown>> = {}
-
-	for (const entry of entries) {
-		const keyParts = entry.key.split(' ')
-		const rootName = keyParts[0]
-
-		if (keyParts.length === 1) {
-			// Top-level command
-			commands[rootName] = {
-				...entry.metadata
-			}
-		} else if (keyParts.length === 2) {
-			// Subcommand
-			if (!commands[rootName]) {
-				commands[rootName] = { subcommands: {} }
-			}
-			if (!commands[rootName].subcommands) {
-				commands[rootName].subcommands = {}
-			}
-			;(commands[rootName].subcommands as Record<string, unknown>)[keyParts[1]] = entry.metadata
-		} else if (keyParts.length === 3) {
-			// Subcommand group
-			if (!commands[rootName]) {
-				commands[rootName] = { subcommands: {} }
-			}
-			if (!commands[rootName].subcommands) {
-				commands[rootName].subcommands = {}
-			}
-			const subcommands = commands[rootName].subcommands as Record<string, Record<string, unknown>>
-			if (!subcommands[keyParts[1]]) {
-				subcommands[keyParts[1]] = { subcommands: {} }
-			}
-			if (!subcommands[keyParts[1]].subcommands) {
-				subcommands[keyParts[1]].subcommands = {}
-			}
-			;(subcommands[keyParts[1]].subcommands as Record<string, unknown>)[keyParts[2]] = entry.metadata
-		}
-	}
-
-	return commands
-}
-
-/**
- * Convert handler entries to context menu format.
- * Copied from @robojs/discordjs build/complete.ts to avoid tight coupling.
- */
-function entriesToContext(entries: HandlerEntry[], type: 'user' | 'message'): Record<string, Record<string, unknown>> {
-	const contextType = type === 'user' ? 2 : 3
-	const result: Record<string, Record<string, unknown>> = {}
-
-	for (const entry of entries) {
-		if ((entry.metadata as Record<string, unknown>)?.contextType === contextType) {
-			result[entry.key] = entry.metadata as Record<string, unknown>
-		}
-	}
-
-	return result
 }
 
 /**

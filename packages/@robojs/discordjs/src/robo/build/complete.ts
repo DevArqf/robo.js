@@ -135,7 +135,7 @@ export default async function (context: BuildCompleteContext) {
 
 	// Skip registration in mock mode - commands will be registered to mock server at runtime
 	if (process.env.ROBO_MOCK_MODE === 'true') {
-		discordLogger.debug('Mock mode detected - skipping real Discord API registration')
+		discordLogger.debug('Mock mode - deferring registration to start hook')
 		return
 	}
 
