@@ -1112,6 +1112,26 @@ export class StageServer {
 	}
 
 	/**
+	 * Broadcast commands update to all stage clients in a session.
+	 * More efficient than full state_sync when only commands have changed.
+	 */
+	broadcastCommandsUpdate(sessionId: string): void {
+		const session = sessionManager.get(sessionId)
+		if (!session) {
+			mockLogger.warn(`Cannot broadcast commands: session ${sessionId} not found`)
+			return
+		}
+
+		const commands = Array.from(session.state.commands.values()).map((c) => this.toStageCommand(c))
+		this.broadcastToSession(sessionId, {
+			type: 'commands_updated',
+			data: { commands }
+		})
+
+		mockLogger.debug(`Broadcast commands_updated (${commands.length} commands) to session ${sessionId}`)
+	}
+
+	/**
 	 * Broadcast a control action event for toast notifications.
 	 * Used to notify all stage clients when control panel actions occur.
 	 *

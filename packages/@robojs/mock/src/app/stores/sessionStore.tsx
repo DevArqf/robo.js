@@ -10,6 +10,7 @@ import type {
 	StageApplicationCommand,
 	StateSyncPayload,
 	StageMessageCreateData,
+	StageCommandsUpdatedData,
 	StageEvent,
 	StageCommand,
 	StageInteractionResponseData
@@ -157,6 +158,7 @@ type SessionAction =
 	| { type: 'CLEAR_UNREAD_MENTIONS'; payload: string }
 	| { type: 'REORDER_CHANNELS'; payload: { guildId: string; updates: Array<{ id: string; position: number; parent_id?: string | null }> } }
 	| { type: 'HANDLE_CHANNEL_UPDATE'; payload: StageChannel }
+	| { type: 'SET_COMMANDS'; payload: StageApplicationCommand[] }
 
 // Initial state
 const initialState: SessionState = {
@@ -229,6 +231,12 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 				eventCount: state.eventCount + 1
 			}
 		}
+
+		case 'SET_COMMANDS':
+			return {
+				...state,
+				commands: action.payload
+			}
 
 		case 'HANDLE_MESSAGE_CREATE': {
 			const { message } = action.payload
@@ -783,6 +791,12 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 					if (syncPayload.logs && syncPayload.logs.length > 0) {
 						window.dispatchEvent(new CustomEvent('stage:logs_history', { detail: syncPayload.logs }))
 					}
+					break
+				}
+
+				case 'commands_updated': {
+					const data = event.data as StageCommandsUpdatedData
+					dispatch({ type: 'SET_COMMANDS', payload: data.commands })
 					break
 				}
 

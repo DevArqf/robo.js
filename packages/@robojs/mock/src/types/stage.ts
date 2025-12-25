@@ -73,6 +73,9 @@ export type StageEventType =
 	// Control actions (toast notifications)
 	| 'control_action'         // Action performed (for toast broadcasts)
 
+	// Commands
+	| 'commands_updated'       // Commands list changed (after registration)
+
 /**
  * Command types sent from stage clients to server
  */
@@ -382,6 +385,13 @@ export interface StageBotDisconnectedData {
 export interface StageBotErrorData {
 	error: string
 	connectionId?: string
+}
+
+/**
+ * Data payload for commands_updated events
+ */
+export interface StageCommandsUpdatedData {
+	commands: StageApplicationCommand[]
 }
 
 /**

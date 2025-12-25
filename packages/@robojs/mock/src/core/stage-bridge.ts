@@ -129,6 +129,13 @@ export class StageBridge {
 			type: 'bot_ready',
 			data: stageData
 		})
+
+		// Defensive recovery: refresh state after a delay to catch commands registered during startup
+		// Commands are typically registered via REST API shortly after READY, so this ensures
+		// Stage UI has the updated command list even if there was a race condition
+		setTimeout(() => {
+			stageServer.refreshSessionState(sessionId)
+		}, 500)
 	}
 
 	/**

@@ -37,5 +37,6 @@ export type {
 	StageJoinVoiceData,
 	StageLeaveVoiceData,
 	StageUpdateVoiceStateData,
-	StageRESTCallData
+	StageRESTCallData,
+	StageCommandsUpdatedData
 } from '../../types/stage.js'
