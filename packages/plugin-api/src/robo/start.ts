@@ -13,6 +13,7 @@ import { logger } from '../core/logger.js'
 import { getPluginRouteRegistry } from '../core/plugin-routes.js'
 import { findAvailablePort, DEFAULT_MAX_PORT_ATTEMPTS } from '../core/port-utils.js'
 import { Mode, portal } from 'robo.js'
+import { emit, isCapable } from 'robo.js/ipc'
 import { Nanocore } from 'robo.js/unstable.js'
 import type { StartContext, HandlerRecord } from 'robo.js'
 import type { TunnelConfig, TunnelInstance, TunnelProvider } from '../core/tunnel/types.js'
@@ -221,6 +222,11 @@ export default async (_context: StartContext<PluginConfig>) => {
 	globalThis.roboServer.ready = true
 	const localUrl = `http://${hostname ?? 'localhost'}:${port}`
 	Nanocore.update('watch', { localUrl })
+
+	// Emit IPC event if host supports it (for sandboxed environments like WebContainers)
+	if (isCapable('open:url')) {
+		emit('open:url', { url: localUrl, target: 'preview', source: 'server' })
+	}
 
 	// Start tunnel if enabled via CLI flag or plugin config
 	const tunnelEnabled = process.env.__ROBO_TUNNEL_ENABLED === 'true' || pluginOptions.tunnel?.enabled
