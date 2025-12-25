@@ -316,6 +316,7 @@ export default async (request: RoboRequest) => {
 				? {
 						id: interaction.id,
 						type: interaction.type,
+						name: interaction.commandName,
 						user: interactionUser,
 						authorizing_integration_owners: {},
 						// Add target info for context menu commands (Phase 3G)

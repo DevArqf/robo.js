@@ -156,7 +156,11 @@ function VirtualizedMessageList({
 			// Date divider adds ~40px (16px margin + 24px content)
 			const dateDividerHeight = group.showDateDivider ? 40 : 0
 
-			return dateDividerHeight + (hasHeader ? 44 : 0) + contentHeight + embedHeight + attachmentHeight + v1ComponentHeight + 16
+			// Command invocation header adds ~28px (avatar + text + margin)
+			const hasCommandInvocation = (message as { interaction_metadata?: { type: number } }).interaction_metadata?.type === 2
+			const commandInvocationHeight = hasCommandInvocation ? 28 : 0
+
+			return dateDividerHeight + commandInvocationHeight + (hasHeader ? 44 : 0) + contentHeight + embedHeight + attachmentHeight + v1ComponentHeight + 16
 		},
 		overscan: 10
 	})

@@ -1272,6 +1272,9 @@ export function mockMessageToAPIMessage(message: MockMessage, author: MockUser):
 		}
 
 		// Add optional fields
+		if (message.interaction_metadata.name) {
+			metadata.name = message.interaction_metadata.name
+		}
 		if (message.interaction_metadata.original_response_message_id) {
 			metadata.original_response_message_id = message.interaction_metadata.original_response_message_id
 		}

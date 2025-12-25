@@ -13,6 +13,7 @@ export type {
 	StageVoiceState,
 	StageReaction,
 	StageMessage,
+	StageMessageInteractionMetadata,
 	StageApplicationCommand,
 	StageApplicationCommandOption,
 	StageApplicationCommandOptionChoice,

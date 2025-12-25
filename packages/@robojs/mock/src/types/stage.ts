@@ -249,6 +249,17 @@ export interface StageReaction {
 }
 
 /**
+ * Interaction metadata for Stage UI to display "User used /command" header
+ */
+export interface StageMessageInteractionMetadata {
+	id: Snowflake
+	type: number
+	/** Command name for slash commands */
+	name?: string
+	user: StageUser
+}
+
+/**
  * Simplified message data for stage clients
  */
 export interface StageMessage {
@@ -271,6 +282,8 @@ export interface StageMessage {
 		channel_id?: Snowflake
 		guild_id?: Snowflake
 	}
+	/** Interaction metadata for command responses */
+	interaction_metadata?: StageMessageInteractionMetadata
 }
 
 // ============================================================================

@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process'
 import { getServerEngine } from '@robojs/server'
 import type { StartContext, DrainHandle } from 'robo.js'
 import { logger } from 'robo.js'
+import { emit, isCapable } from 'robo.js/ipc'
 import { getStageBridge } from '../core/stage-bridge.js'
 import { startVoiceGateway, VOICE_GATEWAY_PORT } from '../core/voice-gateway.js'
 import { mockLogger } from '../core/logger.js'
@@ -183,11 +184,18 @@ export default async (context: StartContext<MockPluginConfig>) => {
 			// Small delay to ensure server is fully ready
 			await new Promise((resolve) => setTimeout(resolve, 500))
 
-			try {
-				openBrowser(stageUrl)
-				mockLogger.debug('Opened Stage UI in browser')
-			} catch (error) {
-				mockLogger.warn(`Could not open browser: ${(error as Error).message}`)
+			// Try IPC first (for sandboxed environments like WebContainers)
+			if (isCapable('open:url')) {
+				emit('open:url', { url: stageUrl, target: 'preview', source: 'mock-stage' })
+				mockLogger.debug('Emitted IPC open:url for Stage UI')
+			} else {
+				// Fallback to native browser open
+				try {
+					openBrowser(stageUrl)
+					mockLogger.debug('Opened Stage UI in browser')
+				} catch (error) {
+					mockLogger.warn(`Could not open browser: ${(error as Error).message}`)
+				}
 			}
 		}
 	}

@@ -1528,6 +1528,8 @@ export interface MockMessageCall {
 export interface MockMessageInteractionMetadata {
 	id: Snowflake
 	type: number
+	/** Command name for slash commands (Stage UI extension) */
+	name?: string
 	user: MockUser
 	authorizing_integration_owners?: Record<number, Snowflake>
 	original_response_message_id?: Snowflake
