@@ -51,6 +51,10 @@
 			"import": "./utils.js",
 			"types": "./utils.d.ts"
 		},
+		"./ipc": {
+			"import": "./ipc.js",
+			"types": "./ipc.d.ts"
+		},
 		"./*": {
 			"types": "./*",
 			"import": "./*"
@@ -78,6 +82,8 @@
 		"flashcore.js",
 		"hmr.d.ts",
 		"hmr.js",
+		"ipc.d.ts",
+		"ipc.js",
 		"unstable.d.ts",
 		"unstable.js",
 		"LICENSE",
