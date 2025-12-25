@@ -109,10 +109,12 @@ export class NodeEngine extends BaseEngine {
 				return
 			}
 
+			// Force close all connections to ensure clean shutdown
+			this._server.closeAllConnections()
+
 			this._server.close((err) => {
 				if (err) {
 					logger.error(`Error stopping the server: ${err}`)
-					return
 				}
 
 				this._isRunning = false

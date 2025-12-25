@@ -24,6 +24,16 @@ import type { PrepareContext } from 'robo.js'
 import type { ViteDevServer } from 'vite'
 import type { TunnelConfig } from '../core/tunnel/types.js'
 
+/**
+ * CORS configuration options.
+ */
+export interface CorsConfig {
+	/** Allowed origins. Use '*' for all origins (not compatible with credentials). */
+	origins?: string[] | '*'
+	/** Whether to allow credentials (cookies, authorization headers). */
+	credentials?: boolean
+}
+
 // Extend globalThis to include engine callbacks type (used by @robojs/mock)
 declare global {
 	// eslint-disable-next-line no-var
@@ -34,7 +44,7 @@ declare global {
  * Plugin configuration options.
  */
 export interface PluginConfig {
-	cors?: boolean
+	cors?: boolean | CorsConfig
 	engine?: BaseEngine
 	hostname?: string
 	/**

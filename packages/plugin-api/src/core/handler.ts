@@ -26,14 +26,36 @@ export function createServerHandler(router: Router, vite?: ViteDevServer, onNotF
 		const parsedUrl = url.parse(req.url, true)
 
 		if (pluginOptions.cors) {
-			// CORS Headers (to allow any origin, any method, and any header)
-			res.setHeader('Access-Control-Allow-Origin', '*')
-			res.setHeader('Access-Control-Allow-Methods', '*')
-			res.setHeader('Access-Control-Allow-Headers', '*')
+			const corsConfig =
+				typeof pluginOptions.cors === 'object' ? pluginOptions.cors : { origins: '*' as const }
+
+			const requestOrigin = req.headers.origin
+			const allowedOrigins = corsConfig.origins ?? '*'
+
+			// Set Access-Control-Allow-Origin header
+			if (allowedOrigins === '*' && !corsConfig.credentials) {
+				// Wildcard only allowed without credentials
+				res.setHeader('Access-Control-Allow-Origin', '*')
+			} else if (requestOrigin) {
+				// For credentials or specific origins, echo back the request origin if allowed
+				const originsArray = allowedOrigins === '*' ? [requestOrigin] : allowedOrigins
+				if (originsArray.includes(requestOrigin)) {
+					res.setHeader('Access-Control-Allow-Origin', requestOrigin)
+					res.setHeader('Vary', 'Origin')
+				}
+			}
+
+			// Set credentials header if enabled
+			if (corsConfig.credentials) {
+				res.setHeader('Access-Control-Allow-Credentials', 'true')
+			}
+
+			res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
+			res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
 
 			// Preflight request. Reply successfully:
 			if (req.method === 'OPTIONS') {
-				res.writeHead(200)
+				res.writeHead(204)
 				res.end()
 				return
 			}
