@@ -9,6 +9,7 @@ import { AIMessage, ToolMessage, type BaseMessage } from '@langchain/core/messag
 import type { AgentEvent, StreamOptions, DebugEvent } from '../../types/events.js'
 import { isDebugEvent } from '../../types/events.js'
 import type { AgentState } from '../state.js'
+import { codeLogger } from '../../core/logger.js'
 
 /**
  * LangGraph stream event structure
@@ -163,14 +164,13 @@ export class StreamAdapter {
 		// Note: Use lastMode because partial state updates may not include mode
 		const currentMode = state.mode ?? this.lastMode
 
-		// Debug logging for plan_complete detection
-		if (state.acceptance || state.phase === 'planner_done') {
-			console.log('[StreamAdapter] Plan complete check:', {
+		// Debug logging for plan_complete detection (gated behind debugMode)
+		if (this.debugMode && (state.acceptance || state.phase === 'planner_done')) {
+			codeLogger.debug('[StreamAdapter] Plan complete check', {
 				currentMode,
 				lastMode: this.lastMode,
 				hasAcceptance: !!state.acceptance,
 				hasPendingQuestion: !!state.pendingQuestion,
-				pendingQuestionValue: state.pendingQuestion,
 				planCompleteEmitted: this.planCompleteEmitted,
 				includePlan: this.options.includePlan,
 				phase: state.phase
@@ -184,7 +184,9 @@ export class StreamAdapter {
 			!this.planCompleteEmitted &&
 			this.options.includePlan
 		) {
-			console.log('[StreamAdapter] Emitting plan_complete event!')
+			if (this.debugMode) {
+				codeLogger.debug('[StreamAdapter] Emitting plan_complete')
+			}
 			this.planCompleteEmitted = true
 			this.emit({
 				type: 'plan_complete',

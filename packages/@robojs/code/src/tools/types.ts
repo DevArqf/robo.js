@@ -102,6 +102,15 @@ export interface ToolResult<T = unknown> {
 	 * Reason for requiring approval
 	 */
 	approvalReason?: string
+
+	/**
+	 * Command details for terminal approval
+	 */
+	pendingCommand?: {
+		executable: string
+		args: string[]
+		cwd?: string
+	}
 }
 
 /**

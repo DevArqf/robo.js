@@ -728,11 +728,27 @@ export class WebContainerProvider implements ExecutionProvider {
 
 		// Poll for new content and exit
 		let lastLength = 0
+		let lastTotalProcessed = buffer.getStats().totalProcessed
 		while (true) {
 			const content = buffer.getContent()
+			const stats = buffer.getStats()
+
 			if (content.length > lastLength) {
+				// Normal growth: emit the delta since last poll.
 				yield { type: 'output', stream: 'combined', text: content.slice(lastLength) }
 				lastLength = content.length
+				lastTotalProcessed = stats.totalProcessed
+			} else if (stats.totalProcessed > lastTotalProcessed) {
+				// Buffer may have truncated old output to stay within max bytes,
+				// keeping content length flat. Use totalProcessed as a monotonic signal
+				// and emit an approximate tail delta to avoid stalling forever.
+				const processedDelta = stats.totalProcessed - lastTotalProcessed
+				const approxChars = Math.min(content.length, processedDelta)
+				if (approxChars > 0) {
+					yield { type: 'output', stream: 'combined', text: content.slice(-approxChars) }
+				}
+				lastLength = content.length
+				lastTotalProcessed = stats.totalProcessed
 			}
 
 			if (session.exitCode !== null) {

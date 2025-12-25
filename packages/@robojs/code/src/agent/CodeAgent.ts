@@ -256,7 +256,14 @@ export class CodeAgent {
 			policy: this.config.policy,
 			llm: this.config.llm,
 			toolRegistry: this.config.toolRegistry,
-			toolExecutor: this.config.toolExecutor,
+			// Bind the shared ToolExecutor template to this run.
+			// This prevents cross-run leakage (runId, fileTracker, queue) and ensures correct attribution.
+			toolExecutor: this.config.toolExecutor.fork({
+				runId,
+				provider: this.config.provider,
+				policy: this.config.policy,
+				signal: abortController.signal
+			}),
 			projectIndexer: this.config.projectIndexer,
 			projectOverviewBuilder: this.config.projectOverviewBuilder,
 			roboConfig: this.config.roboConfig,
@@ -343,6 +350,21 @@ export class CodeAgent {
 
 		runInfo.streamAdapter = streamAdapter
 
+		// CRITICAL: Wire up context.onEvent to push to the event queue
+		// This allows nodes (like agent node) to emit events directly
+		runInfo.context.onEvent = (event) => {
+			eventQueue.push(event)
+			if (resolveWait) {
+				resolveWait()
+				resolveWait = null
+			}
+		}
+
+		// Bind tool executor event + abort wiring for this stream invocation.
+		// (ToolExecutor is created per run in start(), but the onEvent sink is set when stream() begins.)
+		runInfo.context.toolExecutor.setOnEvent(runInfo.context.onEvent)
+		runInfo.context.toolExecutor.setSignal(runInfo.abortController.signal)
+
 		// Emit start event
 		yield {
 			type: 'start',
@@ -408,34 +430,69 @@ export class CodeAgent {
 		}
 
 		try {
-			// Stream the graph execution
+			// Stream the graph execution with dual mode for real-time events
+			// 'updates' - state updates after node completion
+			// 'custom' - real-time events via config.writer() during node execution
 			const stream = await runInfo.graph.stream(inputState, {
 				...config,
-				streamMode: 'updates' as const
+				streamMode: ['updates', 'custom'] as const
 			})
 
-			for await (const update of stream) {
+			for await (const output of stream) {
 				// Check for abort
 				if (runInfo.abortController.signal.aborted) {
 					break
 				}
 
-				// Process state updates
-				for (const [nodeName, nodeState] of Object.entries(update)) {
-					codeLogger.debug('[CodeAgent.stream] Processing node update', { nodeName })
-					// Process state update through adapter
-					streamAdapter.processStateUpdate(nodeState as Partial<AgentState>)
+				// Dual stream mode returns [mode, data] tuples
+				if (Array.isArray(output) && output.length === 2) {
+					const [mode, data] = output
 
-					// Yield queued events
-					codeLogger.debug('[CodeAgent.stream] Event queue length after processStateUpdate:', eventQueue.length)
-					while (eventQueue.length > 0) {
-						const event = eventQueue.shift()!
-						codeLogger.debug('[CodeAgent.stream] Yielding event:', event.type)
+					if (mode === 'custom') {
+						// Custom events emitted via config.writer() - yield immediately
+						const event = data as AgentEvent
+						codeLogger.debug('[CodeAgent.stream] Yielding custom event:', event.type)
 						yield event
 
 						// Check for terminal events
 						if (event.type === 'complete' || event.type === 'abort') {
 							isComplete = true
+						}
+					} else if (mode === 'updates') {
+						// State updates - process through adapter
+						for (const [nodeName, nodeState] of Object.entries(data as Record<string, unknown>)) {
+							codeLogger.debug('[CodeAgent.stream] Processing node update', { nodeName })
+							// Process state update through adapter
+							streamAdapter.processStateUpdate(nodeState as Partial<AgentState>)
+
+							// Yield queued events from context.onEvent
+							codeLogger.debug('[CodeAgent.stream] Event queue length after processStateUpdate:', eventQueue.length)
+							while (eventQueue.length > 0) {
+								const event = eventQueue.shift()!
+								codeLogger.debug('[CodeAgent.stream] Yielding event:', event.type)
+								yield event
+
+								// Check for terminal events
+								if (event.type === 'complete' || event.type === 'abort') {
+									isComplete = true
+								}
+							}
+						}
+					}
+				} else {
+					// Fallback for single-mode output (backward compatibility)
+					for (const [nodeName, nodeState] of Object.entries(output as Record<string, unknown>)) {
+						codeLogger.debug('[CodeAgent.stream] Processing node update (fallback)', { nodeName })
+						streamAdapter.processStateUpdate(nodeState as Partial<AgentState>)
+
+						while (eventQueue.length > 0) {
+							const event = eventQueue.shift()!
+							codeLogger.debug('[CodeAgent.stream] Yielding event:', event.type)
+							yield event
+
+							if (event.type === 'complete' || event.type === 'abort') {
+								isComplete = true
+							}
 						}
 					}
 				}
@@ -607,6 +664,13 @@ export class CodeAgent {
 
 		// Signal abort to the run
 		runInfo.abortController.abort()
+
+		// Abort any queued tool executions for this run
+		try {
+			runInfo.context.toolExecutor.abort(request.reason)
+		} catch {
+			// Best-effort; abort should not throw
+		}
 
 		// Stop all active terminal sessions (Phase 5: session cleanup)
 		if (runInfo.activeSessions.size > 0) {

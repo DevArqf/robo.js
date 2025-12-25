@@ -9,7 +9,7 @@ import { CodeAgent, type CodeAgentConfig } from '../../src/agent/CodeAgent.js'
 import type { AgentPolicy } from '../../src/types/policy.js'
 import type { ExecutionProvider } from '../../src/types/execution.js'
 import type { LLMProvider } from '../../src/types/llm.js'
-import type { ToolRegistry, ToolCallResult, PendingToolCall } from '../../src/tools/types.js'
+import type { ToolRegistry } from '../../src/tools/types.js'
 import { ToolExecutor } from '../../src/tools/runtime/executor.js'
 import type { ProjectIndexer } from '../../src/project/indexer.js'
 import type { ProjectOverviewBuilder } from '../../src/project/overview.js'
@@ -67,17 +67,16 @@ function createMockToolRegistry(): ToolRegistry {
 	} as unknown as ToolRegistry
 }
 
-function createMockToolExecutor(): ToolExecutor {
-	return {
-		execute: jest.fn(async (call: PendingToolCall): Promise<ToolCallResult> => ({
-			callId: call.callId,
-			toolName: call.toolName,
-			result: { success: true, data: {} },
-			durationMs: 10,
-			startedAt: Date.now() - 10,
-			completedAt: Date.now()
-		}))
-	} as unknown as ToolExecutor
+function createMockToolExecutor(registry: ToolRegistry, provider: ExecutionProvider, policy: AgentPolicy): ToolExecutor {
+	// Use the real executor so CodeAgent can safely fork per-run instances.
+	// These tests don't execute tools, but they do require a valid ToolExecutor.
+	return new ToolExecutor(registry, {
+		context: {
+			provider,
+			policy,
+			runId: 'template-run'
+		}
+	})
 }
 
 function createMockProjectIndexer(): ProjectIndexer {
@@ -124,12 +123,16 @@ function createTestPolicy(): AgentPolicy {
 }
 
 function createTestConfig(): CodeAgentConfig {
+	const provider = createMockProvider()
+	const policy = createTestPolicy()
+	const toolRegistry = createMockToolRegistry()
+
 	return {
-		provider: createMockProvider(),
-		policy: createTestPolicy(),
+		provider,
+		policy,
 		llm: createMockLLM(),
-		toolRegistry: createMockToolRegistry(),
-		toolExecutor: createMockToolExecutor(),
+		toolRegistry,
+		toolExecutor: createMockToolExecutor(toolRegistry, provider, policy),
 		projectIndexer: createMockProjectIndexer(),
 		projectOverviewBuilder: createMockProjectOverviewBuilder()
 	}

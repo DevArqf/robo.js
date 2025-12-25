@@ -56,7 +56,12 @@ export const terminalRunTool: ToolDefinition<TerminalRunInput, TerminalRunOutput
 				return {
 					success: false,
 					requiresApproval: true,
-					approvalReason: policyCheck.reason
+					approvalReason: policyCheck.reason,
+					pendingCommand: {
+						executable: command,
+						args: args ?? [],
+						cwd
+					}
 				}
 			} else {
 				// Denied - cannot be approved

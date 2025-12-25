@@ -252,6 +252,40 @@ export class ToolExecutor {
 	getFileTracker(): FileReadTracker {
 		return this.context.fileTracker!
 	}
+
+	/**
+	 * Update the event emitter for this executor.
+	 *
+	 * Useful because CodeAgent wires the per-run event sink when stream() begins.
+	 */
+	setOnEvent(onEvent?: ToolContext['onEvent']): void {
+		this.context.onEvent = onEvent
+	}
+
+	/**
+	 * Update the abort signal for this executor.
+	 */
+	setSignal(signal?: ToolContext['signal']): void {
+		this.context.signal = signal
+	}
+
+	/**
+	 * Create a new ToolExecutor with the same registry and settings, but a new context.
+	 *
+	 * This is used to bind a shared "template" executor to a specific runId and event sink.
+	 * A fresh FileReadTracker is created by default to avoid cross-run leakage.
+	 */
+	fork(overrides: Partial<ToolContext> & Pick<ToolContext, 'runId'>): ToolExecutor {
+		return new ToolExecutor(this.registry, {
+			context: {
+				...this.context,
+				...overrides,
+				fileTracker: overrides.fileTracker ?? new FileReadTracker()
+			},
+			serialize: this.serialize,
+			timeout: this.timeout
+		})
+	}
 }
 
 /**

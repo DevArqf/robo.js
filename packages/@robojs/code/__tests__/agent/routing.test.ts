@@ -12,7 +12,7 @@ import {
 	routeAfterReviewer,
 	routeAfterVerification
 } from '../../src/agent/edges/routing.js'
-import type { AgentState } from '../../src/agent/state.js'
+import { DEFAULT_TOKEN_USAGE, type AgentState } from '../../src/agent/state.js'
 import type { AcceptanceCriteria } from '../../src/types/acceptance.js'
 import type { BuildVerificationResult, TestVerificationResult, ProjectProfile, VerificationResult } from '../../src/types/robo.js'
 
@@ -79,17 +79,23 @@ function createTestState(overrides: Partial<AgentState> = {}): AgentState {
 		projectOverview: null,
 		pendingChanges: [],
 		pendingDiffs: [],
+		pendingCommand: null,
 		lastVerification: null,
 		appliedChanges: [],
 		appliedDiffs: [],
 		summary: null,
+		tokenUsage: DEFAULT_TOKEN_USAGE,
+		currentContextTokens: 0,
 		awaitingApproval: false,
 		approved: null,
+		approvalReason: null,
 		aborted: false,
 		abortReason: null,
 		completionSummary: null,
 		iterations: 0,
 		budgetExceeded: false,
+		limitReached: false,
+		limitContinue: false,
 		messages: [],
 		...overrides
 	}
@@ -188,9 +194,9 @@ describe('routeAfterTools', () => {
 		expect(routeAfterTools(state)).toBe(END)
 	})
 
-	it('should return END when awaiting approval', () => {
+	it('should return APPROVAL_GATE when awaiting approval', () => {
 		const state = createTestState({ awaitingApproval: true })
-		expect(routeAfterTools(state)).toBe(END)
+		expect(routeAfterTools(state)).toBe(NODE.APPROVAL_GATE)
 	})
 
 	it('should return AGENT to continue processing', () => {

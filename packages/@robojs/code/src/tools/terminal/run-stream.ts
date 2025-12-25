@@ -50,7 +50,12 @@ export const terminalRunStreamTool: ToolDefinition<TerminalRunStreamInput, Termi
 				return {
 					success: false,
 					requiresApproval: true,
-					approvalReason: policyCheck.reason
+					approvalReason: policyCheck.reason,
+					pendingCommand: {
+						executable: command,
+						args: args ?? [],
+						cwd
+					}
 				}
 			}
 			return errorResult(policyCheck.reason!, {

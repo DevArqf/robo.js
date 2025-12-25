@@ -236,6 +236,14 @@ export const AgentStateAnnotation = Annotation.Root({
 	}),
 
 	/**
+	 * Pending command awaiting approval (for terminal commands)
+	 */
+	pendingCommand: Annotation<{ executable: string; args: string[]; cwd?: string } | null>({
+		reducer: replaceReducer,
+		default: () => null
+	}),
+
+	/**
 	 * Last verification result
 	 */
 	lastVerification: Annotation<VerificationResult | null>({
@@ -444,5 +452,5 @@ export function isComplete(state: AgentState): boolean {
  * Helper to check if we're waiting for user input
  */
 export function isWaitingForUser(state: AgentState): boolean {
-	return state.awaitingApproval || !!state.pendingQuestion || state.limitReached
+	return state.awaitingApproval || !!state.pendingQuestion || !!state.limitReached
 }

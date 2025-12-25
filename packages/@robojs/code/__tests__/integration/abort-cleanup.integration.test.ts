@@ -9,7 +9,7 @@ import { CodeAgent, type CodeAgentConfig } from '../../src/agent/CodeAgent.js'
 import type { AgentPolicy } from '../../src/types/policy.js'
 import type { ExecutionProvider } from '../../src/types/execution.js'
 import type { LLMProvider } from '../../src/types/llm.js'
-import type { ToolRegistry, ToolCallResult, PendingToolCall } from '../../src/tools/types.js'
+import type { ToolRegistry } from '../../src/tools/types.js'
 import { ToolExecutor } from '../../src/tools/runtime/executor.js'
 import type { ProjectIndexer } from '../../src/project/indexer.js'
 import type { ProjectOverviewBuilder } from '../../src/project/overview.js'
@@ -71,17 +71,16 @@ function createMockToolRegistry(): ToolRegistry {
 	} as unknown as ToolRegistry
 }
 
-function createMockToolExecutor(): ToolExecutor {
-	return {
-		execute: jest.fn(async (call: PendingToolCall): Promise<ToolCallResult> => ({
-			callId: call.callId,
-			toolName: call.toolName,
-			result: { success: true, data: {} },
-			durationMs: 10,
-			startedAt: Date.now() - 10,
-			completedAt: Date.now()
-		}))
-	} as unknown as ToolExecutor
+function createMockToolExecutor(registry: ToolRegistry, provider: ExecutionProvider, policy: AgentPolicy): ToolExecutor {
+	// Use the real executor so CodeAgent can safely fork per-run instances.
+	// These tests don't execute tools, but they do require a valid ToolExecutor.
+	return new ToolExecutor(registry, {
+		context: {
+			provider,
+			policy,
+			runId: 'template-run'
+		}
+	})
 }
 
 function createMockProjectIndexer(): ProjectIndexer {
@@ -127,6 +126,22 @@ function createTestPolicy(): AgentPolicy {
 	}
 }
 
+function createTestConfig(provider: ExecutionProvider): CodeAgentConfig {
+	const policy = createTestPolicy()
+	const toolRegistry = createMockToolRegistry()
+	const toolExecutor = createMockToolExecutor(toolRegistry, provider, policy)
+
+	return {
+		provider,
+		policy,
+		llm: createMockLLM(),
+		toolRegistry,
+		toolExecutor,
+		projectIndexer: createMockProjectIndexer(),
+		projectOverviewBuilder: createMockProjectOverviewBuilder()
+	}
+}
+
 describe('Abort and Cleanup Integration', () => {
 	describe('session cleanup on abort', () => {
 		it('should stop all active sessions on abort', async () => {
@@ -136,15 +151,7 @@ describe('Abort and Cleanup Integration', () => {
 				stopSession: mockStopSession
 			})
 
-			const config: CodeAgentConfig = {
-				provider,
-				policy: createTestPolicy(),
-				llm: createMockLLM(),
-				toolRegistry: createMockToolRegistry(),
-				toolExecutor: createMockToolExecutor(),
-				projectIndexer: createMockProjectIndexer(),
-				projectOverviewBuilder: createMockProjectOverviewBuilder()
-			}
+			const config = createTestConfig(provider)
 
 			const agent = new CodeAgent(config)
 			const { runId } = await agent.start({ input: 'Long running task' })
@@ -177,15 +184,7 @@ describe('Abort and Cleanup Integration', () => {
 				stopSession: mockStopSession
 			})
 
-			const config: CodeAgentConfig = {
-				provider,
-				policy: createTestPolicy(),
-				llm: createMockLLM(),
-				toolRegistry: createMockToolRegistry(),
-				toolExecutor: createMockToolExecutor(),
-				projectIndexer: createMockProjectIndexer(),
-				projectOverviewBuilder: createMockProjectOverviewBuilder()
-			}
+			const config = createTestConfig(provider)
 
 			const agent = new CodeAgent(config)
 			const { runId } = await agent.start({ input: 'Task' })
@@ -210,15 +209,7 @@ describe('Abort and Cleanup Integration', () => {
 				stopSession: mockStopSession
 			})
 
-			const config: CodeAgentConfig = {
-				provider,
-				policy: createTestPolicy(),
-				llm: createMockLLM(),
-				toolRegistry: createMockToolRegistry(),
-				toolExecutor: createMockToolExecutor(),
-				projectIndexer: createMockProjectIndexer(),
-				projectOverviewBuilder: createMockProjectOverviewBuilder()
-			}
+			const config = createTestConfig(provider)
 
 			const agent = new CodeAgent(config)
 			const { runId } = await agent.start({ input: 'Task without sessions' })
@@ -238,15 +229,7 @@ describe('Abort and Cleanup Integration', () => {
 				stopSession: mockStopSession
 			})
 
-			const config: CodeAgentConfig = {
-				provider,
-				policy: createTestPolicy(),
-				llm: createMockLLM(),
-				toolRegistry: createMockToolRegistry(),
-				toolExecutor: createMockToolExecutor(),
-				projectIndexer: createMockProjectIndexer(),
-				projectOverviewBuilder: createMockProjectOverviewBuilder()
-			}
+			const config = createTestConfig(provider)
 
 			const agent = new CodeAgent(config)
 
@@ -272,15 +255,7 @@ describe('Abort and Cleanup Integration', () => {
 				stopSession: mockStopSession
 			})
 
-			const config: CodeAgentConfig = {
-				provider,
-				policy: createTestPolicy(),
-				llm: createMockLLM(),
-				toolRegistry: createMockToolRegistry(),
-				toolExecutor: createMockToolExecutor(),
-				projectIndexer: createMockProjectIndexer(),
-				projectOverviewBuilder: createMockProjectOverviewBuilder()
-			}
+			const config = createTestConfig(provider)
 
 			const agent = new CodeAgent(config)
 			const { runId } = await agent.start({ input: 'Task' })
@@ -301,15 +276,7 @@ describe('Abort and Cleanup Integration', () => {
 
 	describe('cleanup operations', () => {
 		it('should remove run on cleanup', async () => {
-			const config: CodeAgentConfig = {
-				provider: createMockProvider(),
-				policy: createTestPolicy(),
-				llm: createMockLLM(),
-				toolRegistry: createMockToolRegistry(),
-				toolExecutor: createMockToolExecutor(),
-				projectIndexer: createMockProjectIndexer(),
-				projectOverviewBuilder: createMockProjectOverviewBuilder()
-			}
+			const config = createTestConfig(createMockProvider())
 
 			const agent = new CodeAgent(config)
 			const { runId } = await agent.start({ input: 'Task' })
@@ -324,15 +291,7 @@ describe('Abort and Cleanup Integration', () => {
 		})
 
 		it('should handle cleanup of non-existent run', () => {
-			const config: CodeAgentConfig = {
-				provider: createMockProvider(),
-				policy: createTestPolicy(),
-				llm: createMockLLM(),
-				toolRegistry: createMockToolRegistry(),
-				toolExecutor: createMockToolExecutor(),
-				projectIndexer: createMockProjectIndexer(),
-				projectOverviewBuilder: createMockProjectOverviewBuilder()
-			}
+			const config = createTestConfig(createMockProvider())
 
 			const agent = new CodeAgent(config)
 
@@ -343,15 +302,7 @@ describe('Abort and Cleanup Integration', () => {
 		})
 
 		it('should clean up multiple runs selectively', async () => {
-			const config: CodeAgentConfig = {
-				provider: createMockProvider(),
-				policy: createTestPolicy(),
-				llm: createMockLLM(),
-				toolRegistry: createMockToolRegistry(),
-				toolExecutor: createMockToolExecutor(),
-				projectIndexer: createMockProjectIndexer(),
-				projectOverviewBuilder: createMockProjectOverviewBuilder()
-			}
+			const config = createTestConfig(createMockProvider())
 
 			const agent = new CodeAgent(config)
 

@@ -335,7 +335,7 @@ describe('Public API Surface', () => {
 	describe('AgentEvent', () => {
 		it('should define all event types', () => {
 			const events: AgentEvent[] = [
-				{ type: 'start', runId: 'run-1', instruction: 'Test' },
+				{ type: 'start', runId: 'run-1', instruction: 'Test', mode: 'execute' },
 				{ type: 'phase', phase: 'planning' },
 				{ type: 'llm_text', delta: 'Hello' },
 				{ type: 'tool_call', source: 'core', name: 'fs_read', args: { path: '/test' } },

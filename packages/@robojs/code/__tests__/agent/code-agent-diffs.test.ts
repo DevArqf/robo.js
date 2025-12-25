@@ -7,7 +7,7 @@ import { CodeAgent, createCodeAgent, type CodeAgentConfig } from '../../src/agen
 import type { AgentPolicy } from '../../src/types/policy.js'
 import type { ExecutionProvider } from '../../src/types/execution.js'
 import type { LLMProvider } from '../../src/types/llm.js'
-import type { ToolRegistry, ToolCallResult, PendingToolCall } from '../../src/tools/types.js'
+import type { ToolRegistry } from '../../src/tools/types.js'
 import { ToolExecutor } from '../../src/tools/runtime/executor.js'
 import type { ProjectIndexer } from '../../src/project/indexer.js'
 import type { ProjectOverviewBuilder } from '../../src/project/overview.js'
@@ -59,18 +59,16 @@ function createMockToolRegistry(): ToolRegistry {
 	} as unknown as ToolRegistry
 }
 
-// Mock tool executor
-function createMockToolExecutor(): ToolExecutor {
-	return {
-		execute: jest.fn(async (call: PendingToolCall): Promise<ToolCallResult> => ({
-			callId: call.callId,
-			toolName: call.toolName,
-			result: { success: true, data: {} },
-			durationMs: 10,
-			startedAt: Date.now() - 10,
-			completedAt: Date.now()
-		}))
-	} as unknown as ToolExecutor
+function createMockToolExecutor(registry: ToolRegistry, provider: ExecutionProvider, policy: AgentPolicy): ToolExecutor {
+	// Use the real executor so CodeAgent can safely fork per-run instances.
+	// These tests don't execute tools, but they do require a valid ToolExecutor.
+	return new ToolExecutor(registry, {
+		context: {
+			provider,
+			policy,
+			runId: 'template-run'
+		}
+	})
 }
 
 // Mock project indexer
@@ -120,12 +118,16 @@ function createTestPolicy(): AgentPolicy {
 }
 
 function createTestConfig(): CodeAgentConfig {
+	const provider = createMockProvider()
+	const policy = createTestPolicy()
+	const toolRegistry = createMockToolRegistry()
+
 	return {
-		provider: createMockProvider(),
-		policy: createTestPolicy(),
+		provider,
+		policy,
 		llm: createMockLLM(),
-		toolRegistry: createMockToolRegistry(),
-		toolExecutor: createMockToolExecutor(),
+		toolRegistry,
+		toolExecutor: createMockToolExecutor(toolRegistry, provider, policy),
 		projectIndexer: createMockProjectIndexer(),
 		projectOverviewBuilder: createMockProjectOverviewBuilder()
 	}
@@ -320,12 +322,16 @@ describe('CodeAgent', () => {
 				stopSession: mockStopSession
 			} as unknown as ExecutionProvider
 
+			const policy = createTestPolicy()
+			const toolRegistry = createMockToolRegistry()
+			const toolExecutor = createMockToolExecutor(toolRegistry, provider, policy)
+
 			const config: CodeAgentConfig = {
 				provider,
-				policy: createTestPolicy(),
+				policy,
 				llm: createMockLLM(),
-				toolRegistry: createMockToolRegistry(),
-				toolExecutor: createMockToolExecutor(),
+				toolRegistry,
+				toolExecutor,
 				projectIndexer: createMockProjectIndexer(),
 				projectOverviewBuilder: createMockProjectOverviewBuilder()
 			}
@@ -355,12 +361,16 @@ describe('CodeAgent', () => {
 				})
 			} as unknown as ExecutionProvider
 
+			const policy = createTestPolicy()
+			const toolRegistry = createMockToolRegistry()
+			const toolExecutor = createMockToolExecutor(toolRegistry, failingProvider, policy)
+
 			const config: CodeAgentConfig = {
 				provider: failingProvider,
-				policy: createTestPolicy(),
+				policy,
 				llm: createMockLLM(),
-				toolRegistry: createMockToolRegistry(),
-				toolExecutor: createMockToolExecutor(),
+				toolRegistry,
+				toolExecutor,
 				projectIndexer: createMockProjectIndexer(),
 				projectOverviewBuilder: createMockProjectOverviewBuilder()
 			}

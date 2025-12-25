@@ -28,7 +28,7 @@ describe('FileReadTracker', () => {
 		tracker.record(snapshot)
 
 		const retrieved = tracker.get('/src/app.ts')
-		expect(retrieved).toEqual(snapshot)
+		expect(retrieved).toEqual({ ...snapshot, turnNumber: 0 })
 	})
 
 	it('should overwrite snapshot on re-read of same path', () => {
@@ -52,7 +52,7 @@ describe('FileReadTracker', () => {
 		tracker.record(snapshot2)
 
 		const retrieved = tracker.get('/src/app.ts')
-		expect(retrieved).toEqual(snapshot2)
+		expect(retrieved).toEqual({ ...snapshot2, turnNumber: 0 })
 		expect(tracker.size).toBe(1)
 	})
 

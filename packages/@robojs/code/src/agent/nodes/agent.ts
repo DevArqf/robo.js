@@ -12,6 +12,15 @@ import { ContextCompactor } from '../compaction/index.js'
 import { createSystemPromptEvent, createLlmMetaEvent, createTokenUsageEvent, createContextCompactedEvent } from '../events/debug-events.js'
 import { countContextTokens, countMessagesTokens } from '../token-counter.js'
 import { getModelContextLimit } from '../token-limits.js'
+import type { ChatRequest, ChatResponse, StreamChunk, ToolCall } from '../../types/llm.js'
+
+/**
+ * LangGraph config passed to nodes for custom streaming
+ */
+interface LangGraphConfig {
+	/** Writer for custom stream mode - emits events immediately to stream */
+	writer?: (data: unknown) => void
+}
 
 /**
  * Creates the agent node
@@ -20,7 +29,7 @@ import { getModelContextLimit } from '../token-limits.js'
  * Does NOT execute tools - that's the tools node's job.
  */
 export function agentNode(context: CodeAgentContext) {
-	return async (state: AgentState): Promise<AgentStateUpdate> => {
+	return async (state: AgentState, config?: LangGraphConfig): Promise<AgentStateUpdate> => {
 		codeLogger.debug('[Agent] Node entered', {
 			mode: state.mode,
 			messageCount: state.messages.length,
@@ -141,8 +150,11 @@ export function agentNode(context: CodeAgentContext) {
 		}
 
 		const llmStartTime = Date.now()
-		const response = await llm.chat({
-			messages: [{ role: 'system', content: systemPrompt }, ...llmMessages],
+
+		// Build request for streaming
+		const toolChoice: 'auto' | 'none' = state.mode === 'explain' ? 'none' : 'auto'
+		const chatRequest: ChatRequest = {
+			messages: [{ role: 'system' as const, content: systemPrompt }, ...llmMessages],
 			tools:
 				toolSchemas.length > 0
 					? toolSchemas.map((t) => ({
@@ -154,14 +166,88 @@ export function agentNode(context: CodeAgentContext) {
 							}
 						}))
 					: undefined,
-			toolChoice: state.mode === 'explain' ? 'none' : 'auto',
+			toolChoice,
 			modelAlias: context.modelAlias
-		})
+		}
+
+		// Stream LLM response for real-time text display
+		let accumulatedContent = ''
+		const accumulatedToolCalls: Map<string, { id: string; name: string; arguments: string }> = new Map()
+		let finishReason: 'stop' | 'tool_calls' | 'length' | 'content_filter' = 'stop'
+		let usage: { promptTokens: number; completionTokens: number; totalTokens: number } | undefined
+
+		for await (const chunk of llm.stream(chatRequest)) {
+			switch (chunk.type) {
+				case 'text':
+					if (chunk.text) {
+						accumulatedContent += chunk.text
+						// Emit text delta in real-time via custom stream mode
+						// config.writer() delivers immediately, context.onEvent queues for node completion
+						const textEvent = { type: 'llm_text' as const, delta: chunk.text }
+						if (config?.writer) {
+							config.writer(textEvent)
+						} else {
+							context.onEvent?.(textEvent)
+						}
+					}
+					break
+
+				case 'tool_call_start':
+					if (chunk.toolCallId && chunk.toolName) {
+						accumulatedToolCalls.set(chunk.toolCallId, {
+							id: chunk.toolCallId,
+							name: chunk.toolName,
+							arguments: ''
+						})
+					}
+					break
+
+				case 'tool_call_delta':
+					if (chunk.toolCallId && chunk.toolArgsDelta) {
+						const existing = accumulatedToolCalls.get(chunk.toolCallId)
+						if (existing) {
+							existing.arguments += chunk.toolArgsDelta
+						}
+					}
+					break
+
+				case 'tool_call_end':
+					// Tool call is complete, nothing special needed
+					break
+
+				case 'done':
+					if (chunk.finishReason) {
+						finishReason = chunk.finishReason
+					}
+					if (chunk.usage) {
+						usage = chunk.usage
+					}
+					break
+			}
+		}
+
+		// Build response from accumulated data
+		const toolCalls: ToolCall[] = Array.from(accumulatedToolCalls.values()).map((tc) => ({
+			id: tc.id,
+			type: 'function' as const,
+			function: {
+				name: tc.name,
+				arguments: tc.arguments
+			}
+		}))
+
+		const response = {
+			id: `stream-${Date.now()}`,
+			content: accumulatedContent,
+			toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+			finishReason,
+			usage,
+			model: undefined as string | undefined // Model info not available in streaming
+		}
 
 		const llmDurationMs = Date.now() - llmStartTime
 
-		codeLogger.debug('[Agent] LLM response received', {
-			model: response.model,
+		codeLogger.debug('[Agent] LLM streaming response complete', {
 			contentLength: response.content?.length ?? 0,
 			toolCallCount: response.toolCalls?.length ?? 0,
 			toolNames: response.toolCalls?.map((tc) => tc.function.name),
@@ -213,10 +299,7 @@ export function agentNode(context: CodeAgentContext) {
 			}
 		}
 
-		// Emit LLM text if present
-		if (response.content) {
-			context.onEvent?.({ type: 'llm_text', delta: response.content })
-		}
+		// Note: LLM text is already emitted in real-time during streaming above
 
 		// Build AI message with potential tool calls
 		// Parse tool call arguments with error handling for malformed JSON

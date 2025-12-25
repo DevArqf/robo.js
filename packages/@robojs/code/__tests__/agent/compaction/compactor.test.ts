@@ -4,7 +4,7 @@
 
 import { AIMessage, HumanMessage, ToolMessage, SystemMessage } from '@langchain/core/messages'
 import { ContextCompactor, createContextCompactor, type CompactionResult } from '../../../src/agent/compaction/index.js'
-import type { AgentState } from '../../../src/agent/state.js'
+import { DEFAULT_TOKEN_USAGE, type AgentState } from '../../../src/agent/state.js'
 
 // Helper to create a minimal state for testing
 function createTestState(overrides: Partial<AgentState> = {}): AgentState {
@@ -23,17 +23,23 @@ function createTestState(overrides: Partial<AgentState> = {}): AgentState {
 		projectOverview: null,
 		pendingChanges: [],
 		pendingDiffs: [],
+		pendingCommand: null,
 		lastVerification: null,
 		appliedChanges: [],
 		appliedDiffs: [],
 		summary: null,
+		tokenUsage: DEFAULT_TOKEN_USAGE,
+		currentContextTokens: 0,
 		awaitingApproval: false,
 		approved: null,
+		approvalReason: null,
 		aborted: false,
 		abortReason: null,
 		completionSummary: null,
 		iterations: 0,
 		budgetExceeded: false,
+		limitReached: false,
+		limitContinue: false,
 		messages: [],
 		...overrides
 	}
@@ -404,11 +410,11 @@ describe('ContextCompactor', () => {
 			const compactor = createContextCompactor()
 			expect(compactor).toBeInstanceOf(ContextCompactor)
 
-			// Default has compaction disabled
+			// Default enables compaction for safety (message-count fallback)
 			const state = createTestState({
 				messages: Array(100).fill(new HumanMessage('test'))
 			})
-			expect(compactor.shouldCompact(state)).toBe(false)
+			expect(compactor.shouldCompact(state)).toBe(true)
 		})
 
 		it('should create a compactor with custom policy', () => {

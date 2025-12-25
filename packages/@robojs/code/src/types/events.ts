@@ -122,7 +122,19 @@ export type AgentEvent =
 
 	// File change events
 	| { type: 'file_proposed'; changes: FileChange[]; diffs?: FileDiff[] }
-	| { type: 'approval_required'; runId: string; changes: FileChange[]; diffs?: FileDiff[]; reason?: string }
+	| {
+			type: 'approval_required'
+			runId: string
+			changes: FileChange[]
+			diffs?: FileDiff[]
+			reason?: string
+			/** Command details for terminal approvals */
+			command?: {
+				executable: string
+				args: string[]
+				cwd?: string
+			}
+	  }
 	| { type: 'file_applied'; path: string }
 
 	// Terminal events

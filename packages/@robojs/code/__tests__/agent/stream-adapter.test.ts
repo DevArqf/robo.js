@@ -19,6 +19,7 @@ describe('StreamAdapter', () => {
 		events = []
 		adapter = createStreamAdapter({
 			runId: 'test-run-123',
+			mode: 'execute',
 			onEvent: (event) => events.push(event)
 		})
 	})
@@ -230,6 +231,7 @@ describe('StreamAdapter', () => {
 		it('should filter out plan events when includePlan is false', () => {
 			const adapter = createStreamAdapter({
 				runId: 'test',
+				mode: 'execute',
 				options: { includePlan: false },
 				onEvent: (event) => events.push(event)
 			})
@@ -244,6 +246,7 @@ describe('StreamAdapter', () => {
 		it('should filter out progress events when includeProgress is false', () => {
 			const adapter = createStreamAdapter({
 				runId: 'test',
+				mode: 'execute',
 				options: { includeProgress: false },
 				onEvent: (event) => events.push(event)
 			})

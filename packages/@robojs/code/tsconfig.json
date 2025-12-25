@@ -21,5 +21,5 @@
 		"sourceMap": true
 	},
 	"include": ["src/**/*.ts", "__tests__/**/*.ts"],
-	"exclude": ["node_modules", ".robo", "dist"]
+	"exclude": ["node_modules", ".robo", "dist", "__tests__/e2e", "__tests__/fixtures"]
 }

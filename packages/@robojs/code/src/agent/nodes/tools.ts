@@ -11,6 +11,14 @@ import type { FileDiff, FileChange } from '../../types/changes.js'
 import { createToolTimingEvent } from '../events/debug-events.js'
 
 /**
+ * LangGraph config passed to nodes for custom streaming
+ */
+interface LangGraphConfig {
+	/** Writer for custom stream mode - emits events immediately to stream */
+	writer?: (data: unknown) => void
+}
+
+/**
  * Creates the tools node
  *
  * Executes tool calls from the agent using the ToolExecutor from Phase 2.
@@ -18,7 +26,7 @@ import { createToolTimingEvent } from '../events/debug-events.js'
  * Converts tool results to ToolMessage format for LangGraph.
  */
 export function toolsNode(context: CodeAgentContext) {
-	return async (state: AgentState): Promise<AgentStateUpdate> => {
+	return async (state: AgentState, config?: LangGraphConfig): Promise<AgentStateUpdate> => {
 		codeLogger.debug('Node: tools')
 
 		const { toolExecutor } = context
@@ -76,20 +84,45 @@ export function toolsNode(context: CodeAgentContext) {
 						reason: result.result.approvalReason
 					})
 
+					// CRITICAL: Add a placeholder ToolMessage for the pending tool
+					// Anthropic requires every tool_use to have a corresponding tool_result
+					// Without this, resuming would send invalid message history
+					toolMessages.push(
+						new ToolMessage({
+							content: JSON.stringify({
+								success: true,
+								awaiting_approval: true,
+								message: 'Changes are pending user approval',
+								pendingChangesCount: result.result.pendingChanges?.length ?? 0
+							}),
+							tool_call_id: callId,
+							name: toolName
+						})
+					)
+
 					// Emit approval_required event
-					context.onEvent?.({
-						type: 'approval_required',
+					// Use config.writer() for immediate delivery if available
+					const approvalEvent = {
+						type: 'approval_required' as const,
 						runId: context.runId,
 						changes: result.result.pendingChanges ?? [],
 						diffs: result.result.pendingDiffs,
-						reason: result.result.approvalReason
-					})
+						reason: result.result.approvalReason,
+						command: result.result.pendingCommand
+					}
+
+					if (config?.writer) {
+						config.writer(approvalEvent)
+					} else {
+						context.onEvent?.(approvalEvent)
+					}
 
 					// Return state update with pending changes
 					// The approval_gate node will handle the interrupt
 					return {
 						pendingChanges: result.result.pendingChanges ?? [],
 						pendingDiffs: result.result.pendingDiffs ?? [],
+						pendingCommand: result.result.pendingCommand ?? null,
 						awaitingApproval: true,
 						approvalReason: result.result.approvalReason ?? 'Changes require approval',
 						messages: toolMessages,
@@ -118,6 +151,30 @@ export function toolsNode(context: CodeAgentContext) {
 					const writeData = result.result.data as { path?: string }
 					if (writeData.path) {
 						context.onEvent?.({ type: 'file_applied', path: writeData.path })
+					}
+
+					// Record the write as an applied change so reviewer/completion logic can verify work happened.
+					// Note: apply_changes already reports structured changes/diffs; fs_write should still count.
+					const writeArgs = args as { path?: string; content?: string }
+					if (writeData.path && typeof writeArgs?.content === 'string') {
+						const created = (result.result.data as { created?: boolean }).created ?? false
+						collectedAppliedChanges.push({
+							path: writeData.path,
+							type: created ? 'create' : 'modify',
+							content: writeArgs.content
+						})
+					}
+				}
+
+				// Record successful deletes as applied changes (apply_changes handles this too, but fs_delete should still count)
+				if (result.result.success && result.result.data && toolName === 'fs_delete') {
+					const deleteData = result.result.data as { path?: string; deleted?: boolean }
+					if (deleteData.path && deleteData.deleted) {
+						context.onEvent?.({ type: 'file_applied', path: deleteData.path })
+						collectedAppliedChanges.push({
+							path: deleteData.path,
+							type: 'delete'
+						})
 					}
 				}
 

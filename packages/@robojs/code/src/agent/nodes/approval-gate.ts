@@ -14,6 +14,14 @@ import type { CodeAgentContext } from '../types.js'
 import { codeLogger } from '../../core/logger.js'
 
 /**
+ * LangGraph config passed to nodes for custom streaming
+ */
+interface LangGraphConfig {
+	/** Writer for custom stream mode - emits events immediately to stream */
+	writer?: (data: unknown) => void
+}
+
+/**
  * Creates the approval_gate node
  *
  * Browser-compatible implementation using state-based pause:
@@ -25,7 +33,7 @@ import { codeLogger } from '../../core/logger.js'
  * on the next execution of this node.
  */
 export function approvalGateNode(context: CodeAgentContext) {
-	return async (state: AgentState): Promise<AgentStateUpdate> => {
+	return async (state: AgentState, config?: LangGraphConfig): Promise<AgentStateUpdate> => {
 		codeLogger.debug('[ApprovalGate] Node entered', {
 			awaitingApproval: state.awaitingApproval,
 			hasApproved: !!state.approved,
@@ -132,13 +140,23 @@ export function approvalGateNode(context: CodeAgentContext) {
 		}
 
 		// Emit approval_required event before pausing
-		context.onEvent?.({
-			type: 'approval_required',
+		// Use config.writer() for guaranteed delivery before interrupt
+		const approvalEvent = {
+			type: 'approval_required' as const,
 			runId: context.runId,
 			changes: state.pendingChanges ?? [],
 			diffs: state.pendingDiffs ?? [],
-			reason: state.approvalReason ?? 'Changes require approval'
-		})
+			reason: state.approvalReason ?? 'Changes require approval',
+			command: state.pendingCommand ?? undefined
+		}
+
+		if (config?.writer) {
+			// Use custom stream mode for immediate delivery
+			config.writer(approvalEvent)
+		} else {
+			// Fallback to context.onEvent (may not reach stream before interrupt)
+			context.onEvent?.(approvalEvent)
+		}
 
 		// Throw NodeInterrupt to pause graph execution
 		// The SDK's resume() method will set approved and re-invoke the graph

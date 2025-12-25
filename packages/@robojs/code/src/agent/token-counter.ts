@@ -176,8 +176,7 @@ export function countContextTokens(
  * Call this when you're done using the token counter to free memory.
  */
 export function freeEncoder(): void {
-	if (encoder) {
-		encoder.free()
-		encoder = null
-	}
+	// js-tiktoken's public Tiktoken type does not expose a `free()` API.
+	// Clearing the reference allows the encoder to be garbage-collected.
+	encoder = null
 }

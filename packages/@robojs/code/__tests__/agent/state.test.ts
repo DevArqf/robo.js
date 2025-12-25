@@ -4,6 +4,7 @@
 
 import {
 	AgentStateAnnotation,
+	DEFAULT_TOKEN_USAGE,
 	createInitialState,
 	isComplete,
 	isWaitingForUser,
@@ -32,17 +33,23 @@ describe('AgentStateAnnotation', () => {
 				projectOverview: null,
 				pendingChanges: [],
 				pendingDiffs: [],
+				pendingCommand: null,
 				lastVerification: null,
 				appliedChanges: [],
 				appliedDiffs: [],
 				summary: null,
+				tokenUsage: DEFAULT_TOKEN_USAGE,
+				currentContextTokens: 0,
 				awaitingApproval: false,
 				approved: null,
+				approvalReason: null,
 				aborted: false,
 				abortReason: null,
 				completionSummary: null,
 				iterations: 0,
 				budgetExceeded: false,
+				limitReached: false,
+				limitContinue: false,
 				messages: []
 			}
 
