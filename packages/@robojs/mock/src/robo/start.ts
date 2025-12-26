@@ -142,6 +142,12 @@ export default async (context: StartContext<MockPluginConfig>) => {
 		process.env.DISCORD_TOKEN = mockModeSession.token
 		mockLogger.debug('Set DISCORD_TOKEN to mock session token for REST API authentication')
 
+		// Override DISCORD_CLIENT_ID to match the session's application ID.
+		// This ensures command registration works even with fake/missing credentials.
+		// The session's applicationId is derived from the resolved bot user (real API, explicit config, or generated).
+		process.env.DISCORD_CLIENT_ID = mockModeSession.state.applicationId
+		mockLogger.debug('Set DISCORD_CLIENT_ID to match session applicationId for command registration')
+
 		// Wire log drain to capture logs from the Robo process
 		// This enables the Stage UI to display logs in real-time
 		const sessionForDrain = mockModeSession
