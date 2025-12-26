@@ -178,7 +178,7 @@ const initialState: SessionState = {
 	currentUser: null,
 	selectedGuildId: null,
 	selectedChannelId: null,
-	showMembers: true,
+	showMembers: false,
 	typingUsers: {},
 	activeModal: null,
 	pendingInteractions: [],
