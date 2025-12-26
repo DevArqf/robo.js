@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import type { StageGuild } from '../../types/stage'
 import { useStageData } from '../../hooks/useStageData'
+import { assetUrl } from '../../utils/api'
 import CreateIcon from '../icons/create'
 import styles from './ServerList.module.css'
 
@@ -205,7 +206,7 @@ export function ServerList({ guilds, selectedId, onSelect, unreadGuildIds, sessi
 							url: 'https://discord.com',
 							author: {
 								name: 'Embed Author',
-								icon_url: 'https://cdn.discordapp.com/embed/avatars/0.png'
+								icon_url: assetUrl('/avatars/0.png')
 							},
 							fields: [
 								{ name: 'Inline Field 1', value: 'Value 1', inline: true },
@@ -214,7 +215,7 @@ export function ServerList({ guilds, selectedId, onSelect, unreadGuildIds, sessi
 								{ name: 'Regular Field', value: 'This is a full-width field with more content.' }
 							],
 							thumbnail: {
-								url: 'https://cdn.discordapp.com/embed/avatars/1.png'
+								url: assetUrl('/avatars/1.png')
 							},
 							image: {
 								url: 'https://picsum.photos/400/200',
@@ -223,7 +224,7 @@ export function ServerList({ guilds, selectedId, onSelect, unreadGuildIds, sessi
 							},
 							footer: {
 								text: 'Footer text here',
-								icon_url: 'https://cdn.discordapp.com/embed/avatars/2.png'
+								icon_url: assetUrl('/avatars/2.png')
 							},
 							timestamp: new Date().toISOString()
 						}

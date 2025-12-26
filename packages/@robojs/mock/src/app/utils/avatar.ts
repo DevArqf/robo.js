@@ -1,3 +1,5 @@
+import { assetUrl } from './api'
+
 /**
  * Get avatar URL for a user
  * Handles Discord CDN URLs, data URIs, and generates default avatar URL
@@ -7,7 +9,7 @@ export function getAvatarUrl(userId: string, avatar: string | null, size: number
 		// Discord's default avatar system uses discriminator % 5 or (user_id >> 22) % 6 for new users
 		// For simplicity, we'll use user_id hash
 		const defaultIndex = Math.abs(hashCode(userId)) % 5
-		return `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`
+		return assetUrl(`/avatars/${defaultIndex}.png`)
 	}
 
 	// Already a full URL or data URI

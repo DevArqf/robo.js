@@ -7,21 +7,18 @@
  */
 
 /**
- * Get the API base path by detecting the plugin prefix from the current URL.
+ * Get the plugin prefix from the current URL.
  *
  * The Stage UI is served at paths like:
  * - `/stage/` (no prefix)
  * - `/mock/stage/` (with prefix)
  * - `/some-custom-prefix/stage/` (custom prefix)
  *
- * The API is at the same prefix level:
- * - `/api/` (no prefix)
- * - `/mock/api/` (with prefix)
- * - `/some-custom-prefix/api/` (custom prefix)
+ * @returns The prefix (e.g., '/mock') or empty string if no prefix
  */
-export function getApiBasePath(): string {
+export function getPluginPrefix(): string {
 	if (typeof window === 'undefined') {
-		return '/api'
+		return ''
 	}
 
 	const pathname = window.location.pathname
@@ -30,12 +27,34 @@ export function getApiBasePath(): string {
 	const stageIndex = pathname.indexOf('/stage')
 	if (stageIndex > 0) {
 		// Extract the prefix before /stage
-		const prefix = pathname.substring(0, stageIndex)
-		return `${prefix}/api`
+		return pathname.substring(0, stageIndex)
 	}
 
-	// No prefix found, use root
-	return '/api'
+	// No prefix found
+	return ''
+}
+
+/**
+ * Build a URL for a static asset with the proper prefix.
+ * @param path - The asset path (e.g., '/avatars/0.png')
+ */
+export function assetUrl(path: string): string {
+	const prefix = getPluginPrefix()
+	// Ensure path starts with /
+	const normalizedPath = path.startsWith('/') ? path : `/${path}`
+	return `${prefix}${normalizedPath}`
+}
+
+/**
+ * Get the API base path by detecting the plugin prefix from the current URL.
+ *
+ * The API is at the same prefix level as the Stage UI:
+ * - `/api/` (no prefix)
+ * - `/mock/api/` (with prefix)
+ * - `/some-custom-prefix/api/` (custom prefix)
+ */
+export function getApiBasePath(): string {
+	return `${getPluginPrefix()}/api`
 }
 
 /**

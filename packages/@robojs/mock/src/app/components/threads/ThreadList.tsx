@@ -1,5 +1,6 @@
 import ThreadIcon from '../icons/thread'
 import MagnifyingGlass from '../icons/magnifying_glass'
+import { assetUrl } from '../../utils/api'
 import styles from './ThreadList.module.css'
 
 interface Thread {
@@ -24,19 +25,19 @@ const mockThreads: Thread[] = [
 		id: '1',
 		name: 'W3Schools Revival: Rebuilding the',
 		authorName: '< { ProCoder } />',
-		authorAvatar: 'https://cdn.discordapp.com/embed/avatars/0.png',
+		authorAvatar: assetUrl('/avatars/0.png'),
 		lastActive: '>30d ago',
-		participants: [{ id: '1', name: 'User1', avatar: 'https://cdn.discordapp.com/embed/avatars/1.png' }]
+		participants: [{ id: '1', name: 'User1', avatar: assetUrl('/avatars/1.png') }]
 	},
 	{
 		id: '2',
 		name: 'inno setup alternatives',
 		authorName: '/home/mostypc123/',
-		authorAvatar: 'https://cdn.discordapp.com/embed/avatars/2.png',
+		authorAvatar: assetUrl('/avatars/2.png'),
 		lastActive: '>30d ago',
 		participants: [
-			{ id: '1', name: 'User1', avatar: 'https://cdn.discordapp.com/embed/avatars/3.png' },
-			{ id: '2', name: 'User2', avatar: 'https://cdn.discordapp.com/embed/avatars/4.png' }
+			{ id: '1', name: 'User1', avatar: assetUrl('/avatars/3.png') },
+			{ id: '2', name: 'User2', avatar: assetUrl('/avatars/4.png') }
 		]
 	},
 	{
@@ -44,7 +45,7 @@ const mockThreads: Thread[] = [
 		name: 'How to',
 		authorName: '00face',
 		lastActive: 'December 3, 2024',
-		participants: [{ id: '1', name: 'User1', avatar: 'https://cdn.discordapp.com/embed/avatars/0.png' }]
+		participants: [{ id: '1', name: 'User1', avatar: assetUrl('/avatars/0.png') }]
 	}
 ]
 
@@ -88,7 +89,7 @@ export function ThreadList({ threads = mockThreads }: ThreadListProps) {
 								{thread.participants.slice(0, 3).map((participant, index) => (
 									<img
 										key={participant.id}
-										src={participant.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png'}
+										src={participant.avatar || assetUrl('/avatars/0.png')}
 										alt={participant.name}
 										className={styles.participantAvatar}
 										style={{ zIndex: 3 - index }}
