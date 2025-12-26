@@ -64,6 +64,7 @@ export class ProxyLLMProvider implements LLMProvider {
 				'Content-Type': 'application/json',
 				...this.headers
 			},
+			credentials: 'include',
 			body: JSON.stringify(body)
 		})
 
@@ -111,6 +112,7 @@ export class ProxyLLMProvider implements LLMProvider {
 				'Content-Type': 'application/json',
 				...this.headers
 			},
+			credentials: 'include',
 			body: JSON.stringify(body)
 		})
 
