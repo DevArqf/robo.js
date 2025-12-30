@@ -5,6 +5,7 @@ export let serverPrefix = '/api'
 
 export default () => {
 	const packageName = `@robojs${path.sep}server`
-	const { prefix } = getPluginOptions(packageName) as { prefix?: string }
-	serverPrefix = (prefix === undefined ? '/api' : prefix || '/')
+	const options = getPluginOptions(packageName) as { prefix?: string } | null
+	const prefix = options?.prefix
+	serverPrefix = prefix === undefined ? '/api' : prefix || '/'
 }
