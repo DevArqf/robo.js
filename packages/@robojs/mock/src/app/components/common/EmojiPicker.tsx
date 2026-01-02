@@ -1,56 +1,60 @@
-import { useEffect, useRef } from 'react'
-import { DropdownContainer } from '../base'
+import { useEffect } from 'react'
+import { DropdownContainer, useDropdownPosition } from '../base'
 import styles from './EmojiPicker.module.css'
 
 interface EmojiPickerProps {
 	onSelect: (emoji: string) => void
 	onClose: () => void
+	position: { x: number; y: number }
 }
 
 // Common emoji set for MVP
 const EMOJI_LIST = [
 	// Reactions
-	'👍',
-	'👎',
-	'❤️',
-	'🔥',
-	'🎉',
-	'😂',
-	'😢',
-	'😮',
-	'😡',
-	'🤔',
+	':)',
+	':-)',
+	':D',
+	':-D',
+	';)',
+	';-)',
+	':P',
+	':-P',
+	'XD',
+	'xD',
 	// Common
-	'👀',
-	'💯',
-	'✅',
-	'❌',
-	'⭐',
-	'🙏',
-	'💪',
-	'🚀',
-	'💡',
-	'📌',
+	':(',
+	':-(',
+	":'(",
+	':|',
+	':-|',
+	':/',
+	':-/',
+	':O',
+	':-O',
+	':3',
 	// Faces
-	'😊',
-	'😎',
-	'🤣',
-	'😍',
-	'🥳',
-	'😴',
-	'🤯',
-	'🥺',
-	'😤',
-	'🤝'
+	'^_^',
+	'O_o',
+	'-_-',
+	'>:(',
+	'<3',
+	'</3',
+	':*',
+	'B)',
+	'8)',
+	'T_T'
 ]
 
-export function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
-	const pickerRef = useRef<HTMLDivElement>(null)
+export function EmojiPicker({ onSelect, onClose, position }: EmojiPickerProps) {
+	const { dropdownRef, adjustedPosition, isPositioned } = useDropdownPosition({
+		position,
+		viewportPadding: 8
+	})
 
 	// Close on click outside
 	useEffect(() => {
 		const handleClickOutside = (event: MouseEvent) => {
-			if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
+			if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
 				onClose()
 			}
 		}
@@ -58,7 +62,7 @@ export function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
 		// Use capture phase to handle click before it bubbles
 		document.addEventListener('mousedown', handleClickOutside, true)
 		return () => document.removeEventListener('mousedown', handleClickOutside, true)
-	}, [onClose])
+	}, [onClose, dropdownRef])
 
 	// Close on Escape
 	useEffect(() => {
@@ -73,10 +77,18 @@ export function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
 	}, [onClose])
 
 	return (
-		<DropdownContainer ref={pickerRef} role="dialog" aria-label="Emoji picker" className={styles.picker}>
+		<DropdownContainer
+			ref={dropdownRef}
+			role="dialog"
+			aria-label="Emoji picker"
+			className={styles.picker}
+			position="fixed"
+			coordinates={adjustedPosition}
+			isPositioned={isPositioned}
+		>
 			<div className={styles.grid}>
-				{EMOJI_LIST.map((emoji) => (
-					<button key={emoji} className={styles.emoji} onClick={() => onSelect(emoji)} title={emoji}>
+				{EMOJI_LIST.map((emoji, index) => (
+					<button key={`${emoji}-${index}`} className={styles.emoji} onClick={() => onSelect(emoji)} title={emoji}>
 						{emoji}
 					</button>
 				))}
