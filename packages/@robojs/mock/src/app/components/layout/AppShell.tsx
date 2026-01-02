@@ -196,6 +196,9 @@ export function AppShell() {
 								onSelect={handleChannelSelect}
 								voiceStates={guildVoiceStates}
 								users={allUsers}
+								members={guildMembers}
+								currentUser={botUser}
+								availableUsers={allUsers}
 								onJoinVoice={joinVoice}
 								onLeaveVoice={leaveVoice}
 								currentUserId={botUser?.id}
@@ -217,7 +220,7 @@ export function AppShell() {
 
 								<div className={styles.content}>
 									<MessageArea channelId={selectedChannelId} />
-									{showThreads && <ThreadList />}
+									{showThreads && <ThreadList onClose={() => setShowThreads(false)} />}
 									{showMembers && <MemberList members={displayMembers} roles={guildRoles} />}
 								</div>
 							</div>

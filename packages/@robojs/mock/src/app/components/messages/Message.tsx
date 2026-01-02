@@ -57,6 +57,7 @@ interface MessageProps {
 	message: StageMessage
 	isFirstInGroup: boolean
 	isHighlighted?: boolean
+	onDismissEphemeral?: (messageId: string) => void
 	onButtonClick?: (messageId: string, customId: string) => Promise<void>
 	onSelectOption?: (messageId: string, customId: string, values: string[]) => Promise<void>
 	onAddReaction?: (messageId: string, emoji: string) => Promise<void>
@@ -69,6 +70,7 @@ export function Message({
 	message,
 	isFirstInGroup,
 	isHighlighted,
+	onDismissEphemeral,
 	onButtonClick,
 	onSelectOption,
 	onAddReaction,
@@ -80,6 +82,15 @@ export function Message({
 	const isEphemeral = ((flags ?? 0) & MESSAGE_FLAGS.EPHEMERAL) !== 0
 	const isV2 = ((flags ?? 0) & MESSAGE_FLAGS.IS_COMPONENTS_V2) !== 0
 	const isSystemMessage = type === MESSAGE_TYPES.GUILD_MEMBER_JOIN
+	const rawMessage = message as StageMessage & {
+		interaction_metadata?: { user?: StageUser }
+		interactionMetadata?: { user?: StageUser }
+		interaction?: { user?: StageUser; name?: string }
+	}
+	const interactionMetadata = rawMessage.interaction_metadata ?? rawMessage.interactionMetadata
+	const interactionUser = interactionMetadata?.user ?? rawMessage.interaction?.user
+	const interactionName = rawMessage.interaction?.name
+	const interactionMeta = interactionUser ? { user: interactionUser, name: interactionName } : undefined
 
 	// Render system message (member join)
 	if (isSystemMessage) {
@@ -117,6 +128,17 @@ export function Message({
 			className={`${styles.message} ${isHighlighted ? styles.highlighted : ''} ${isEphemeral ? styles.ephemeral : ''}`}
 			onContextMenu={onContextMenu ? (e) => onContextMenu(e, message) : undefined}
 		>
+			<div className={styles.hoverActions}>
+				<button type="button" aria-label="Add reaction">
+					<SmileIcon />
+				</button>
+				<button type="button" aria-label="Reply">
+					<ReplyActionIcon />
+				</button>
+				<button type="button" aria-label="More">
+					<MoreIcon />
+				</button>
+			</div>
 			{/* Reply reference indicator */}
 			{message_reference && (
 				<div className={styles.replyReference}>
@@ -177,10 +199,12 @@ export function Message({
 							attachments={attachments}
 							components={components}
 							reactions={reactions}
+							interactionMeta={interactionMeta}
 							messageId={message.id}
 							channelId={message.channel_id}
 							isEphemeral={isEphemeral}
 							isV2={isV2}
+							onDismissEphemeral={onDismissEphemeral}
 							onButtonClick={onButtonClick}
 							onSelectOption={onSelectOption}
 							onAddReaction={onAddReaction}
@@ -201,10 +225,12 @@ export function Message({
 							attachments={attachments}
 							components={components}
 							reactions={reactions}
+							interactionMeta={interactionMeta}
 							messageId={message.id}
 							channelId={message.channel_id}
 							isEphemeral={isEphemeral}
 							isV2={isV2}
+							onDismissEphemeral={onDismissEphemeral}
 							onButtonClick={onButtonClick}
 							onSelectOption={onSelectOption}
 							onAddReaction={onAddReaction}
@@ -224,10 +250,15 @@ interface MessageContentProps {
 	attachments?: unknown[]
 	components?: unknown[]
 	reactions?: StageReaction[]
+	interactionMeta?: {
+		user?: StageUser
+		name?: string
+	}
 	messageId: string
 	channelId: string
 	isEphemeral?: boolean
 	isV2?: boolean
+	onDismissEphemeral?: (messageId: string) => void
 	onButtonClick?: (messageId: string, customId: string) => Promise<void>
 	onSelectOption?: (messageId: string, customId: string, values: string[]) => Promise<void>
 	onAddReaction?: (messageId: string, emoji: string) => Promise<void>
@@ -241,10 +272,12 @@ function MessageContent({
 	attachments,
 	components,
 	reactions,
+	interactionMeta,
 	messageId,
 	channelId,
 	isEphemeral,
 	isV2,
+	onDismissEphemeral,
 	onButtonClick,
 	onSelectOption,
 	onAddReaction,
@@ -282,6 +315,16 @@ function MessageContent({
 
 	return (
 		<div className={styles.messageContent}>
+			{interactionMeta?.user && (
+				<div className={styles.interactionInfo}>
+					<span className={styles.interactionIcon}>
+						<SlashIcon />
+					</span>
+					<span className={styles.interactionText}>
+						{interactionMeta.user.username} used {interactionMeta.name ? `/${interactionMeta.name}` : 'a command'}
+					</span>
+				</div>
+			)}
 			{/* V2 replaces content and embeds - only render these in V1 mode */}
 			{!isV2 && content && (
 				<div className={styles.textContent}>
@@ -334,7 +377,9 @@ function MessageContent({
 			)}
 
 			{/* Ephemeral badge */}
-			{isEphemeral && <EphemeralBadge />}
+			{isEphemeral && (
+				<EphemeralBadge onDismiss={onDismissEphemeral ? () => onDismissEphemeral(messageId) : undefined} />
+			)}
 		</div>
 	)
 }
@@ -352,6 +397,38 @@ function ReplyIcon() {
 	return (
 		<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
 			<path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z" />
+		</svg>
+	)
+}
+
+function SlashIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M7 7h4l-2.5 5H4l3-5zm6.5 10h-4l2.5-5h4l-2.5 5z" />
+		</svg>
+	)
+}
+
+function SmileIcon() {
+	return (
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M12 2a10 10 0 1 0 0 20a10 10 0 0 0 0-20zm-4 7a1.5 1.5 0 1 1 0 3a1.5 1.5 0 0 1 0-3zm8 0a1.5 1.5 0 1 1 0 3a1.5 1.5 0 0 1 0-3zm-8.2 6.2a1 1 0 0 1 1.4 0a4.5 4.5 0 0 0 5.6 0a1 1 0 1 1 1.4 1.4a6.5 6.5 0 0 1-8.4 0a1 1 0 0 1 0-1.4z" />
+		</svg>
+	)
+}
+
+function ReplyActionIcon() {
+	return (
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z" />
+		</svg>
+	)
+}
+
+function MoreIcon() {
+	return (
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" />
 		</svg>
 	)
 }

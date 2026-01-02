@@ -327,7 +327,8 @@ export default async (request: RoboRequest) => {
 								target_message_id: interaction.targetId
 							})
 					}
-				: undefined
+				: undefined,
+			interactionName: interaction.commandName
 		})
 		interaction.responseMessageId = message.id
 	} else if (body.type === 7 && responseData && interaction.messageId) {

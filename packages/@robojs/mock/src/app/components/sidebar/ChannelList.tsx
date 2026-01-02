@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import type { StageChannel, StageGuild, StageVoiceState, StageUser } from '../../types/stage'
+import type { StageChannel, StageGuild, StageMember, StageVoiceState, StageUser } from '../../types/stage'
 import { VoiceChannel } from './VoiceChannel'
+import { UserArea } from './UserArea'
 import styles from './ChannelList.module.css'
 import CogwheelIcon from '../icons/cogwheel'
 import InviteIcon from '../icons/invite'
@@ -13,6 +14,9 @@ interface ChannelListProps {
 	unreadChannelIds?: Set<string>
 	voiceStates?: StageVoiceState[]
 	users?: StageUser[]
+	members?: StageMember[]
+	currentUser?: StageUser | null
+	availableUsers?: StageUser[]
 	onJoinVoice?: (channelId: string, guildId: string) => void
 	onLeaveVoice?: (guildId: string) => void
 	currentUserId?: string
@@ -44,6 +48,9 @@ export function ChannelList({
 	unreadChannelIds,
 	voiceStates = [],
 	users = [],
+	members = [],
+	currentUser,
+	availableUsers = [],
 	onJoinVoice,
 	onLeaveVoice,
 	currentUserId
@@ -102,6 +109,7 @@ export function ChannelList({
 					channel={channel}
 					voiceStates={voiceStates}
 					users={users}
+					members={members}
 					currentUserId={currentUserId}
 					onJoin={() => onJoinVoice?.(channel.id, channel.guild_id!)}
 					onLeave={() => onLeaveVoice?.(channel.guild_id!)}
@@ -110,26 +118,16 @@ export function ChannelList({
 		}
 
 		return (
-			<div style={{ position: 'relative' }}>
-				<div className={styles.channelIconsExtra}>
-					<button>
-						<CogwheelIcon width={20} height={20} />
-					</button>
-					<button>
-						<InviteIcon width={20} height={20} />
-					</button>
-				</div>
-				<ChannelItemWithThreads
-					key={channel.id}
-					channel={channel}
-					threads={getThreadsForChannel(channel.id)}
-					isSelected={selectedId === channel.id}
-					isUnread={unreadChannelIds?.has(channel.id)}
-					selectedThreadId={selectedId}
-					onClick={() => onSelect(channel.id)}
-					onThreadSelect={onSelect}
-				/>
-			</div>
+			<ChannelItemWithThreads
+				key={channel.id}
+				channel={channel}
+				threads={getThreadsForChannel(channel.id)}
+				isSelected={selectedId === channel.id}
+				isUnread={unreadChannelIds?.has(channel.id)}
+				selectedThreadId={selectedId}
+				onClick={() => onSelect(channel.id)}
+				onThreadSelect={onSelect}
+			/>
 		)
 	}
 
@@ -215,6 +213,9 @@ export function ChannelList({
 					</div>
 				)}
 			</nav>
+			<div className={styles.userArea}>
+				<UserArea user={currentUser ?? null} availableUsers={availableUsers} />
+			</div>
 		</div>
 	)
 }
@@ -378,7 +379,17 @@ function ChannelItemWithThreads({
 }: ChannelItemWithThreadsProps) {
 	return (
 		<>
-			<ChannelItem channel={channel} isSelected={isSelected} isUnread={isUnread} onClick={onClick} />
+			<div className={styles.channelRow}>
+				<ChannelItem channel={channel} isSelected={isSelected} isUnread={isUnread} onClick={onClick} />
+				<div className={styles.channelActions}>
+					<button type="button" aria-label="Edit channel settings">
+						<CogwheelIcon width={20} height={20} />
+					</button>
+					<button type="button" aria-label="Create invite">
+						<InviteIcon width={20} height={20} />
+					</button>
+				</div>
+			</div>
 
 			{threads.length > 0 && (
 				<div className={styles.threadList}>

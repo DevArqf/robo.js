@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from '../../hooks/useSession'
+import { normalizeStageSessionId } from '../../utils'
 import styles from './ConnectionScreen.module.css'
 
 // Detect if user is on macOS
@@ -16,8 +17,7 @@ export function ConnectionScreen() {
 		const params = new URLSearchParams(window.location.search)
 		const token = params.get('token')
 		if (token && !sessionId) {
-			// Clean up token (remove trailing slashes that might come from redirects)
-			const cleanToken = token.replace(/\/+$/, '')
+			const cleanToken = normalizeStageSessionId(token)
 			setInputValue(cleanToken)
 			setSessionId(cleanToken)
 			// Small delay to ensure state is updated before connecting
@@ -84,7 +84,9 @@ export function ConnectionScreen() {
 
 	const handleConnect = () => {
 		if (inputValue.trim()) {
-			setSessionId(inputValue.trim())
+			const cleanSessionId = normalizeStageSessionId(inputValue)
+			setInputValue(cleanSessionId)
+			setSessionId(cleanSessionId)
 			// Small delay to ensure state is updated
 			setTimeout(() => connect(), 0)
 		}

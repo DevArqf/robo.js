@@ -1,5 +1,22 @@
 .menu {
 	min-width: 188px;
 	max-width: 320px;
+	padding: 6px;
+	border: 1px solid var(--background-modifier-accent);
+	background: var(--background-floating);
+}
+
+.menuHeader {
+	padding: 6px 8px 4px;
+	font-size: 11px;
+	letter-spacing: 0.04em;
+}
+
+.menuItem {
 	padding: 6px 8px;
+	border-radius: 6px;
+}
+
+.menuSeparator {
+	margin: 4px 6px;
 }

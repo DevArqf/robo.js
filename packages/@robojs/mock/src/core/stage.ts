@@ -267,20 +267,63 @@ export class StageServer {
 	/**
 	 * Convert MockUser to StageUser
 	 */
-	private toStageUser(user: { id: string; username: string; discriminator?: string; avatar?: string | null; bot?: boolean }): StageUser {
+	private toStageUser(user: { id: string; username: string; discriminator?: string; avatar?: string | null; bot?: boolean; globalName?: string | null }): StageUser {
 		return {
 			id: user.id,
 			username: user.username,
+			global_name: user.globalName ?? undefined,
 			discriminator: user.discriminator,
 			avatar: user.avatar ?? null,
 			bot: user.bot
 		}
 	}
 
+	private toStageMemberForGuild(state: Session['state'], guildId: string, userId: string): StageMember | null {
+		const user = state.users.get(userId)
+		if (!user) {
+			return null
+		}
+		const member = state.getGuildMember(guildId, userId)
+		return {
+			user: this.toStageUser(user),
+			nick: member?.nick ?? null,
+			roles: member?.roles ?? [],
+			joined_at: member?.joinedAt,
+			guild_id: guildId
+		}
+	}
+
 	/**
 	 * Convert MockMessage to StageMessage
 	 */
-	private toStageMessage(message: { id: string; channelId: string; guildId?: string; author?: { id: string; username: string; avatar?: string | null; bot?: boolean }; content: string; timestamp: string; editedTimestamp?: string | null; embeds?: unknown[]; components?: unknown[]; attachments?: unknown[]; reactions?: Array<{ count: number; me: boolean; emoji: { id: string | null; name: string } }> }): StageMessage {
+	private toStageMessage(message: {
+		id: string
+		channelId: string
+		guildId?: string
+		author?: { id: string; username: string; discriminator?: string; avatar?: string | null; bot?: boolean; globalName?: string | null }
+		content: string
+		timestamp: string
+		editedTimestamp?: string | null
+		embeds?: unknown[]
+		components?: unknown[]
+		attachments?: unknown[]
+		reactions?: Array<{ count: number; me: boolean; emoji: { id: string | null; name: string } }>
+		interaction_metadata?: {
+			id: string
+			type: number
+			user: { id: string; username: string; discriminator?: string; avatar?: string | null; bot?: boolean; globalName?: string | null }
+			authorizing_integration_owners?: Record<number, string>
+			original_response_message_id?: string
+			target_user?: { id: string; username: string; discriminator?: string; avatar?: string | null; bot?: boolean; globalName?: string | null }
+			target_message_id?: string
+		}
+		interaction?: {
+			id: string
+			type: number
+			name?: string
+			user: { id: string; username: string; discriminator?: string; avatar?: string | null; bot?: boolean; globalName?: string | null }
+		}
+	}): StageMessage {
 		return {
 			id: message.id,
 			channel_id: message.channelId,
@@ -299,7 +342,28 @@ export class StageServer {
 					id: r.emoji.id,
 					name: r.emoji.name
 				}
-			}))
+			})),
+			interaction_metadata: message.interaction_metadata
+				? {
+						id: message.interaction_metadata.id,
+						type: message.interaction_metadata.type,
+						user: this.toStageUser(message.interaction_metadata.user),
+						authorizing_integration_owners: message.interaction_metadata.authorizing_integration_owners,
+						original_response_message_id: message.interaction_metadata.original_response_message_id,
+						target_user: message.interaction_metadata.target_user
+							? this.toStageUser(message.interaction_metadata.target_user)
+							: undefined,
+						target_message_id: message.interaction_metadata.target_message_id
+					}
+				: undefined,
+			interaction: message.interaction
+				? {
+						id: message.interaction.id,
+						type: message.interaction.type,
+						name: message.interaction.name,
+						user: this.toStageUser(message.interaction.user)
+					}
+				: undefined
 		}
 	}
 
@@ -739,6 +803,7 @@ export class StageServer {
 						mute: false,
 						deaf: false
 					})
+					const stageMember = this.toStageMemberForGuild(session.state, data.guild_id, user.id)
 					// Broadcast voice state update to all stage clients
 					this.broadcastToSession(connState.sessionId, {
 						type: 'voice_state_update',
@@ -749,7 +814,8 @@ export class StageServer {
 							self_mute: data.self_mute ?? false,
 							self_deaf: data.self_deaf ?? false,
 							mute: false,
-							deaf: false
+							deaf: false,
+							member: stageMember ?? undefined
 						}
 					})
 					this.sendCommandResponse(ws, connState, command.id, true, { user_id: user.id })
@@ -763,6 +829,7 @@ export class StageServer {
 						this.sendCommandResponse(ws, connState, command.id, false, undefined, 'User not found')
 						break
 					}
+					const stageMember = this.toStageMemberForGuild(session.state, data.guild_id, user.id)
 					// Remove voice state from session
 					const voiceStateKey = `${data.guild_id}:${user.id}`
 					session.state.voiceStates.delete(voiceStateKey)
@@ -776,7 +843,8 @@ export class StageServer {
 							self_mute: false,
 							self_deaf: false,
 							mute: false,
-							deaf: false
+							deaf: false,
+							member: stageMember ?? undefined
 						}
 					})
 					this.sendCommandResponse(ws, connState, command.id, true)
@@ -804,6 +872,7 @@ export class StageServer {
 						self_deaf: data.self_deaf ?? existingState.self_deaf
 					}
 					session.state.voiceStates.set(voiceStateKey, updatedState)
+					const stageMember = this.toStageMemberForGuild(session.state, data.guild_id, user.id)
 					// Broadcast update
 					this.broadcastToSession(connState.sessionId, {
 						type: 'voice_state_update',
@@ -814,7 +883,8 @@ export class StageServer {
 							self_mute: updatedState.self_mute ?? false,
 							self_deaf: updatedState.self_deaf ?? false,
 							mute: updatedState.mute ?? false,
-							deaf: updatedState.deaf ?? false
+							deaf: updatedState.deaf ?? false,
+							member: stageMember ?? undefined
 						}
 					})
 					this.sendCommandResponse(ws, connState, command.id, true)

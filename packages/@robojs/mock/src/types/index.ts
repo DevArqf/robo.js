@@ -1673,6 +1673,7 @@ export interface MockMessageConfig {
 	// Phase 3I: APIMessage completeness config fields
 	call?: MockMessageCall
 	interactionMetadata?: MockMessageInteractionMetadata
+	interactionName?: string
 	messageSnapshots?: MockMessageSnapshot[]
 	resolved?: unknown
 	// Phase 4F: Components V2

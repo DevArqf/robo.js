@@ -120,45 +120,47 @@ export function ContextMenu({
 			{/* App commands section */}
 			{contextCommands.length > 0 && (
 				<>
-					<ListItemHeader>Apps</ListItemHeader>
+					<ListItemHeader className={styles.menuHeader}>Apps</ListItemHeader>
 					{contextCommands.map((cmd) => (
 						<ListItem
 							key={cmd.id}
 							label={cmd.name}
 							icon={<CommandIcon />}
+							className={styles.menuItem}
 							onClick={() => handleCommandClick(cmd)}
 							role="menuitem"
 						/>
 					))}
-					<ListItemSeparator />
+					<ListItemSeparator className={styles.menuSeparator} />
 				</>
 			)}
 
 			{/* Standard Discord actions */}
 			{type === 'message' && (
 				<>
-					{onReply && <ListItem label="Reply" icon={<ReplyIcon />} onClick={handleReply} role="menuitem" />}
+					{onReply && <ListItem label="Reply" icon={<ReplyIcon />} className={styles.menuItem} onClick={handleReply} role="menuitem" />}
 					{onPinMessage && (
 						<ListItem
 							label={isPinned ? 'Unpin Message' : 'Pin Message'}
 							icon={<PinIcon />}
+							className={styles.menuItem}
 							onClick={handlePinMessage}
 							role="menuitem"
 						/>
 					)}
-					<ListItemSeparator />
-					<ListItem label="Copy Text" icon={<CopyIcon />} onClick={handleCopyText} role="menuitem" />
-					<ListItem label="Copy Message ID" icon={<IdIcon />} onClick={handleCopyId} role="menuitem" />
+					<ListItemSeparator className={styles.menuSeparator} />
+					<ListItem label="Copy Text" icon={<CopyIcon />} className={styles.menuItem} onClick={handleCopyText} role="menuitem" />
+					<ListItem label="Copy Message ID" icon={<IdIcon />} className={styles.menuItem} onClick={handleCopyId} role="menuitem" />
 				</>
 			)}
 
 			{type === 'user' && (
 				<>
 					{onMessageUser && (
-						<ListItem label="Message" icon={<MessageIcon />} onClick={handleMessageUser} role="menuitem" />
+						<ListItem label="Message" icon={<MessageIcon />} className={styles.menuItem} onClick={handleMessageUser} role="menuitem" />
 					)}
-					<ListItemSeparator />
-					<ListItem label="Copy User ID" icon={<IdIcon />} onClick={handleCopyId} role="menuitem" />
+					<ListItemSeparator className={styles.menuSeparator} />
+					<ListItem label="Copy User ID" icon={<IdIcon />} className={styles.menuItem} onClick={handleCopyId} role="menuitem" />
 				</>
 			)}
 		</DropdownContainer>
