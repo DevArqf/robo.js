@@ -157,7 +157,7 @@ export function AppShell() {
 		<div className={shellClassName}>
 			<div className={styles.topShell}>
 				<div className={styles.topTitle}>{topTitle}</div>
-				<div className={styles.topIcons} aria-label="Top bar actions">
+				<div className={styles.topIcons}>
 					<button className="icon-button" aria-label="Inbox" title="Inbox" type="button">
 						<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
 							<path d="M3 3h18v12h-5l-2 3h-4l-2-3H3V3Zm2 2v8h4l2 3h2l2-3h4V5H5Z" />
@@ -195,62 +195,41 @@ export function AppShell() {
 						<>
 							<ChannelList
 								guild={selectedGuild ?? undefined}
-								channels={displayChannels}
+								channels={channels}
 								selectedId={selectedChannelId}
 								onSelect={handleChannelSelect}
-								voiceStates={guildVoiceStates}
+								mentionCounts={unreadMentions}
+								voiceStates={voiceStates}
 								users={allUsers}
 								onJoinVoice={joinVoice}
 								onLeaveVoice={leaveVoice}
-								currentUserId={botUser?.id}
+								currentUserId={currentUser?.id}
 							/>
-						</div>
+							<div className={styles.main}>
+								<Header
+									channel={selectedChannel}
+									onToggleMembers={toggleMembers}
+									showMembers={showMembers}
+									onToggleThreads={handleToggleThreads}
+									showThreads={showThreads}
+									onToggleNotifications={handleToggleNotifications}
+									showNotifications={showNotifications}
+									onTogglePinnedMessages={handleTogglePinnedMessages}
+									showPinnedMessages={showPinnedMessages}
+									onMobileMenuToggle={handleMobileMenuToggle}
+									isMobileSidebarOpen={mobileSidebarOpen}
+								/>
 
-						<div className={styles.mainContent}>
-							{showHome ? (
-								<FriendsAppShell />
-							) : (
-								<>
-									<ChannelList
-										guild={selectedGuild ?? undefined}
-										channels={channels}
-										selectedId={selectedChannelId}
-										onSelect={handleChannelSelect}
-										mentionCounts={unreadMentions}
-										voiceStates={voiceStates}
-										users={allUsers}
-										onJoinVoice={joinVoice}
-										onLeaveVoice={leaveVoice}
-										currentUserId={currentUser?.id}
-									/>
-									<div className={styles.main}>
-										<Header
-											channel={selectedChannel}
-											onToggleMembers={toggleMembers}
-											showMembers={showMembers}
-											onToggleThreads={handleToggleThreads}
-											showThreads={showThreads}
-											onToggleNotifications={handleToggleNotifications}
-											showNotifications={showNotifications}
-											onTogglePinnedMessages={handleTogglePinnedMessages}
-											showPinnedMessages={showPinnedMessages}
-											onMobileMenuToggle={handleMobileMenuToggle}
-											isMobileSidebarOpen={mobileSidebarOpen}
-										/>
-
-										<div className={styles.content}>
-											<MessageArea channelId={selectedChannelId} />
-											{showThreads && <ThreadList />}
-											{showMembers && <MemberList members={members} roles={roles} />}
-										</div>
-									</div>
-								</>
-							)}
-						</div>
-					</div>
+								<div className={styles.content}>
+									<MessageArea channelId={selectedChannelId} />
+									{showThreads && <ThreadList />}
+									{showMembers && <MemberList members={members} roles={roles} />}
+								</div>
+							</div>
+						</>
+					)}
 				</div>
 
-				{/* Logs panel - outside main area to push everything left */}
 				{showLogs && <LogsPanel />}
 			</div>
 
