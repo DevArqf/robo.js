@@ -217,7 +217,7 @@ export async function findPackagePath(packageName: string, currentPath: string):
 			const { stdout } = await execAsync(`pnpm list ${packageName} --json`, { cwd: currentPath })
 			const packages = JSON.parse(stdout)
 			const packageInfo = Array.isArray(packages) ? packages[0] : packages
-			packagePath = packageInfo.dependencies[packageName].path
+			packagePath = packageInfo?.dependencies?.[packageName]?.path
 		} catch (error) {
 			logger.error('', error)
 		}
