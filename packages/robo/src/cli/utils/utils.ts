@@ -192,6 +192,20 @@ export async function findNodeModules(basePath: string): Promise<string | null> 
 	}
 }
 
+async function resolvePackagePathFallback(
+	nodeModulesPath: string,
+	packageName: string
+): Promise<string | null> {
+	const candidatePath = path.join(nodeModulesPath, packageName)
+	logger.debug(`Falling back to ${packageName} in ${candidatePath}`)
+	try {
+		await fs.access(candidatePath)
+		return candidatePath
+	} catch {
+		return null
+	}
+}
+
 export async function findPackagePath(packageName: string, currentPath: string): Promise<string | null> {
 	const nodeModulesPath = await findNodeModules(currentPath)
 	if (!nodeModulesPath) {
@@ -221,6 +235,10 @@ export async function findPackagePath(packageName: string, currentPath: string):
 		} catch (error) {
 			logger.error('', error)
 		}
+
+		if (!packagePath) {
+			packagePath = await resolvePackagePathFallback(nodeModulesPath, packageName)
+		}
 	} else {
 		const candidatePath = path.join(nodeModulesPath, packageName)
 		logger.debug(`Checking for ${packageName} in ${candidatePath}`)
@@ -233,6 +251,9 @@ export async function findPackagePath(packageName: string, currentPath: string):
 	}
 
 	if (packagePath) {
+		if (!path.isAbsolute(packagePath)) {
+			packagePath = path.resolve(currentPath, packagePath)
+		}
 		return path.relative(process.cwd(), packagePath)
 	}
 
