@@ -10,7 +10,7 @@ import { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import url from 'node:url'
-import { color } from 'robo.js'
+import { color, Mode } from 'robo.js'
 import type { Router } from './router.js'
 import type { NotFoundHandler, RoboReply } from './types.js'
 import type { UrlWithParsedQuery } from 'node:url'
@@ -26,14 +26,36 @@ export function createServerHandler(router: Router, vite?: ViteDevServer, onNotF
 		const parsedUrl = url.parse(req.url, true)
 
 		if (pluginOptions.cors) {
-			// CORS Headers (to allow any origin, any method, and any header)
-			res.setHeader('Access-Control-Allow-Origin', '*')
-			res.setHeader('Access-Control-Allow-Methods', '*')
-			res.setHeader('Access-Control-Allow-Headers', '*')
+			const corsConfig =
+				typeof pluginOptions.cors === 'object' ? pluginOptions.cors : { origins: '*' as const }
+
+			const requestOrigin = req.headers.origin
+			const allowedOrigins = corsConfig.origins ?? '*'
+
+			// Set Access-Control-Allow-Origin header
+			if (allowedOrigins === '*' && !corsConfig.credentials) {
+				// Wildcard only allowed without credentials
+				res.setHeader('Access-Control-Allow-Origin', '*')
+			} else if (requestOrigin) {
+				// For credentials or specific origins, echo back the request origin if allowed
+				const originsArray = allowedOrigins === '*' ? [requestOrigin] : allowedOrigins
+				if (originsArray.includes(requestOrigin)) {
+					res.setHeader('Access-Control-Allow-Origin', requestOrigin)
+					res.setHeader('Vary', 'Origin')
+				}
+			}
+
+			// Set credentials header if enabled
+			if (corsConfig.credentials) {
+				res.setHeader('Access-Control-Allow-Credentials', 'true')
+			}
+
+			res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
+			res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
 
 			// Preflight request. Reply successfully:
 			if (req.method === 'OPTIONS') {
-				res.writeHead(200)
+				res.writeHead(204)
 				res.end()
 				return
 			}
@@ -69,7 +91,7 @@ export function createServerHandler(router: Router, vite?: ViteDevServer, onNotF
 						res.setHeader('Content-Type', mimeType)
 						res.setHeader('X-Content-Type-Options', 'nosniff')
 						// Prevent caching in development for hot reload
-						if (process.env.NODE_ENV !== 'production') {
+						if (Mode.isDev()) {
 							res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
 						}
 						res.writeHead(200)
@@ -182,7 +204,7 @@ export function createServerHandler(router: Router, vite?: ViteDevServer, onNotF
 				res.setHeader('Content-Type', mimeType)
 				res.setHeader('X-Content-Type-Options', 'nosniff')
 				// Prevent caching in development for hot reload
-				if (process.env.NODE_ENV !== 'production') {
+				if (Mode.isDev()) {
 					res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
 				}
 				res.writeHead(200)
@@ -447,10 +469,15 @@ export async function handlePluginStaticFile(
 			await callback(filePath, mimeType)
 			return { type: 'served' }
 		} else if (stats.isDirectory()) {
-			// If URL doesn't end with /, redirect to add trailing slash
+			// If URL path doesn't end with /, redirect to add trailing slash
 			// This ensures relative URLs in the served HTML resolve correctly
-			if (!originalUrl.endsWith('/')) {
-				const redirectUrl = originalUrl + '/'
+			// Parse URL to handle query strings correctly (don't append / after ?token=xxx)
+			const urlParts = originalUrl.split('?')
+			const urlPath = urlParts[0]
+			const queryString = urlParts.length > 1 ? '?' + urlParts.slice(1).join('?') : ''
+
+			if (!urlPath.endsWith('/')) {
+				const redirectUrl = urlPath + '/' + queryString
 				logger.debug(`Redirecting to add trailing slash: ${redirectUrl}`)
 				return { type: 'redirect', location: redirectUrl }
 			}

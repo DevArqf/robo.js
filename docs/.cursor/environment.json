@@ -1,0 +1,12 @@
+{
+  "snapshot": "snapshot-20250520-f6f5c745-81a8-40b2-a3ce-f45498f2808e",
+  "install": "curl -fsSL https://bun.sh/install",
+  "start": "bun i",
+  "terminals": [
+    {
+      "name": "dev server",
+      "command": "bun dev",
+      "description": "Runs the dev server"
+    }
+  ]
+}

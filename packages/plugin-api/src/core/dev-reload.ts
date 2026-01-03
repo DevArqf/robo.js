@@ -2,7 +2,7 @@
  * Dev Reload Module
  *
  * Provides automatic browser reload when plugin frontend assets change during development.
- * Only active when NODE_ENV !== 'production'.
+ * Only active when running via `robo dev`.
  *
  * How it works:
  * 1. Watches plugin public directories for `.build-signal` files
@@ -14,6 +14,7 @@
  */
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import { Mode } from 'robo.js'
 import { Watcher } from 'robo.js/unstable'
 import { WebSocketServer } from 'ws'
 import { logger } from './logger.js'
@@ -39,13 +40,13 @@ interface ReloadMessage {
 
 /**
  * Initialize the dev reload system.
- * Only runs in development mode (NODE_ENV !== 'production').
+ * Only runs when started via `robo dev`.
  *
  * @param engine - The server engine to attach the WebSocket to
  */
 export async function initDevReload(engine: BaseEngine): Promise<void> {
-	// Only in development mode
-	if (process.env.NODE_ENV === 'production') {
+	// Only when running via robo dev
+	if (!Mode.isDev()) {
 		return
 	}
 

@@ -85,6 +85,7 @@ import type {
 import { AuditLogEvent, AuditLogLimits } from '../types/index.js'
 import { ComponentLimits, ComponentsV2Limits, ComponentTypeV2, PollLayoutType, ForumLayoutType, ForumSortOrderType, StickerType, StickerFormatType, StickerLimits, WebhookType, WebhookLimits, EmojiLimits, RoleLimits, BanLimits, ApplicationCommandType, CommandLimits, InviteLimits, ScheduledEventLimits, GuildScheduledEventStatus, GuildScheduledEventEntityType, AutoModLimits, StageInstancePrivacyLevel } from '../types/index.js'
 import { generateSnowflake } from '../utils/snowflake.js'
+import { MentionParser } from '../utils/mention-parser.js'
 import { MemoryAttachmentStorage, type StorageConfig } from '../storage/attachment-storage.js'
 
 // Default limits for memory management
@@ -155,6 +156,12 @@ export class MockServerState implements SessionState {
 	private readonly interactionsByToken: Map<string, Snowflake>
 	private readonly webhooksByToken: Map<string, Snowflake> // Phase 4J: token -> webhookId
 
+	/**
+	 * Current "acting" user for Stage UI interactions.
+	 * Separate from botUser - represents the human using Stage.
+	 */
+	private _currentUser: MockUser | null = null
+
 	constructor(options?: StateOptions) {
 		this.guilds = new Map()
 		this.channels = new Map()
@@ -201,83 +208,6 @@ export class MockServerState implements SessionState {
 
 		// Set application ID (defaults to bot user ID)
 		this.applicationId = options?.applicationId ?? this.botUser.id
-
-		// Add default test commands for Stage UI testing
-		this.seedDefaultCommands()
-	}
-
-	/**
-	 * Seed default test commands for Stage UI testing
-	 * These provide a baseline set of commands to test the slash command UI
-	 */
-	private seedDefaultCommands(): void {
-		const defaultCommands = [
-			{
-				name: 'ping',
-				description: 'Check if the bot is online',
-				type: 1 // CHAT_INPUT
-			},
-			{
-				name: 'echo',
-				description: 'Echo a message back',
-				type: 1,
-				options: [
-					{
-						name: 'message',
-						description: 'The message to echo',
-						type: 3, // STRING
-						required: true
-					}
-				]
-			},
-			{
-				name: 'roll',
-				description: 'Roll a dice',
-				type: 1,
-				options: [
-					{
-						name: 'sides',
-						description: 'Number of sides on the dice',
-						type: 4, // INTEGER
-						required: false,
-						min_value: 2,
-						max_value: 100
-					}
-				]
-			},
-			{
-				name: 'user-info',
-				description: 'Get information about a user',
-				type: 1,
-				options: [
-					{
-						name: 'user',
-						description: 'The user to get info about',
-						type: 6, // USER
-						required: false
-					}
-				]
-			},
-			{
-				name: 'channel-info',
-				description: 'Get information about a channel',
-				type: 1,
-				options: [
-					{
-						name: 'channel',
-						description: 'The channel to get info about',
-						type: 7, // CHANNEL
-						required: false
-					}
-				]
-			}
-			// Note: Context menu commands are NOT seeded - they come from real bot registrations
-			// This ensures the Stage UI shows actual registered context commands, not fake test data
-		]
-
-		for (const cmd of defaultCommands) {
-			this.createCommand(cmd as Parameters<typeof this.createCommand>[0])
-		}
 	}
 
 	// ============================================================================
@@ -297,6 +227,58 @@ export class MockServerState implements SessionState {
 	 */
 	nextSequence(): number {
 		return ++this._sequence
+	}
+
+	// ============================================================================
+	// Current User Management
+	// ============================================================================
+
+	/**
+	 * Get the current acting user for Stage UI interactions.
+	 * Creates a default user on first access if none is set.
+	 */
+	get currentUser(): MockUser {
+		if (!this._currentUser) {
+			this._currentUser = createMockUser({
+				id: generateSnowflake(),
+				username: 'You',
+				bot: false
+			})
+			this.users.set(this._currentUser.id, this._currentUser)
+		}
+		return this._currentUser
+	}
+
+	/**
+	 * Set the current acting user.
+	 */
+	set currentUser(user: MockUser) {
+		this._currentUser = user
+		this.users.set(user.id, user)
+	}
+
+	/**
+	 * Update the current user's properties without changing their ID.
+	 */
+	updateCurrentUser(updates: Partial<Omit<MockUser, 'id'>>): MockUser {
+		const current = this.currentUser
+		const updated: MockUser = { ...current, ...updates }
+		this.users.set(current.id, updated)
+		this._currentUser = updated
+		return updated
+	}
+
+	/**
+	 * Switch to a different user as the current user.
+	 * Returns the user if found, undefined otherwise.
+	 */
+	switchCurrentUser(userId: Snowflake): MockUser | undefined {
+		const user = this.users.get(userId)
+		if (user) {
+			this._currentUser = user
+			return user
+		}
+		return undefined
 	}
 
 	// ============================================================================
@@ -352,6 +334,38 @@ export class MockServerState implements SessionState {
 				guildId: guild.id,
 				roles: [],
 				nick: null,
+				joinedAt: new Date().toISOString(),
+				premiumSince: null,
+				deaf: false,
+				mute: false,
+				pending: false,
+				communicationDisabledUntil: null,
+				flags: 0
+			})
+		}
+	}
+
+	/**
+	 * Add a user as a member to a guild.
+	 * Creates the guild member entry if it doesn't exist.
+	 */
+	addMemberToGuild(guildId: Snowflake, userId: Snowflake, config?: Partial<MockGuildMemberConfig>): void {
+		const guild = this.guilds.get(guildId)
+		if (!guild) return
+
+		// Add to guild.members array if not already present
+		if (!guild.members.includes(userId)) {
+			guild.members.push(userId)
+		}
+
+		// Create guild member entry
+		const memberKey = `${guildId}:${userId}`
+		if (!this.guildMembers.has(memberKey)) {
+			this.guildMembers.set(memberKey, {
+				userId,
+				guildId,
+				roles: config?.roles ?? [],
+				nick: config?.nick ?? null,
 				joinedAt: new Date().toISOString(),
 				premiumSince: null,
 				deaf: false,
@@ -632,8 +646,8 @@ export class MockServerState implements SessionState {
 			// Increment count
 			existingReaction.count++
 			existingReaction.count_details.normal++
-			// Mark as "me" if this is the test user (for Stage UI display)
-			if (userId === this.getOrCreateTestUser().id) {
+			// Mark as "me" if this is the current user (for Stage UI display)
+			if (userId === this.currentUser.id) {
 				existingReaction.me = true
 			}
 		} else {
@@ -641,7 +655,7 @@ export class MockServerState implements SessionState {
 			const newReaction: MockReaction = {
 				count: 1,
 				count_details: { burst: 0, normal: 1 },
-				me: userId === this.getOrCreateTestUser().id,
+				me: userId === this.currentUser.id,
 				me_burst: false,
 				emoji: {
 					id: emoji.id,
@@ -683,8 +697,8 @@ export class MockServerState implements SessionState {
 		reaction.count--
 		reaction.count_details.normal--
 
-		// Remove "me" flag if this is the test user
-		if (userId === this.getOrCreateTestUser().id) {
+		// Remove "me" flag if this is the current user
+		if (userId === this.currentUser.id) {
 			reaction.me = false
 		}
 
@@ -734,26 +748,39 @@ export class MockServerState implements SessionState {
 	// ============================================================================
 
 	/**
-	 * Get a DM channel by recipient user ID
+	 * Create a DM channel key from two user IDs (sorted for consistency)
 	 */
-	getDMChannel(recipientId: Snowflake): MockChannel | undefined {
-		return this.dmChannels.get(recipientId)
+	private getDMKey(userId1: Snowflake, userId2: Snowflake): string {
+		return [userId1, userId2].sort().join(':')
 	}
 
 	/**
-	 * Get or create a DM channel for a recipient
+	 * Get a DM channel by recipient user ID (uses currentUser as the other participant)
+	 */
+	getDMChannel(recipientId: Snowflake): MockChannel | undefined {
+		const dmKey = this.getDMKey(this.currentUser.id, recipientId)
+		return this.dmChannels.get(dmKey)
+	}
+
+	/**
+	 * Get or create a DM channel for a recipient (uses currentUser as the other participant)
+	 * The channel will be keyed by both user IDs for proper multi-user support.
 	 */
 	getOrCreateDMChannel(recipientId: Snowflake): MockChannel {
-		let dmChannel = this.dmChannels.get(recipientId)
+		const currentUserId = this.currentUser.id
+		const dmKey = this.getDMKey(currentUserId, recipientId)
+
+		let dmChannel = this.dmChannels.get(dmKey)
 		if (!dmChannel) {
 			dmChannel = createMockChannel({
 				name: `DM-${recipientId}`,
-				type: ChannelType.DM
+				type: ChannelType.DM,
+				recipientIds: [currentUserId, recipientId]
 			})
 			// Store in both maps:
-			// - dmChannels keyed by recipient ID (for idempotency)
+			// - dmChannels keyed by sorted user IDs (for multi-user DM support)
 			// - channels keyed by channel ID (for O(1) lookup)
-			this.dmChannels.set(recipientId, dmChannel)
+			this.dmChannels.set(dmKey, dmChannel)
 			this.channels.set(dmChannel.id, dmChannel)
 		}
 		return dmChannel
@@ -3589,7 +3616,9 @@ export function createMockUser(config?: MockUserConfig): MockUser {
 		discriminator: config?.discriminator ?? '0',
 		globalName: config?.globalName ?? config?.username ?? 'User',
 		avatar: config?.avatar ?? null,
-		bot: config?.bot ?? false
+		bot: config?.bot ?? false,
+		status: config?.status,
+		activities: config?.activities
 	}
 }
 
@@ -3621,6 +3650,7 @@ export function createMockChannel(config?: {
 	parentId?: Snowflake | null
 	topic?: string | null
 	position?: number
+	recipientIds?: Snowflake[]
 }): MockChannel {
 	return {
 		id: config?.id ?? generateSnowflake(),
@@ -3629,7 +3659,8 @@ export function createMockChannel(config?: {
 		type: config?.type ?? 0, // GUILD_TEXT
 		parentId: config?.parentId ?? null,
 		topic: config?.topic ?? null,
-		position: config?.position
+		position: config?.position,
+		recipientIds: config?.recipientIds
 	}
 }
 
@@ -3699,6 +3730,10 @@ export function createMockForumChannel(config?: MockForumChannelConfig): MockFor
  */
 export function createMockMessage(config: MockMessageConfig): MockMessage {
 	const content = config.content ?? ''
+
+	// Auto-parse mentions from content if not explicitly provided
+	const parsed = MentionParser.parse(content)
+
 	const message: MockMessage = {
 		id: config.id ?? generateSnowflake(),
 		channelId: config.channelId,
@@ -3708,9 +3743,9 @@ export function createMockMessage(config: MockMessageConfig): MockMessage {
 		timestamp: new Date().toISOString(),
 		editedTimestamp: null,
 		tts: config.tts ?? false,
-		mentionEveryone: content.includes('@everyone'),
-		mentions: config.mentions ?? [],
-		mentionRoles: [],
+		mentionEveryone: parsed.everyone || parsed.here,
+		mentions: config.mentions ?? parsed.users,
+		mentionRoles: parsed.roles,
 		attachments: config.attachments ?? [],
 		embeds: config.embeds ?? [],
 		pinned: false,

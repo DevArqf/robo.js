@@ -1,0 +1,191 @@
+---
+title: "Patterns"
+description: "Pre-defined cron patterns for scheduling tasks"
+---
+
+# Variable: Patterns
+
+```ts
+const Patterns: object;
+```
+
+A collection of pre-defined cron expressions and helper functions to simplify scheduling with the Cron function.
+
+## Common Patterns
+
+### Time-Based Patterns
+
+```ts
+// Daily patterns
+EVERY_DAY_AT_MIDNIGHT: '0 0 * * *'
+EVERY_DAY_AT_NOON: '0 12 * * *'
+
+// Hourly patterns
+EVERY_HOUR: '0 0-23/1 * * *'
+EVERY_2_HOURS: '0 0-23/2 * * *'
+EVERY_3_HOURS: '0 0-23/3 * * *'
+EVERY_4_HOURS: '0 0-23/4 * * *'
+EVERY_6_HOURS: '0 0-23/6 * * *'
+EVERY_8_HOURS: '0 0-23/8 * * *'
+EVERY_12_HOURS: '0 0-23/12 * * *'
+
+// Minute patterns
+EVERY_MINUTE: '*/1 * * * *'
+EVERY_5_MINUTES: '0 */5 * * * *'
+EVERY_10_MINUTES: '0 */10 * * * *'
+EVERY_30_MINUTES: '0 */30 * * * *'
+
+// Second patterns
+EVERY_SECOND: '* * * * * *'
+EVERY_5_SECONDS: '*/5 * * * * *'
+EVERY_10_SECONDS: '*/10 * * * * *'
+EVERY_30_SECONDS: '*/30 * * * * *'
+```
+
+### Day-of-Week Patterns
+
+```ts
+// Weekly patterns
+EVERY_WEEK: '0 0 * * 0'
+EVERY_WEEKDAY: '0 0 * * 1-5'
+EVERY_WEEKEND: '0 0 * * 6,0'
+
+// Days of the week
+SUNDAY: 0
+MONDAY: 1
+TUESDAY: 2
+WEDNESDAY: 3
+THURSDAY: 4
+FRIDAY: 5
+SATURDAY: 6
+```
+
+### Other Patterns
+
+```ts
+// Monthly and Yearly
+EVERY_1ST_DAY_OF_MONTH_AT_MIDNIGHT: '0 0 1 * *'
+EVERY_1ST_DAY_OF_MONTH_AT_NOON: '0 12 1 * *'
+EVERY_QUARTER: '0 0 1 */3 *'
+EVERY_YEAR: '0 0 1 1 *'
+```
+
+## Helper Functions
+
+### daily()
+
+```ts
+daily(): ConstantExpressions
+```
+
+Run the task every day at 00:00
+Alias: EVERY_DAY_AT_MIDNIGHT
+
+#### Returns
+
+`ConstantExpressions`
+
+### hourly()
+
+```ts
+hourly(): ConstantExpressions
+```
+
+Run the task every hour
+Alias: EVERY_HOUR
+
+#### Returns
+
+`ConstantExpressions`
+
+### everyMinute()
+
+```ts
+everyMinute(): ConstantExpressions
+```
+
+Run the task every minute
+Alias: EVERY_MINUTE
+
+#### Returns
+
+`ConstantExpressions`
+
+### everyHours()
+
+```ts
+everyHours(hours = 1): string
+```
+
+Run the task every H hours
+
+#### Parameters
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `hours` | `number` | `1` | The number of hours between runs |
+
+#### Returns
+
+`string` - A cron expression
+
+### everyMinutes()
+
+```ts
+everyMinutes(minutes = 1): string
+```
+
+Run the task every M minutes
+
+#### Parameters
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `minutes` | `number` | `1` | The number of minutes between runs |
+
+#### Returns
+
+`string` - A cron expression
+
+### everyWeekOn()
+
+```ts
+everyWeekOn(day, time = '00:00'): string
+```
+
+Run the task at a specific time on a given day of the week.
+
+#### Parameters
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `day` | `number` | | The day of the week (0 for Sunday, 1 for Monday, ..., 6 for Saturday) |
+| `time` | `string` | `'00:00'` | The time in 'HH:mm' format (24-hour clock) |
+
+#### Returns
+
+`string` - A cron expression
+
+## Example
+
+```ts
+import { Cron, Patterns } from '@robojs/cron'
+
+// Using pre-defined patterns
+Cron(Patterns.EVERY_DAY_AT_MIDNIGHT, () => {
+  console.log('Running daily task at midnight')
+})
+
+Cron(Patterns.EVERY_30_MINUTES, () => {
+  console.log('Running every 30 minutes')
+})
+
+// Using helper functions
+Cron(Patterns.everyHours(2), () => {
+  console.log('Running every 2 hours')
+})
+
+Cron(Patterns.everyWeekOn(Patterns.MONDAY, '09:00'), () => {
+  console.log('Running every Monday at 9 AM')
+})
+```

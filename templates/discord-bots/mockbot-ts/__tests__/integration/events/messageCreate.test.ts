@@ -4,23 +4,24 @@
  * Tests the messageCreate event handler that echoes messages.
  */
 import { fileURLToPath } from 'node:url'
-import { describe, it, expect, beforeAll, afterAll } from '@jest/globals'
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals'
 import {
-	startMockBot,
+	startMockRobo,
+	clearSessionActions,
 	dispatchEvent,
 	expectAction,
 	generateSnowflake
 } from '@robojs/mock/testing'
-import type { MockBotHandle } from '@robojs/mock/testing'
+import type { MockRoboHandle } from '@robojs/mock/testing'
 
 const __filename = fileURLToPath(import.meta.url)
 
 describe('messageCreate event', () => {
-	let bot: MockBotHandle
+	let bot: MockRoboHandle
 
 	beforeAll(async () => {
 		// Start a bot connected to the mock server
-		bot = await startMockBot({
+		bot = await startMockRobo({
 			name: 'messageCreate-tests',
 			testFilePath: __filename
 		})
@@ -28,6 +29,10 @@ describe('messageCreate event', () => {
 
 	afterAll(async () => {
 		await bot.stop()
+	})
+
+	beforeEach(async () => {
+		await clearSessionActions(bot.sessionId)
 	})
 
 	it('should echo received messages', async () => {
@@ -98,13 +103,13 @@ describe('messageCreate event', () => {
 		})
 
 		// Bot should include count in reply
-		await expectAction(bot.sessionId, {
-			description: 'Bot should include count in reply',
-			type: 'message_sent',
-			expected: {
-				content: expect.stringMatching(/Count: \d+/)
-			},
-			timeout: 5000
+			await expectAction(bot.sessionId, {
+				description: 'Bot should include count in reply',
+				type: 'message_sent',
+				expected: {
+				content: expect.stringMatching(/Counter:\s*\d+\s*\|\s*Another message/)
+				},
+				timeout: 5000
+			})
 		})
-	})
 })

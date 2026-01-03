@@ -1,0 +1,131 @@
+---
+title: "React (TypeScript)"
+description: A TypeScript Discord Activity template using React.
+---
+
+# React (TypeScript)
+
+Welcome to your fresh **[Robo.js](https://robojs.dev)** project!
+
+Build, deploy, and maintain your **Discord Activities** with ease. With **Robo.js** as your guide, you'll experience a seamless, **[file-based setup](/docs/discord-activities/file-structure)**, an **[integrated database](/docs/robojs/flashcore)**, **[TypeScript support](/docs/robojs/typescript)**, and a **[rich ecosystem](/docs/plugins)**.
+
+_Ready to embark on this adventure?_
+
+<Cards>
+  <Card href="/docs/discord-activities" title="Documentation" description="Getting started with Robo.js" />
+  <Card href="https://robojs.dev/discord" title="Discord" description="Robo - Imagine Magic" />
+</Cards>
+
+## Getting Started
+
+Create a project with this template, replacing `<project-name>` with your desired name:
+
+```package-install
+npx create-robo <project-name> --template discord-activities/react-ts
+```
+
+Then navigate into your project directory:
+
+```bash
+cd <project-name>
+```
+
+Run development mode:
+
+```bash
+npm run dev
+```
+
+<Callout>
+A free Cloudflare tunnel is included for easy testing. You can copy and paste it into activity's **[URL mapping](/docs/discord-activities/proxy#url-mapping)** to test things out.
+</Callout>
+
+<Cards>
+  <Card href="/docs/discord-activities/beginner-guide" title="Beginner Guide" description="New to Discord Activities with Robo? Start here!" />
+  <Card href="/docs/robojs/mode#default-modes" title="Run Modes" description="Define profiles for your Robo session." />
+</Cards>
+
+## App Development
+
+You can find your client-side code in the `/src/app` folder. This is where you can build your web app using React, Vue, or any other front-end framework.
+
+Things are powered by Vite under the hood, so you get the latest ES modules, hot module reloading, and more!
+
+Try editing the `main` file to get started! (`Activity.tsx` if you're using React)
+
+## Authentication
+
+The React template makes it easy to authenticate your activity with Discord. The `<DiscordProvider>` components in `App.tsx` accepts `authenticate` and `scope` props.
+
+```tsx
+<DiscordContextProvider authenticate scope={['identify', 'guilds']}>
+	<Activity />
+</DiscordContextProvider>
+```
+
+You can then get the SDK and other goodies from the `useDiscordSdk` hook!
+
+<Cards>
+  <Card href="/docs/discord-activities/authentication" title="Authentication" description="Customize your user experience." />
+</Cards>
+
+## Backend Development
+
+Your server-side code is located in the `/src/api` folder. This is where you can build your API, webhooks, and other fancy server-side features.
+
+This backend is powered by [**@robojs/server**](/docs/plugins/server) - a powerful Robo plugin that creates and manages a Node `http` server for you. If you install Fastify, the server will automatically switch to it for better performance!
+
+Everything Robo is file-based, so you can create new routes by making new files in the `/src/api` directory. The file's name becomes the route's path. For example, let's try making a new route at `/health` by creating a new file named `health.js`:
+
+```js
+export default () => {
+	return { status: 'ok' }
+}
+```
+
+<Cards>
+  <Card href="/docs/plugins/server" title="@robojs/server" description="Create and manage web pages, APIs, and more." />
+</Cards>
+
+## Folder Structure
+
+While the `api` and `app` folders are reserved for your server and client-side code, you are free to create anything else in the `/src` directory!
+
+Folders only become reserved when you install a plugin that uses them. For example, bot functionality uses the `commands` and `events` folders.
+
+## Robo Ecosystem
+
+By building with **Robo.js**, you gain access to a growing ecosystem of **[plugins](/plugins)**, **[templates](/templates)**, and **[tools](/docs/framework/cli)**. **[Robo Plugins](/docs/plugins)** are special. They can add features with one command.
+
+```bash
+npx robo add @robojs/ai @robojs/sync
+```
+
+Plugins integrate seamlessly thanks to the **[Robo File Structure](/docs/discord-bots/file-structure)**. What's more, anyone can **[create a plugin](/docs/framework/plugins/create)**.
+
+<Cards>
+  <Card href="/docs/framework/plugins/install" title="Robo Plugins" description="Add features to your Robo seamlessly." />
+  <Card href="/docs/framework/plugins/create" title="Creating Plugins" description="Make your own plugins for Robo.js." />
+</Cards>
+
+## Hosting
+
+**Hosting** your project keeps it running 24/7. No need to keep your computer on at all times, or worry about your Internet connection.
+
+You can host on any platform that supports **Node.js**, or run `robo deploy` to host on **[RoboPlay](https://roboplay.dev)** - a hosting platform optimized for **Robo.js**.
+
+```bash
+npm run deploy
+```
+
+<Cards>
+  <Card href="/docs/hosting/roboplay" title="RoboPlay" description="Deploy with as little as one command." />
+  <Card href="/docs/hosting" title="Self-Hosting" description="Learn how to host and maintain it yourself." />
+</Cards>
+
+## Learn More
+
+<Cards>
+  <Card href="/templates" title="Explore Templates" description="Discover more templates for a quick start." />
+  <Card href="https://github.com/Wave-Play/robo.js/tree/main/templates/discord-activities/react-ts" title="GitHub Repository" description="Explore source code on GitHub." />
+</Cards>

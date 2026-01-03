@@ -66,6 +66,7 @@ export {
 	deleteSession,
 	dispatchEvent,
 	dispatchInteraction,
+	getChannelMessages,
 	getSessionActions,
 	getSessionState,
 	getMockConfig,
@@ -85,7 +86,8 @@ export {
 	getHistoricalActions,
 	recordAssertion,
 	sleep,
-	startMockBot,
+	startMockRobo,
+	startMockBot, // Deprecated alias
 	waitForAction,
 	waitForAnyAction,
 	waitForInteractionResponse,
@@ -94,4 +96,13 @@ export {
 } from './helpers.js'
 
 // Types for bot lifecycle
-export type { MockBotHandle, StartMockBotOptions } from './helpers.js'
+export type {
+	MockRoboHandle,
+	StartMockRoboOptions,
+	MockBotHandle, // Deprecated alias
+	StartMockBotOptions // Deprecated alias
+} from './helpers.js'
+
+// User utilities (Phase 8)
+export { TestUsers, TestInteractions, createTestUtils } from './user-utils.js'
+export type { TestUtils } from './user-utils.js'

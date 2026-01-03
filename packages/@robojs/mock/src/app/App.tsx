@@ -1,15 +1,22 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from './hooks/useSession'
+import { usePlayback } from './stores/playbackStore'
 import { AppShell } from './components/layout/AppShell'
 import { ConnectionScreen } from './components/layout/ConnectionScreen'
 import { ConnectionStatusOverlay } from './components/layout/ConnectionStatusOverlay'
 import { ErrorBoundary } from './components/common/ErrorBoundary'
 import { KeyboardShortcuts } from './components/common/KeyboardShortcuts'
 import { Modal } from './components/modals/Modal'
+import { DevToolsPanel } from './components/devtools/DevToolsPanel'
 import './styles/discord-theme.css'
 import './styles/globals.css'
 
-export default function App() {
+interface AppProps {
+	/** Test results viewing mode - bypasses session requirement */
+	testResultsMode?: boolean
+}
+
+export default function App({ testResultsMode = false }: AppProps) {
 	// UI-only mode: render the mock Discord Friends layout without requiring a Stage session.
 	// (This is intentionally static – no routing/logic for tabs, just the UI elements.)
 	const UI_ONLY = false
@@ -23,17 +30,52 @@ export default function App() {
 		)
 	}
 
+	// Test results mode - show DevTools with Tests tab without requiring session
+	if (testResultsMode) {
+		return (
+			<ErrorBoundary>
+				<KeyboardShortcuts />
+				<div style={{
+					display: 'flex',
+					flexDirection: 'column',
+					height: '100vh',
+					background: 'var(--background-primary)'
+				}}>
+					<div style={{
+						flex: 1,
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'center',
+						color: 'var(--text-muted)',
+						flexDirection: 'column',
+						gap: '16px'
+					}}>
+						<h2 style={{ margin: 0, color: 'var(--text-normal)' }}>Test Results Viewer</h2>
+						<p style={{ margin: 0 }}>View test results in the DevTools panel below</p>
+						<p style={{ margin: 0, fontSize: '12px' }}>
+							Press <kbd style={{ background: 'var(--background-secondary)', padding: '2px 6px', borderRadius: '4px' }}>Ctrl+Shift+D</kbd> to toggle DevTools
+						</p>
+					</div>
+					<DevToolsPanel />
+				</div>
+			</ErrorBoundary>
+		)
+	}
+
 	const { isConnected, sessionId, activeModal, submitModal, closeModal } = useSession()
+	const playbackState = usePlayback()
+	// Playback mode is active when mode is 'playback' - events may still be loading
+	const isInPlaybackMode = playbackState.mode === 'playback'
 	const [hasEverConnected, setHasEverConnected] = useState(false)
 	const [showConnectionScreen, setShowConnectionScreen] = useState(false)
 
-	// Track when we first connect successfully
+	// Track when we first connect successfully (or enter playback mode)
 	useEffect(() => {
-		if (isConnected && !hasEverConnected) {
+		if ((isConnected || isInPlaybackMode) && !hasEverConnected) {
 			setHasEverConnected(true)
 			setShowConnectionScreen(false)
 		}
-	}, [isConnected, hasEverConnected])
+	}, [isConnected, isInPlaybackMode, hasEverConnected])
 
 	// Handle "Change Session" - show connection screen overlay
 	const handleChangeSession = useCallback(() => {
@@ -46,8 +88,8 @@ export default function App() {
 		closeModal()
 	}
 
-	// Show connection screen if never connected, or if user explicitly requested it
-	if ((!hasEverConnected && (!isConnected || !sessionId)) || showConnectionScreen) {
+	// Show connection screen if never connected (and not in playback mode), or if user explicitly requested it
+	if ((!hasEverConnected && !isInPlaybackMode && (!isConnected || !sessionId)) || showConnectionScreen) {
 		return (
 			<ErrorBoundary>
 				{hasEverConnected ? (
@@ -60,7 +102,10 @@ export default function App() {
 						</div>
 					</>
 				) : (
-					<ConnectionScreen />
+					<>
+						<ConnectionScreen />
+						<DevToolsPanel />
+					</>
 				)}
 			</ErrorBoundary>
 		)

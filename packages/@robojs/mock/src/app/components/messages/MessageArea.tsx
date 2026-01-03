@@ -1,7 +1,6 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useSession } from '../../hooks/useSession'
-import { usePlaybackMessages, useIsPlaybackMode, usePlayback, usePlaybackTypingUsers } from '../../stores/playbackStore'
+import { useStageData } from '../../hooks/useStageData'
 import { useContextMenu } from '../../hooks/useContextMenu'
 import { Message } from './Message'
 import { MessageInput } from './MessageInput'
@@ -157,7 +156,11 @@ function VirtualizedMessageList({
 			// Date divider adds ~40px (16px margin + 24px content)
 			const dateDividerHeight = group.showDateDivider ? 40 : 0
 
-			return dateDividerHeight + (hasHeader ? 44 : 0) + contentHeight + embedHeight + attachmentHeight + v1ComponentHeight + 16
+			// Command invocation header adds ~28px (avatar + text + margin)
+			const hasCommandInvocation = (message as { interaction_metadata?: { type: number } }).interaction_metadata?.type === 2
+			const commandInvocationHeight = hasCommandInvocation ? 28 : 0
+
+			return dateDividerHeight + commandInvocationHeight + (hasHeader ? 44 : 0) + contentHeight + embedHeight + attachmentHeight + v1ComponentHeight + 16
 		},
 		overscan: 10
 	})
@@ -282,11 +285,12 @@ function VirtualizedMessageList({
 }
 
 export function MessageArea({ channelId }: MessageAreaProps) {
+	// Unified hook handles live/playback mode switching automatically
 	const {
-		channelMessages,
-		channelTypingUsers,
-		channelPendingInteractions,
-		channelPendingMessages,
+		messages,
+		typingUsers,
+		pendingInteractions,
+		pendingMessages,
 		selectedChannel,
 		clickButton,
 		selectOption,
@@ -299,19 +303,11 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 		setReplyingTo,
 		pinMessage,
 		unpinMessage,
-		openDM
-	} = useSession()
+		openDM,
+		isPlaybackMode,
+		playback
+	} = useStageData({ channelId })
 	const { menu: contextMenu, showMenu: showContextMenu, hideMenu: hideContextMenu } = useContextMenu()
-	const isPlaybackMode = useIsPlaybackMode()
-	const playbackMessages = usePlaybackMessages(channelId)
-	const playbackTypingUsers = usePlaybackTypingUsers(channelId)
-	const playbackState = usePlayback()
-
-	// Use playback messages when in playback mode, otherwise use session messages
-	const displayMessages = isPlaybackMode && playbackMessages !== null ? playbackMessages : channelMessages
-
-	// Use playback typing users when in playback mode, otherwise use session typing users
-	const displayTypingUsers = isPlaybackMode && playbackTypingUsers !== null ? playbackTypingUsers : channelTypingUsers
 
 	// Context menu handlers
 	const handleMessageContextMenu = useCallback(
@@ -394,8 +390,8 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 						<path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zm0 14A6 6 0 1 1 8 2a6 6 0 0 1 0 12zm.5-9H7v5l4.25 2.5.75-1.23-3.5-2.08V5z" />
 					</svg>
 					<span>
-						Playback Mode — Viewing {displayMessages.length} message{displayMessages.length !== 1 ? 's' : ''} at{' '}
-						{formatPlaybackTime(playbackState.currentTime)}
+						Playback Mode — Viewing {messages.length} message{messages.length !== 1 ? 's' : ''} at{' '}
+						{formatPlaybackTime(playback.currentTime)}
 					</span>
 				</div>
 			)}
@@ -403,7 +399,7 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 			{/* Virtualized message list - keyed to force reset on channel/mode change */}
 			<VirtualizedMessageList
 				key={`${channelId}-${isPlaybackMode}`}
-				messages={displayMessages}
+				messages={messages}
 				isPlaybackMode={isPlaybackMode}
 				channelName={selectedChannel.name}
 				channelTopic={selectedChannel.topic ?? undefined}
@@ -416,12 +412,12 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 			/>
 
 			{/* Pending messages (sending/failed) */}
-			{channelPendingMessages.map((pending) => (
+			{pendingMessages.map((pending) => (
 				<PendingMessage key={pending.id} message={pending} onRetry={retryMessage} onCancel={cancelMessage} />
 			))}
 
 			{/* Thinking indicators for deferred bot responses */}
-			{channelPendingInteractions.map((pending) => (
+			{pendingInteractions.map((pending) => (
 				<ThinkingIndicator
 					key={pending.id}
 					botName={pending.botName}
@@ -431,7 +427,7 @@ export function MessageArea({ channelId }: MessageAreaProps) {
 			))}
 
 			{/* Typing indicator */}
-			<TypingIndicator typingUsers={displayTypingUsers} />
+			<TypingIndicator typingUsers={typingUsers} />
 
 			{/* Message input */}
 			<MessageInput channelId={selectedChannel.id} channelName={selectedChannel.name} />

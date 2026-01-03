@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
-import { useSession } from '../../hooks/useSession'
-import { useIsPlaybackMode, usePlaybackChannels, usePlaybackMembers } from '../../stores/playbackStore'
+import { useStageData } from '../../hooks/useStageData'
+import { useLogs } from '../../stores/logsStore'
 import { FriendsAppShell } from '../friends'
 import { ServerList } from '../sidebar/ServerList'
 import { ChannelList } from '../sidebar/ChannelList'
@@ -9,31 +9,35 @@ import { StatusBar } from './StatusBar'
 import { MessageArea } from '../messages/MessageArea'
 import { MemberList } from '../members/MemberList'
 import { ThreadList } from '../threads/ThreadList'
+import { LogsPanel } from '../logs'
 import { PlaybackControls } from '../playback/PlaybackControls'
 import { DevToolsPanel } from '../devtools/DevToolsPanel'
 import styles from './AppShell.module.css'
 
 export function AppShell() {
+	// Unified hook handles live/playback mode switching automatically
 	const {
 		guilds,
-		guildChannels,
-		guildMembers,
-		guildRoles,
-		guildVoiceStates,
+		channels,
+		members,
+		roles,
+		voiceStates,
 		users,
 		selectedGuildId,
 		selectedChannelId,
+		selectedGuild,
+		selectedChannel,
 		showMembers,
 		selectGuild,
 		selectChannel,
 		toggleMembers,
-		selectedChannel,
-		selectedGuild,
 		botUser,
+		currentUser,
 		sessionId,
 		joinVoice,
-		leaveVoice
-	} = useSession()
+		leaveVoice,
+		unreadMentions
+	} = useStageData()
 
 	// Home view toggle (Friends UI) via the top-left Home button in the server list.
 	const [showHome, setShowHome] = useState(false)
@@ -52,21 +56,22 @@ export function AppShell() {
 	// Pinned messages dropdown state
 	const [showPinnedMessages, setShowPinnedMessages] = useState(false)
 
-	// Playback mode hooks
-	const isPlaybackMode = useIsPlaybackMode()
-	const playbackChannels = usePlaybackChannels(selectedGuildId)
-	const playbackMembers = usePlaybackMembers(selectedGuildId)
+	// Logs panel state from context
+	const { isOpen: showLogs } = useLogs()
 
-	// Use playback data when in playback mode, otherwise use session data
-	const displayChannels = isPlaybackMode && playbackChannels !== null ? playbackChannels : guildChannels
-	const displayMembers = isPlaybackMode && playbackMembers !== null ? playbackMembers : guildMembers
-
-	// Combine users with botUser for voice channel display (Phase 5P)
+	// Combine users with botUser and currentUser for voice channel display
 	const allUsers = useMemo(() => {
-		if (!botUser) return users
-		const botInUsers = users.some((u) => u.id === botUser.id)
-		return botInUsers ? users : [...users, botUser]
-	}, [users, botUser])
+		const result = [...users]
+		// Add botUser if not already in list
+		if (botUser && !result.some((u) => u.id === botUser.id)) {
+			result.push(botUser)
+		}
+		// Add currentUser if not already in list
+		if (currentUser && !result.some((u) => u.id === currentUser.id)) {
+			result.push(currentUser)
+		}
+		return result
+	}, [users, botUser, currentUser])
 
 	const handleMobileMenuToggle = useCallback(() => {
 		setMobileSidebarOpen((prev) => !prev)
@@ -138,9 +143,8 @@ export function AppShell() {
 	}, [selectGuild, selectChannel])
 
 	const guildName = () => {
-		const filterGuilds = guilds.filter((guild) => guild.id === selectedGuildId)
-		if (filterGuilds.length > 0) {
-			return `${filterGuilds[0].icon ? filterGuilds[0].icon + ' | ' : ''}  ${filterGuilds[0].name}`
+		if (selectedGuild) {
+			return `${selectedGuild.icon ? selectedGuild.icon + ' | ' : ''}  ${selectedGuild.name}`
 		}
 		return 'unknown guild name'
 	}
@@ -200,30 +204,54 @@ export function AppShell() {
 								onLeaveVoice={leaveVoice}
 								currentUserId={botUser?.id}
 							/>
-							<div className={styles.main}>
-								<Header
-									channel={selectedChannel}
-									onToggleMembers={toggleMembers}
-									showMembers={showMembers}
-									onToggleThreads={handleToggleThreads}
-									showThreads={showThreads}
-									onToggleNotifications={handleToggleNotifications}
-									showNotifications={showNotifications}
-									onTogglePinnedMessages={handleTogglePinnedMessages}
-									showPinnedMessages={showPinnedMessages}
-									onMobileMenuToggle={handleMobileMenuToggle}
-									isMobileSidebarOpen={mobileSidebarOpen}
-								/>
+						</div>
 
-								<div className={styles.content}>
-									<MessageArea channelId={selectedChannelId} />
-									{showThreads && <ThreadList />}
-									{showMembers && <MemberList members={displayMembers} roles={guildRoles} />}
-								</div>
-							</div>
-						</>
-					)}
+						<div className={styles.mainContent}>
+							{showHome ? (
+								<FriendsAppShell />
+							) : (
+								<>
+									<ChannelList
+										guild={selectedGuild ?? undefined}
+										channels={channels}
+										selectedId={selectedChannelId}
+										onSelect={handleChannelSelect}
+										mentionCounts={unreadMentions}
+										voiceStates={voiceStates}
+										users={allUsers}
+										onJoinVoice={joinVoice}
+										onLeaveVoice={leaveVoice}
+										currentUserId={currentUser?.id}
+									/>
+									<div className={styles.main}>
+										<Header
+											channel={selectedChannel}
+											onToggleMembers={toggleMembers}
+											showMembers={showMembers}
+											onToggleThreads={handleToggleThreads}
+											showThreads={showThreads}
+											onToggleNotifications={handleToggleNotifications}
+											showNotifications={showNotifications}
+											onTogglePinnedMessages={handleTogglePinnedMessages}
+											showPinnedMessages={showPinnedMessages}
+											onMobileMenuToggle={handleMobileMenuToggle}
+											isMobileSidebarOpen={mobileSidebarOpen}
+										/>
+
+										<div className={styles.content}>
+											<MessageArea channelId={selectedChannelId} />
+											{showThreads && <ThreadList />}
+											{showMembers && <MemberList members={members} roles={roles} />}
+										</div>
+									</div>
+								</>
+							)}
+						</div>
+					</div>
 				</div>
+
+				{/* Logs panel - outside main area to push everything left */}
+				{showLogs && <LogsPanel />}
 			</div>
 
 			{/* Bottom bar with playback controls and status */}

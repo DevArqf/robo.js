@@ -1,0 +1,250 @@
+/**
+ * Command HMR Integration Tests
+ *
+ * Tests hot module replacement for slash commands.
+ * Verifies that changes to command handlers are picked up without full restart.
+ */
+import { fileURLToPath } from 'node:url'
+import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals'
+import { startMockRobo, dispatchInteraction, expectAction, clearSessionActions } from '@robojs/mock/testing'
+import type { MockRoboHandle } from '@robojs/mock/testing'
+import { TempFileManager } from '../../utils/temp-file-manager.js'
+
+const __filename = fileURLToPath(import.meta.url)
+
+describe('Command HMR', () => {
+	let bot: MockRoboHandle
+	let files: TempFileManager
+
+	beforeAll(async () => {
+		// Start with HMR mode enabled
+		bot = await startMockRobo({
+			name: 'cmd-hmr',
+			testFilePath: __filename,
+			hmr: true,
+			verbose: process.env.VERBOSE === 'true'
+		})
+		files = new TempFileManager()
+	}, 90000)
+
+	afterAll(async () => {
+		await files.restoreAll()
+		await bot.stop()
+	})
+
+	afterEach(async () => {
+		// Check if there are changes to restore
+		if (files.hasPendingChanges()) {
+			const hmrCountBefore = bot.getHmrCount!()
+			await files.restoreAll()
+			// Wait for HMR to settle after file restoration
+			try {
+				await bot.waitForHmrReload!(10000, hmrCountBefore)
+			} catch {
+				// HMR might not trigger if files didn't actually change, that's okay
+			}
+		}
+		// Clear actions between tests
+		await clearSessionActions(bot.sessionId)
+	})
+
+	it('should hot-reload modified command response', async () => {
+		const channelId = bot.channels[0].id
+
+		// 1. Verify original response
+		await dispatchInteraction(bot.sessionId, {
+			type: 2, // APPLICATION_COMMAND
+			data: { name: 'ping', type: 1 }, // CHAT_INPUT
+			guild_id: bot.guildId,
+			channel_id: channelId
+		})
+		await expectAction(bot.sessionId, {
+			description: 'Original ping responds with Pong!',
+			type: 'interaction_response',
+			expected: { response_data: { content: 'Pong!' } },
+			timeout: 5000
+		})
+
+		// Clear actions before modifying
+		await clearSessionActions(bot.sessionId)
+
+		// 2. Capture HMR count BEFORE modifying file
+		const hmrCountBefore = bot.getHmrCount!()
+
+		// 3. Modify command file to return different response
+		await files.modify('src/commands/ping.ts', (content) =>
+			content.replace('return getPingMessage()', "return 'Hot Pong!'")
+		)
+
+		// 4. Wait for HMR to complete, using count captured before modification
+		await bot.waitForHmrReload!(10000, hmrCountBefore)
+
+		// 4. Verify new response
+		await dispatchInteraction(bot.sessionId, {
+			type: 2,
+			data: { name: 'ping', type: 1 },
+			guild_id: bot.guildId,
+			channel_id: channelId
+		})
+		await expectAction(bot.sessionId, {
+			description: 'Modified ping responds with Hot Pong!',
+			type: 'interaction_response',
+			expected: { response_data: { content: 'Hot Pong!' } },
+			timeout: 5000
+		})
+	}, 30000)
+
+	it('should handle syntax errors gracefully', async () => {
+		const channelId = bot.channels[0].id
+
+		// Ensure ping is working and loaded
+		await dispatchInteraction(bot.sessionId, {
+			type: 2,
+			data: { name: 'ping', type: 1 },
+			guild_id: bot.guildId,
+			channel_id: channelId
+		})
+		await expectAction(bot.sessionId, {
+			description: 'Ping responds before introducing syntax error',
+			type: 'interaction_response',
+			expected: { response_data: { content: 'Pong!' } },
+			timeout: 5000
+		})
+		await clearSessionActions(bot.sessionId)
+
+		// Change ping to a known stable response
+		const hmrCountStable = bot.getHmrCount!()
+		await files.modify('src/commands/ping.ts', (content) =>
+			content.replace('return getPingMessage()', "return 'Stable Pong!'")
+		)
+		await bot.waitForHmrReload!(15000, hmrCountStable)
+
+		await dispatchInteraction(bot.sessionId, {
+			type: 2,
+			data: { name: 'ping', type: 1 },
+			guild_id: bot.guildId,
+			channel_id: channelId
+		})
+		await expectAction(bot.sessionId, {
+			description: 'Ping responds with Stable Pong! after successful HMR',
+			type: 'interaction_response',
+			expected: { response_data: { content: 'Stable Pong!' } },
+			timeout: 5000
+		})
+		await clearSessionActions(bot.sessionId)
+
+		// Introduce a syntax error (compilation should fail; bot should keep last-known-good handler)
+		await files.modify('src/commands/ping.ts', (content) => content + '\n invalid syntax {')
+
+		// Wait for the watcher to process (compilation will fail)
+		await new Promise((resolve) => setTimeout(resolve, 2000))
+
+		// The bot should still respond with the previous handler behavior
+		await dispatchInteraction(bot.sessionId, {
+			type: 2,
+			data: { name: 'ping', type: 1 },
+			guild_id: bot.guildId,
+			channel_id: channelId
+		})
+		await expectAction(bot.sessionId, {
+			description: 'Ping still responds with last-known-good handler after syntax error',
+			type: 'interaction_response',
+			expected: { response_data: { content: 'Stable Pong!' } },
+			timeout: 10000
+		})
+		await clearSessionActions(bot.sessionId)
+
+		// Restore the file - this triggers HMR with valid code
+		const hmrCountAfterError = bot.getHmrCount!()
+		await files.restoreAll()
+
+		// Wait for HMR after restore
+		try {
+			await bot.waitForHmrReload!(15000, hmrCountAfterError)
+		} catch {
+			// HMR detection might fail, but we just need the bot to survive
+		}
+
+		// Verify we recovered to the original behavior
+		await dispatchInteraction(bot.sessionId, {
+			type: 2,
+			data: { name: 'ping', type: 1 },
+			guild_id: bot.guildId,
+			channel_id: channelId
+		})
+		await expectAction(bot.sessionId, {
+			description: 'Ping recovers after fixing syntax error',
+			type: 'interaction_response',
+			expected: { response_data: { content: 'Pong!' } },
+			timeout: 5000
+		})
+	}, 30000)
+
+	it('should hot-reload newly added command', async () => {
+		const channelId = bot.channels[0].id
+
+		// Capture HMR count before creating file
+		const hmrCountBefore = bot.getHmrCount!()
+
+		// Create a new command file
+		await files.createTemp(
+			'src/commands/hmr-new.ts',
+			`
+import { createCommandConfig } from '@robojs/discordjs'
+import type { ChatInputCommandInteraction } from 'discord.js'
+
+export const config = createCommandConfig({
+	description: 'New HMR test command'
+} as const)
+
+export default (interaction: ChatInputCommandInteraction) => {
+	interaction.reply('New Command Works!')
+}
+`
+		)
+
+		// Wait for HMR to pick up the new file
+		await bot.waitForHmrReload!(10000, hmrCountBefore)
+
+		// Dispatch interaction for the new command
+		await dispatchInteraction(bot.sessionId, {
+			type: 2,
+			data: { name: 'hmr-new', type: 1 },
+			guild_id: bot.guildId,
+			channel_id: channelId
+		})
+
+		await expectAction(bot.sessionId, {
+			description: 'New command responds',
+			type: 'interaction_response',
+			expected: { response_data: { content: 'New Command Works!' } },
+			timeout: 5000
+		})
+	}, 30000)
+
+	it('should handle multiple rapid changes', async () => {
+		// This test verifies that HMR can handle rapid successive file changes
+		// without crashing or getting into a bad state
+
+		// Capture HMR count before rapid changes
+		const hmrCountBefore = bot.getHmrCount!()
+
+		// Make multiple rapid changes
+		await files.modify('src/commands/ping.ts', (content) =>
+			content.replace('return getPingMessage()', "return 'Change 1'")
+		)
+
+		// Wait briefly then make another change
+		await new Promise((resolve) => setTimeout(resolve, 300))
+
+		await files.modify('src/commands/ping.ts', (content) =>
+			content.replace("return 'Change 1'", "return 'Change 2'")
+		)
+
+		// Wait for HMR to settle (may trigger one or multiple reloads)
+		await bot.waitForHmrReload!(15000, hmrCountBefore)
+
+		// If we get here, HMR handled the rapid changes without crashing
+		// The bot process survived multiple quick file modifications
+	}, 30000)
+})

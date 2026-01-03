@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { usePlayback } from '../../stores/playbackStore'
-import { useSession } from '../../hooks/useSession'
+import { useStageData } from '../../hooks/useStageData'
 import { JsonViewer } from './JsonViewer'
 import type { StageRESTCallData } from '../../types/stage'
 import styles from './NetworkLog.module.css'
@@ -36,8 +36,9 @@ type HttpMethod = (typeof HTTP_METHODS)[number]
  * Allows making requests with autocomplete and viewing bot API calls.
  */
 export function NetworkLog() {
+	// Keep usePlayback for raw events access
 	const { events } = usePlayback()
-	const { sessionId } = useSession()
+	const { sessionId } = useStageData()
 
 	// Detect URL prefix by finding everything before /stage in the current path
 	// e.g., /foo/bar/stage/index.html → prefix is /foo/bar

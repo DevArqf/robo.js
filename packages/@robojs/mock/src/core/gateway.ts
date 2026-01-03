@@ -9,7 +9,7 @@ import { generateGatewaySessionId } from '../utils/id.js'
 import { sessionManager } from './manager.js'
 import { mockLogger } from './logger.js'
 import { getStageBridge } from './stage-bridge.js'
-import type { ActionType, ConnectionState, VoiceServerState } from '../types/index.js'
+import type { ActionType, ConnectionState, MockUser, VoiceServerState } from '../types/index.js'
 import { VOICE_GATEWAY_PORT } from './voice-gateway.js'
 import { generateSnowflake } from '../utils/snowflake.js'
 import {
@@ -20,6 +20,7 @@ import {
 	INTENT_CLOSE_CODES,
 	getRequiredIntentName
 } from './intents.js'
+import { fetchBotFromDiscord } from '../utils/bot-user-resolver.js'
 
 /**
  * Per-connection control flags for testing
@@ -237,7 +238,11 @@ export class GatewayServer {
 		// Route by opcode
 		switch (payload.op) {
 			case GatewayOpcodes.Identify:
-				this.handleIdentify(ws, connState, payload.d)
+				// handleIdentify is async for bot identity resolution
+				this.handleIdentify(ws, connState, payload.d).catch((error) => {
+					mockLogger.error(`IDENTIFY failed for connection ${connState.id}: ${error}`)
+					ws.close(GatewayCloseCodes.UnknownError, 'IDENTIFY failed')
+				})
 				break
 
 			case GatewayOpcodes.Heartbeat:
@@ -294,7 +299,7 @@ export class GatewayServer {
 	 * Handle IDENTIFY payload (op 2)
 	 * Authenticates the client and routes to the correct session
 	 */
-	private handleIdentify(ws: WebSocket, connState: ConnectionState, data: unknown): void {
+	private async handleIdentify(ws: WebSocket, connState: ConnectionState, data: unknown): Promise<void> {
 		// Check if already identified
 		if (connState.identified) {
 			mockLogger.warn(`Connection ${connState.id} already identified, closing`)
@@ -327,6 +332,12 @@ export class GatewayServer {
 			}
 		}
 
+		// Capture real Discord token for per-connection bot identity resolution
+		const realToken = process.env.ROBO_MOCK_REAL_TOKEN
+		if (realToken) {
+			connState.realToken = realToken
+		}
+
 		// Update connection state
 		connState.identified = true
 		connState.sessionId = session.id
@@ -345,12 +356,18 @@ export class GatewayServer {
 
 		mockLogger.info(`Client identified: connection=${connState.id}, session=${session.id}, intents=${data.intents}`)
 
+		// Resolve bot identity for this connection
+		const connectionBotUser = await this.resolveBotUserForConnection(connState, session.state.botUser)
+		connState.botUser = connectionBotUser
+		mockLogger.debug(`Resolved bot identity for connection ${connState.id}: ${connectionBotUser.username}`)
+
 		// Send READY event (Phase 1D)
 		// Include session_id in resume_gateway_url so reconnections can use per-session heartbeat interval
 		const readyPayload = buildReadyPayload({
 			sessionState: session.state,
 			connectionSessionId: connState.id,
-			gatewayUrl: `ws://localhost:8765?v=${GATEWAY_VERSION}&encoding=json&session_id=${session.id}`
+			gatewayUrl: `ws://localhost:8765?v=${GATEWAY_VERSION}&encoding=json&session_id=${session.id}`,
+			connectionBotUser
 		})
 		this.send(ws, readyPayload)
 		connState.sequence = 1 // READY is sequence 1
@@ -369,12 +386,44 @@ export class GatewayServer {
 			mockLogger.debug(`Sent GUILD_CREATE for guild ${guild.id} (seq: ${connState.sequence}) to connection ${connState.id}`)
 		}
 
-		// Notify stage clients that bot is ready (Phase 5A)
+		// Notify stage clients that bot is ready with per-connection bot identity
 		try {
-			getStageBridge().onBotReady(session.id, session.state.botUser, connState.id)
+			getStageBridge().onBotReady(session.id, connectionBotUser, connState.id)
 		} catch {
 			// Stage bridge may not be initialized
 		}
+	}
+
+	/**
+	 * Resolve bot identity for a specific connection.
+	 * Priority chain:
+	 * 1. Fetch from Discord API using connection's real token
+	 * 2. Fall back to session-level bot user
+	 * 3. Generate unique bot identity for this connection
+	 */
+	private async resolveBotUserForConnection(connState: ConnectionState, sessionBotUser: MockUser): Promise<MockUser> {
+		// Try to fetch from Discord API if we have a real token
+		if (connState.realToken) {
+			try {
+				const discordUser = await fetchBotFromDiscord(connState.realToken)
+				if (discordUser) {
+					return {
+						id: discordUser.id,
+						username: discordUser.username,
+						discriminator: discordUser.discriminator,
+						globalName: discordUser.global_name,
+						avatar: discordUser.avatar,
+						bot: discordUser.bot ?? true
+					}
+				}
+			} catch (error) {
+				mockLogger.debug(`Failed to fetch bot identity from Discord API: ${error}`)
+			}
+		}
+
+		// Fall back to session-level bot user (most common case)
+		// This maintains backward compatibility with existing behavior
+		return sessionBotUser
 	}
 
 	/**

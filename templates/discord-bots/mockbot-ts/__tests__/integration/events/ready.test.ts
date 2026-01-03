@@ -10,18 +10,18 @@
  */
 import { fileURLToPath } from 'node:url'
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals'
-import { startMockBot, getHistoricalActions } from '@robojs/mock/testing'
-import type { MockBotHandle } from '@robojs/mock/testing'
+import { startMockRobo, getHistoricalActions } from '@robojs/mock/testing'
+import type { MockRoboHandle } from '@robojs/mock/testing'
 import type { Client } from 'discord.js'
 
 const __filename = fileURLToPath(import.meta.url)
 
 describe('ready event', () => {
-	let bot: MockBotHandle
+	let bot: MockRoboHandle
 
 	beforeAll(async () => {
 		// Start a bot connected to the mock server - it should set activity on ready
-		bot = await startMockBot({
+		bot = await startMockRobo({
 			name: 'ready-tests',
 			testFilePath: __filename
 		})

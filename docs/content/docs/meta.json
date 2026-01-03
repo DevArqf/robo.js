@@ -1,0 +1,14 @@
+{
+  "pages": [
+    "---Introduction---",
+    "index",
+    "---Core---",
+    "framework",
+    "bots",
+    "activities",
+    "---Misc---",
+    "plugins",
+    "reference",
+    "[FileStack][Directory](directory)"
+  ]
+}

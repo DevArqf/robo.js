@@ -440,6 +440,11 @@ export interface ReadyPayloadOptions {
 	sessionState: SessionState
 	connectionSessionId: string
 	gatewayUrl?: string
+	/**
+	 * Per-connection bot user identity (overrides sessionState.botUser)
+	 * Used for multi-bot sessions where each connection has its own identity
+	 */
+	connectionBotUser?: MockUser
 }
 
 /**
@@ -462,10 +467,10 @@ export interface ReadyPayloadData {
  * Sent by server after successful IDENTIFY
  */
 export function buildReadyPayload(options: ReadyPayloadOptions): GatewayPayload {
-	const { sessionState, connectionSessionId, gatewayUrl = 'ws://localhost:8765' } = options
+	const { sessionState, connectionSessionId, gatewayUrl = 'ws://localhost:8765', connectionBotUser } = options
 
-	// Convert bot user to API format
-	const user = mockUserToAPIUser(sessionState.botUser)
+	// Convert bot user to API format (prefer per-connection bot user over session-level)
+	const user = mockUserToAPIUser(connectionBotUser ?? sessionState.botUser)
 
 	// Convert all guilds to unavailable format
 	const guilds: APIUnavailableGuild[] = Array.from(sessionState.guilds.keys()).map(mockGuildToUnavailable)
@@ -1267,6 +1272,9 @@ export function mockMessageToAPIMessage(message: MockMessage, author: MockUser):
 		}
 
 		// Add optional fields
+		if (message.interaction_metadata.name) {
+			metadata.name = message.interaction_metadata.name
+		}
 		if (message.interaction_metadata.original_response_message_id) {
 			metadata.original_response_message_id = message.interaction_metadata.original_response_message_id
 		}

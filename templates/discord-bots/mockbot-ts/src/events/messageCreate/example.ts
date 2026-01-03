@@ -11,11 +11,13 @@ let count = 0
  * https://robojs.dev/discord-bots/events
  */
 export default (message: Message) => {
-	//if (message.author.bot) {
-	//	logger.info('Bot message, skipping')
-	//	return
-	//}
-	logger.info(`${message.author} sent message: ${message.content}`)
+	if (message.author.bot) {
+		return
+	}
+
 	count++
-	message.reply('Hello, world!\n > ' + message.content + '\n > Count: ' + count)
+	logger.info(`${message.author} sent message: ${message.content}`)
+
+	// Echo the message back with a counter (useful for integration + HMR tests)
+	message.reply(`Counter: ${count} | ${message.content}`)
 }

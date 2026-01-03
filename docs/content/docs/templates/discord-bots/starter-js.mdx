@@ -1,0 +1,63 @@
+---
+title: "Starter (JavaScript)"
+description: A basic JavaScript Discord bot template using Robo.js.
+---
+
+# Starter (JavaScript)
+
+Welcome to your fresh **[Robo.js](https://robojs.dev)** project!
+
+Build, deploy, and maintain your Discord bots with ease. File-based setup, integrated database, and plugin ecosystem.
+
+<Cards>
+  <Card href="/docs/discord-bots" title="Documentation" description="Getting started with Robo.js" />
+  <Card href="https://robojs.dev/discord" title="Discord" description="Robo - Imagine Magic" />
+</Cards>
+
+## Getting Started
+
+Create a project with this template:
+
+```package-install
+npx create-robo <project-name> --template discord-bots/starter-js
+```
+
+Then navigate into your project directory:
+
+```bash
+cd <project-name>
+```
+
+Run development mode:
+
+```bash
+npm run dev
+```
+
+## Development
+
+Creating a **[Slash Command](/docs/discord-bots/commands)** is as easy as creating files.
+
+```javascript title="/src/commands/hello.js"
+export default (interaction) => {
+	interaction.reply('Hello World!')
+}
+```
+
+Your `/hello` command is now ready to use!
+
+<Cards>
+  <Card href="/docs/discord-bots/commands" title="Slash Commands" description="Your bot follows best practices by default." />
+  <Card href="/docs/discord-bots/events" title="Events" description="Know and respond to everything that happens." />
+</Cards>
+
+## Hosting
+
+```bash
+npm run deploy
+```
+
+<Cards>
+  <Card href="/docs/hosting/roboplay" title="RoboPlay" description="Deploy with as little as one command." />
+  <Card href="https://github.com/Wave-Play/robo.js/tree/main/templates/discord-bots/starter-js" title="GitHub Repository" description="Explore source code on GitHub." />
+</Cards>

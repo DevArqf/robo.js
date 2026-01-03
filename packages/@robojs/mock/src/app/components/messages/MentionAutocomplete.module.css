@@ -1,0 +1,45 @@
+.container {
+	bottom: 100%;
+	left: 16px;
+	right: 16px;
+	margin-bottom: 8px;
+	display: flex;
+	flex-direction: column;
+}
+
+.header {
+	padding: 8px 12px 4px;
+	font-size: 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+	color: var(--channels-default);
+	letter-spacing: 0.02em;
+}
+
+.list {
+	padding: 4px 8px;
+}
+
+.empty {
+	padding: 16px;
+	text-align: center;
+	color: var(--text-muted);
+	font-size: 14px;
+}
+
+.iconWrapper {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border-radius: 50%;
+	background: var(--background-modifier-accent);
+	color: var(--interactive-normal);
+	flex-shrink: 0;
+}
+
+.specialIcon {
+	background: var(--brand-500);
+	color: white;
+}

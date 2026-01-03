@@ -402,4 +402,116 @@ export interface ErrorContext {
 	env: typeof Env
 }
 
+/**
+ * Handler info for routes affected by HMR.
+ */
+export interface HmrHandlerInfo {
+	/** Handler key (e.g., 'ping', 'users/[id]') */
+	key: string
+
+	/** Path to the compiled handler file */
+	path: string
+
+	/** Plugin that provides this handler, if any */
+	plugin?: {
+		name: string
+		version: string
+	}
+}
+
+/**
+ * Route info for HMR events.
+ * Groups handlers by namespace and route type.
+ */
+export interface HmrRouteInfo {
+	/** Plugin namespace (e.g., 'server', 'discordjs') */
+	namespace: string
+
+	/** Route type (e.g., 'api', 'commands', 'events') */
+	route: string
+
+	/** Handlers affected within this route */
+	handlers: HmrHandlerInfo[]
+}
+
+/**
+ * HMR hook configuration for filtering events.
+ * Export this from your hmr.ts hook to filter which events trigger the hook.
+ */
+export interface HmrHookConfig {
+	/**
+	 * Only trigger for these namespaces.
+	 * If not specified, triggers for all namespaces.
+	 * @example ['server'] - Only server plugin routes
+	 * @example ['discordjs', 'server'] - Both Discord and server routes
+	 */
+	namespaces?: string[]
+
+	/**
+	 * Only trigger for these route types.
+	 * If not specified, triggers for all routes.
+	 * @example ['api'] - Only API routes
+	 * @example ['commands', 'events'] - Both commands and events
+	 */
+	routes?: string[]
+}
+
+/**
+ * Context provided to HMR hooks.
+ * Runs in PARALLEL with a 5-second timeout.
+ * Hook errors are caught and logged but never crash the server.
+ *
+ * @example
+ * ```typescript
+ * // src/robo/hmr.ts
+ * import type { HmrContext } from 'robo.js'
+ *
+ * export const config = {
+ *   namespaces: ['server'],
+ *   routes: ['api']
+ * }
+ *
+ * export default async function (context: HmrContext) {
+ *   context.logger.info(`HMR: ${context.changeType} - ${context.files.join(', ')}`)
+ *   // Custom logic: clear caches, notify services, etc.
+ * }
+ * ```
+ */
+export interface HmrContext {
+	/**
+	 * Type of file system change that triggered HMR.
+	 * - 'change': File was modified
+	 * - 'add': New file was added
+	 * - 'remove': File was deleted
+	 */
+	changeType: 'change' | 'add' | 'remove'
+
+	/**
+	 * Source files that changed (relative paths from project root).
+	 * @example ['src/api/users.ts', 'src/api/posts.ts']
+	 */
+	files: string[]
+
+	/**
+	 * Routes affected by the HMR event.
+	 * Already filtered by hook's config.namespaces and config.routes if specified.
+	 */
+	routes: HmrRouteInfo[]
+
+	/**
+	 * Current runtime mode (e.g., 'development', 'production').
+	 */
+	mode: string
+
+	/**
+	 * Logger instance (forked for plugins).
+	 */
+	logger: Logger
+
+	/**
+	 * Environment variable access.
+	 */
+	env: typeof Env
+}
+
 export default {}

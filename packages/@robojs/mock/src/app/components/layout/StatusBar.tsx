@@ -1,8 +1,8 @@
-import { useSession } from '../../hooks/useSession'
+import { useStageData } from '../../hooks/useStageData'
 import styles from './StatusBar.module.css'
 
 export function StatusBar() {
-	const { sessionId, isConnected, eventCount, botUser, lastHeartbeat } = useSession()
+	const { sessionId, isConnected, eventCount, botUser, lastHeartbeat } = useStageData()
 
 	// Calculate latency from heartbeat (rough estimate)
 	const latency = lastHeartbeat ? Date.now() - lastHeartbeat : null

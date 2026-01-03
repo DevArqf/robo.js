@@ -47,12 +47,44 @@ export async function buildCode(options?: BuildCodeOptions) {
 	// Just copy the source directory if not a Typescript project
 	const { isTypeScript, missing } = Compiler.isTypescriptProject()
 	if (!isTypeScript) {
-		if (clean) {
+		// Only clean for full builds (incremental builds should preserve existing output)
+		if (clean && !options?.files?.length) {
 			await fs.rm(distDir, { recursive: true, force: true })
 		}
 		logger.debug('Not a TypeScript project. Missing:', missing)
 		logger.debug('Copying source without compiling...')
-		await copyDir(srcDir, distDir, [], options.excludePaths ?? [])
+		if (options?.files?.length) {
+			const excludePaths = options.excludePaths ?? []
+
+			for (const file of options.files) {
+				const absPath = path.join(process.cwd(), file)
+
+				// Skip missing files (e.g. removed) - deletions are handled by the dev loop
+				try {
+					const stat = await fs.stat(absPath)
+					if (!stat.isFile()) continue
+				} catch {
+					continue
+				}
+
+				// Only copy files that are within srcDir
+				const relativeToSrc = path.relative(srcDir, absPath)
+				if (!relativeToSrc || relativeToSrc.startsWith('..')) {
+					continue
+				}
+
+				const relativeToCwd = '/' + path.relative(process.cwd(), absPath)
+				if (excludePaths.some((p) => relativeToCwd.startsWith(p))) {
+					continue
+				}
+
+				const destPath = path.join(distDir, relativeToSrc)
+				await fs.mkdir(path.dirname(destPath), { recursive: true })
+				await fs.copyFile(absPath, destPath)
+			}
+		} else {
+			await copyDir(srcDir, distDir, [], options.excludePaths ?? [])
+		}
 
 		return Date.now() - startTime
 	}
@@ -176,6 +208,21 @@ async function traverse(
 					const distPath = path.join(distDir, path.relative(srcDir, filePath.replace(/\.(js|ts|tsx)$/, distExt)))
 					await fs.mkdir(path.dirname(distPath), { recursive: true })
 					await fs.writeFile(distPath, compileResult.code)
+				})()
+			)
+		} else if (isIncremental && stat.isFile() && !excludePaths.some((p) => relativePath.startsWith(p))) {
+			// For incremental builds in TypeScript projects, also copy non-TS assets that changed.
+			// This avoids full copyDir() scans while keeping build output consistent.
+			const relativeToSrc = path.relative(srcDir, filePath)
+			if (!relativeToSrc || relativeToSrc.startsWith('..')) {
+				continue
+			}
+
+			const distPath = path.join(distDir, relativeToSrc)
+			tasks.push(
+				(async () => {
+					await fs.mkdir(path.dirname(distPath), { recursive: true })
+					await fs.copyFile(filePath, distPath)
 				})()
 			)
 		}

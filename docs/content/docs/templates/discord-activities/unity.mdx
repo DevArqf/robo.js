@@ -1,0 +1,67 @@
+---
+title: "Unity"
+description: A Discord Activity template for Unity games.
+---
+
+# Unity
+
+Build Discord Activities with the **Unity** game engine. This template provides the integration layer between Unity WebGL builds and Discord's Embedded App SDK.
+
+<Cards>
+  <Card href="https://unity.com/" title="Unity" description="Professional game development engine." />
+  <Card href="/docs/discord-activities" title="Documentation" description="Getting started with Robo.js" />
+</Cards>
+
+## Getting Started
+
+Create a project with this template:
+
+```package-install
+npx create-robo <project-name> --template discord-activities/unity
+```
+
+Then navigate into your project directory:
+
+```bash
+cd <project-name>
+```
+
+Run development mode:
+
+```bash
+npm run dev
+```
+
+## Unity Setup
+
+1. Create your Unity project separately
+2. Configure it for WebGL build target
+3. Build and copy the output to `/public/unity`
+4. The Robo.js wrapper handles Discord SDK integration
+
+## Discord SDK Integration
+
+The template includes JavaScript bridge code that:
+
+- Initializes the Discord SDK
+- Handles authentication
+- Passes user/guild data to Unity
+- Manages activity lifecycle events
+
+## Hosting
+
+```bash
+npm run deploy
+```
+
+<Cards>
+  <Card href="/docs/hosting/roboplay" title="RoboPlay" description="Deploy with as little as one command." />
+  <Card href="/docs/hosting" title="Self-Hosting" description="Learn how to host and maintain it yourself." />
+</Cards>
+
+## Learn More
+
+<Cards>
+  <Card href="/templates" title="Explore Templates" description="Discover more templates for a quick start." />
+  <Card href="https://github.com/Wave-Play/robo.js/tree/main/templates/discord-activities/unity" title="GitHub Repository" description="Explore source code on GitHub." />
+</Cards>

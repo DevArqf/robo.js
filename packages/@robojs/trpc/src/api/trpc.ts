@@ -1,5 +1,5 @@
 import { appRouter } from './trpc/[trpc].js'
-import { serverPrefix } from '../events/_start.js'
+import { serverPrefix } from '../robo/start.js'
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch'
 import type { RoboRequest } from '@robojs/server'
 

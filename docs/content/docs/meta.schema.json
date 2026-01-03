@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Fumadocs Folder Metadata",
+  "description": "Schema for meta.json files in Fumadocs content folders.",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Custom display name for the folder or sidebar tab."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional description for the folder or tab."
+    },
+    "icon": {
+      "type": "string",
+      "description": "Icon name for the folder/tab (requires icon handler)."
+    },
+    "pages": {
+      "type": "array",
+      "description": "Order and structure of child pages/folders. Supports special entries: '...', '---Separator---', and '[Text](url)'.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "defaultOpen": {
+      "type": "boolean",
+      "description": "Whether the folder is expanded by default in the sidebar."
+    },
+    "root": {
+      "type": "boolean",
+      "description": "Marks this folder as a root for sidebar tabs."
+    }
+  },
+  "additionalProperties": false
+}

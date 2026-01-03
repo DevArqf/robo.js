@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import type { StageMessage, StageReaction, StageUser } from '../../types/stage'
 import { formatTimestamp } from '../../utils/time'
 import { getAvatarUrl } from '../../utils/avatar'
@@ -7,7 +8,17 @@ import { Attachments } from './Attachments'
 import { ComponentsContainer } from './ComponentRow'
 import { Reactions } from './Reactions'
 import { EphemeralBadge } from './EphemeralBadge'
+import { useUserById } from '../../hooks/useCurrentUser'
+import { useStageData } from '../../hooks/useStageData'
 import styles from './Message.module.css'
+
+// Interaction types (from Discord API)
+const INTERACTION_TYPES = {
+	APPLICATION_COMMAND: 2,
+	MESSAGE_COMPONENT: 3,
+	APPLICATION_COMMAND_AUTOCOMPLETE: 4,
+	MODAL_SUBMIT: 5
+}
 
 // Discord message flags
 const MESSAGE_FLAGS = {
@@ -57,6 +68,7 @@ interface MessageProps {
 	message: StageMessage
 	isFirstInGroup: boolean
 	isHighlighted?: boolean
+	isMentioned?: boolean
 	onButtonClick?: (messageId: string, customId: string) => Promise<void>
 	onSelectOption?: (messageId: string, customId: string, values: string[]) => Promise<void>
 	onAddReaction?: (messageId: string, emoji: string) => Promise<void>
@@ -69,6 +81,7 @@ export function Message({
 	message,
 	isFirstInGroup,
 	isHighlighted,
+	isMentioned,
 	onButtonClick,
 	onSelectOption,
 	onAddReaction,
@@ -76,10 +89,17 @@ export function Message({
 	onContextMenu,
 	onUserContextMenu
 }: MessageProps) {
-	const { author, content, timestamp, edited_timestamp, embeds, attachments, components, reactions, flags, pinned, message_reference, type } = message
+	const { author: messageAuthor, content, timestamp, edited_timestamp, embeds, attachments, components, reactions, flags, pinned, message_reference, type, interaction_metadata } = message
+
+	// Look up the latest user data by ID - this makes user display reactive to changes
+	// Falls back to the embedded author data if user is not found in state
+	const resolvedUser = useUserById(messageAuthor.id, messageAuthor)
+	const author = useMemo(() => resolvedUser ?? messageAuthor, [resolvedUser, messageAuthor])
+
 	const isEphemeral = ((flags ?? 0) & MESSAGE_FLAGS.EPHEMERAL) !== 0
 	const isV2 = ((flags ?? 0) & MESSAGE_FLAGS.IS_COMPONENTS_V2) !== 0
 	const isSystemMessage = type === MESSAGE_TYPES.GUILD_MEMBER_JOIN
+	const isCommandResponse = interaction_metadata && interaction_metadata.type === INTERACTION_TYPES.APPLICATION_COMMAND
 
 	// Render system message (member join)
 	if (isSystemMessage) {
@@ -113,11 +133,30 @@ export function Message({
 	}
 
 	return (
-		<div
-			className={`${styles.message} ${isHighlighted ? styles.highlighted : ''} ${isEphemeral ? styles.ephemeral : ''}`}
-			onContextMenu={onContextMenu ? (e) => onContextMenu(e, message) : undefined}
-		>
-			{/* Reply reference indicator */}
+		<>
+			{/* Command invocation header - shows "User used /command" with avatar */}
+			{isCommandResponse && interaction_metadata && (
+				<div className={styles.commandInvocation}>
+					<img
+						src={getAvatarUrl(interaction_metadata.user.id, interaction_metadata.user.avatar)}
+						alt=""
+						className={styles.commandAvatar}
+						onError={(e) => {
+							const target = e.target as HTMLImageElement
+							target.src = getAvatarUrl(interaction_metadata.user.id, null)
+						}}
+					/>
+					<span className={styles.commandUser}>{interaction_metadata.user.username}</span>
+					<span className={styles.commandText}> used </span>
+					<SlashCommandIcon />
+					<span className={styles.commandName}>{interaction_metadata.name || 'command'}</span>
+				</div>
+			)}
+			<div
+				className={`${styles.message} ${isHighlighted ? styles.highlighted : ''} ${isMentioned ? styles.mentioned : ''} ${isEphemeral ? styles.ephemeral : ''}`}
+				onContextMenu={onContextMenu ? (e) => onContextMenu(e, message) : undefined}
+			>
+				{/* Reply reference indicator */}
 			{message_reference && (
 				<div className={styles.replyReference}>
 					<ReplyIcon />
@@ -214,6 +253,7 @@ export function Message({
 				</>
 			)}
 		</div>
+		</>
 	)
 }
 
@@ -250,6 +290,8 @@ function MessageContent({
 	onAddReaction,
 	onRemoveReaction
 }: MessageContentProps) {
+	const { members, roles, channels } = useStageData()
+
 	// Type assertion for embeds and attachments - they come as unknown[] from StageMessage
 	const typedEmbeds = embeds as Array<{
 		color?: number
@@ -285,7 +327,7 @@ function MessageContent({
 			{/* V2 replaces content and embeds - only render these in V1 mode */}
 			{!isV2 && content && (
 				<div className={styles.textContent}>
-					<Markdown text={content} />
+					<Markdown text={content} members={members} roles={roles} channels={channels} />
 					{editedTimestamp && (
 						<span
 							className={styles.edited}
@@ -368,6 +410,14 @@ function VerifiedCheckIcon() {
 	return (
 		<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
 			<path d="M7.4,11.17,4,8.62,5,7.26l2,1.53L10.64,4l1.36,1Z" />
+		</svg>
+	)
+}
+
+function SlashCommandIcon() {
+	return (
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className={styles.slashIcon}>
+			<path d="M5 19h4L12 5H8L5 19zm7 0h4L19 5h-4L12 19z" />
 		</svg>
 	)
 }

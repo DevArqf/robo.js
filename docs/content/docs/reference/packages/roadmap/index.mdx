@@ -1,0 +1,71 @@
+---
+title: "@robojs/roadmap"
+description: API reference for the roadmap sync plugin.
+---
+
+# @robojs/roadmap
+
+Sync project roadmaps from Jira (or custom providers) to Discord forum channels.
+
+<Cards>
+  <Card href="/docs/plugins/roadmap" title="Plugin Guide" description="Full documentation and usage examples." />
+</Cards>
+
+## Main Exports
+
+### Provider Access
+
+```typescript
+import { getProvider, isProviderReady } from '@robojs/roadmap'
+
+// Check if provider is configured
+if (isProviderReady()) {
+  const provider = getProvider()
+  const cards = await provider.fetchCards()
+}
+```
+
+### Sync Operations
+
+```typescript
+import { syncRoadmap } from '@robojs/roadmap'
+
+// Sync cards to Discord
+const result = await syncRoadmap({
+  guild,
+  provider,
+  dryRun: false
+})
+
+console.log(`Synced ${result.stats.total} cards`)
+```
+
+### JiraProvider
+
+Built-in provider for Jira Cloud.
+
+```typescript
+import { JiraProvider } from '@robojs/roadmap'
+
+const provider = new JiraProvider({
+  url: process.env.JIRA_URL,
+  email: process.env.JIRA_EMAIL,
+  apiToken: process.env.JIRA_API_TOKEN,
+  projectKey: process.env.JIRA_PROJECT_KEY
+})
+```
+
+### Types
+
+```typescript
+import type {
+  RoadmapCard,
+  RoadmapColumn,
+  CreateCardInput,
+  UpdateCardInput
+} from '@robojs/roadmap'
+```
+
+<Cards>
+  <Card href="/docs/plugins/roadmap" title="Plugin Guide" description="See full configuration options." />
+</Cards>

@@ -13,6 +13,7 @@ export type {
 	StageVoiceState,
 	StageReaction,
 	StageMessage,
+	StageMessageInteractionMetadata,
 	StageApplicationCommand,
 	StageApplicationCommandOption,
 	StageApplicationCommandOptionChoice,
@@ -37,5 +38,6 @@ export type {
 	StageJoinVoiceData,
 	StageLeaveVoiceData,
 	StageUpdateVoiceStateData,
-	StageRESTCallData
+	StageRESTCallData,
+	StageCommandsUpdatedData
 } from '../../types/stage.js'

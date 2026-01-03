@@ -312,33 +312,27 @@ export async function locateInHierarchy(targetPath: string, currentDir = process
 }
 
 /**
- * Replaces 'src/' with '.robo/build/{mode}' in the given key-value record, if the path starts with 'src/'.
- * Used for TypeScript path alias resolution in compiled output.
+ * Transforms TypeScript path aliases for SWC compilation.
+ * Since SWC computes relative paths from source file locations, and the directory
+ * structure is preserved in the output (src/* -> .robo/build/{mode}/*), we keep
+ * the paths pointing to src/* so relative path computation works correctly.
  *
- * @param record - The original key-value record
+ * @param record - The original paths record from tsconfig
  * @param basePath - The base path (expected to be working directory by default)
- * @param mode - Build mode for mode-specific path resolution
- * @returns - The modified key-value record
+ * @param _mode - Build mode (unused, kept for API compatibility)
+ * @returns - The modified paths record for SWC
  */
 export function replaceSrcWithBuildInRecord(
 	record: Record<string, string[]>,
 	basePath = process.cwd(),
-	mode?: string
+	_mode?: string
 ) {
 	const result: Record<string, string[]> = {}
-	const buildPath = mode ? `../.robo/build/${mode}/` : '../.robo/build/'
 
 	for (const [key, values] of Object.entries(record)) {
 		result[key] = values.map((value) => {
-			const relativePath = path.relative(basePath, value)
-
-			// Replace 'src/' with the correct build path (mode-specific)
-			if (relativePath.startsWith('src' + path.sep)) {
-				return relativePath.replace('src/', buildPath)
-			}
-
-			// Otherwise, return the original path up one level to account for extra ".robo" folder
-			return '../' + relativePath
+			// Convert absolute path to relative (e.g., /abs/path/src/* -> src/*)
+			return path.relative(basePath, value)
 		})
 	}
 

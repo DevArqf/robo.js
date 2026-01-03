@@ -9,6 +9,7 @@ import type { MockAttachment, AttachmentPayload, StoredAttachment } from '../../
 import { MessageFlags, createComponentValidationError, createV2ConflictError } from '../../../../types/index.js'
 import { validateComponents, validateComponentsV2 } from '../../../../session/state.js'
 import { enforcePermissions } from '../../../../utils/permission-check.js'
+import { checkRateLimitForEndpoint } from '../../../../utils/rate-limit-check.js'
 
 // Default port for CDN URLs (can be overridden via environment)
 const CDN_BASE_URL = process.env.MOCK_CDN_URL || 'http://localhost:53596'
@@ -52,32 +53,14 @@ export default async (request: RoboRequest) => {
 		})
 	}
 
-	// 2.5. Check for rate limit simulation
-	const rateLimit = session.checkRateLimit()
-	if (rateLimit) {
-		return new Response(
-			JSON.stringify({
-				message: 'You are being rate limited.',
-				retry_after: rateLimit.retryAfter,
-				global: false
-			}),
-			{
-				status: 429,
-				headers: {
-					'Content-Type': 'application/json',
-					'Retry-After': String(rateLimit.retryAfter),
-					'X-RateLimit-Global': 'false',
-					'X-RateLimit-Limit': '5',
-					'X-RateLimit-Remaining': '0',
-					'X-RateLimit-Reset-After': String(rateLimit.retryAfter),
-					'X-RateLimit-Bucket': 'mock-rate-limit-bucket'
-				}
-			}
-		)
-	}
-
 	// 3. Extract channel ID from params
 	const { id: channelId } = request.params as { id: string }
+
+	// 3.5. Check for rate limit simulation
+	const rateLimitResponse = checkRateLimitForEndpoint(session, `/channels/${channelId}/messages`)
+	if (rateLimitResponse) {
+		return rateLimitResponse
+	}
 
 	// 4. Validate channel exists in session state
 	const channel = session.state.getChannel(channelId)

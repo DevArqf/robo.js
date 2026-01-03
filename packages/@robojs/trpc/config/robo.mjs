@@ -7,7 +7,6 @@ export default {
 	clientOptions: {
 		intents: []
 	},
-	plugins: [],
 	type: 'plugin',
 	seed: {
 		description: 'Boilerplate tRPC server and client files'

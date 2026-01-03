@@ -9,14 +9,16 @@
  * The client instance is created in the prepare hook, allowing other plugins
  * to access it during their start hooks before the bot goes online.
  */
+import { color, portal } from 'robo.js'
 import { getClient } from '../core/client.js'
+import { checkIntents } from '../core/intents.js'
 import { discordLogger } from '../core/logger.js'
 
 /**
  * Start hook - Logs the Discord client into Discord
  */
 export default async function startHook(): Promise<void> {
-	// In standalone mock mode (robo mock), skip login entirely.
+	// In standalone mock mode (robo mock start), skip login entirely.
 	// The mock server runs without a bot - bots connect separately via --mock-session.
 	if (process.env.__ROBO_MOCK_STANDALONE === 'true') {
 		discordLogger.debug('Standalone mock mode - skipping Discord login')
@@ -40,7 +42,24 @@ export default async function startHook(): Promise<void> {
 	// Login to Discord
 	discordLogger.debug('Logging in to Discord...')
 	await client.login(token)
-	discordLogger.debug('Successfully logged in to Discord')
+
+	// Register commands in mock mode (build/complete skips, so we do it at runtime)
+	// Use dynamic import to avoid loading command registration code in production
+	if (process.env.ROBO_MOCK_MODE === 'true') {
+		discordLogger.debug('Mock mode - registering commands at runtime')
+		const { registerCommandsAtRuntime } = await import('../core/commands.js')
+		// Use force: false - mock mode doesn't need to delete existing commands
+		await registerCommandsAtRuntime({ force: false })
+	}
+
+	// Log ready message and check intents once the client is fully ready
+	client.once('clientReady', () => {
+		discordLogger.ready(`On standby as ${color.bold(client.user?.tag ?? 'Unknown')}`)
+
+		// Check for missing intents based on registered event handlers
+		const eventsData = portal.getByType('discordjs:events') as Record<string, unknown[]>
+		checkIntents(client, eventsData)
+	})
 }
 
 /**

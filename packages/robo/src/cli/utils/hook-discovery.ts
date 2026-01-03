@@ -15,7 +15,7 @@ import type { PluginData } from '../../types/common.js'
 /**
  * Lifecycle hook types that can be discovered.
  */
-export type LifecycleHookType = 'init' | 'prepare' | 'start' | 'stop' | 'setup'
+export type LifecycleHookType = 'init' | 'prepare' | 'start' | 'stop' | 'setup' | 'hmr'
 
 /**
  * Build hook types that can be discovered.
@@ -192,6 +192,7 @@ export async function discoverAllHooks(plugins: Map<string, PluginData>): Promis
 		'start',
 		'stop',
 		'setup',
+		'hmr',
 		// Build hooks
 		'build/start',
 		'build/transform',

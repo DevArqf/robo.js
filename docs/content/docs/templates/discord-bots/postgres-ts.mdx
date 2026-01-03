@@ -1,0 +1,57 @@
+---
+title: "PostgreSQL"
+description: A Discord bot template using PostgreSQL for data persistence.
+---
+
+# PostgreSQL
+
+A bot using **PostgreSQL** and TypeScript for relational data storage.
+
+<Cards>
+  <Card href="https://www.postgresql.org/" title="PostgreSQL" description="Relational database." />
+  <Card href="/docs/discord-bots" title="Documentation" description="Getting started with Robo.js" />
+</Cards>
+
+## Getting Started
+
+Create a project with this template:
+
+```package-install
+npx create-robo <project-name> --template discord-bots/postgres-ts
+```
+
+Then navigate into your project directory:
+
+```bash
+cd <project-name>
+```
+
+Configure PostgreSQL connection in `.env`:
+
+```bash
+DATABASE_URL=postgresql://user:password@localhost:5432/mybot
+```
+
+Run development mode:
+
+```bash
+npm run dev
+```
+
+## Features
+
+- PostgreSQL integration
+- Connection pooling
+- TypeScript support
+- SQL query building
+
+## Hosting
+
+```bash
+npm run deploy
+```
+
+<Cards>
+  <Card href="/docs/hosting/roboplay" title="RoboPlay" description="Deploy with as little as one command." />
+  <Card href="https://github.com/Wave-Play/robo.js/tree/main/templates/discord-bots/postgres-ts" title="GitHub Repository" description="Explore source code on GitHub." />
+</Cards>

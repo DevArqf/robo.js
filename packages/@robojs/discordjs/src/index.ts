@@ -116,6 +116,7 @@ export {
 	buildContextCommands,
 	addOptionToCommandBuilder,
 	findCommandDifferences,
+	FLASHCORE_KEY_COMMAND_HASH_PREFIX,
 	FLASHCORE_KEY_COMMAND_REGISTER_ERROR,
 	getContextType,
 	getIntegrationType,

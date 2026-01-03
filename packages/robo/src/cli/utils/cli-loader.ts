@@ -10,6 +10,8 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { logger as createLogger } from '../../core/logger.js'
 import { color } from '../../core/color.js'
+import { Env } from '../../core/env.js'
+import { Mode, resolveCliMode } from '../../core/mode.js'
 // Note: config loading removed - using filesystem-based plugin discovery instead
 import {
 	pathExists,
@@ -735,6 +737,11 @@ export async function runWithExtensions<T = unknown>(
 		cwd: process.cwd(),
 		argv: process.argv.slice(2)
 	}
+
+	// Load environment variables before running extension hooks
+	// This ensures plugins can access env vars like DISCORD_TOKEN in their before hooks
+	const envMode = resolveCliMode(options.mode as string | undefined) ?? Mode.get()
+	await Env.load({ mode: envMode })
 
 	// Run before hooks (highest priority first, already sorted)
 	for (const ext of loadedExtensions) {

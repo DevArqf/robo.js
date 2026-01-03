@@ -20,14 +20,51 @@
 	},
 	"exports": {
 		".": {
+			"default": "./dist/index.js",
 			"import": "./dist/index.js",
 			"types": "./dist/index.d.ts"
 		},
+		"./flashcore": {
+			"default": "./flashcore.js",
+			"import": "./flashcore.js",
+			"types": "./flashcore.d.ts"
+		},
+		"./hmr": {
+			"default": "./hmr.js",
+			"import": "./hmr.js",
+			"types": "./hmr.d.ts"
+		},
+		"./logger": {
+			"default": "./logger.js",
+			"import": "./logger.js",
+			"types": "./logger.d.ts"
+		},
+		"./logger/drains": {
+			"import": "./dist/core/drains.js",
+			"types": "./dist/core/drains.d.ts"
+		},
+		"./types": {
+			"default": "./types.js",
+			"import": "./types.js",
+			"types": "./types.d.ts"
+		},
 		"./unstable": {
+			"default": "./unstable.js",
 			"import": "./unstable.js",
 			"types": "./unstable.d.ts"
 		},
+		"./utils": {
+			"default": "./utils.js",
+			"import": "./utils.js",
+			"types": "./utils.d.ts"
+		},
+		"./ipc": {
+			"default": "./ipc.js",
+			"import": "./ipc.js",
+			"types": "./ipc.d.ts"
+		},
 		"./*": {
+			"default": "./*",
 			"types": "./*",
 			"import": "./*"
 		}
@@ -52,6 +89,10 @@
 		"cli.js",
 		"flashcore.d.ts",
 		"flashcore.js",
+		"hmr.d.ts",
+		"hmr.js",
+		"ipc.d.ts",
+		"ipc.js",
 		"unstable.d.ts",
 		"unstable.js",
 		"LICENSE",

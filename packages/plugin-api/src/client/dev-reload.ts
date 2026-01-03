@@ -35,7 +35,7 @@ export function initDevReload(pluginName?: string): void {
 	}
 
 	// Don't spam console in production
-	const isDev = process.env.NODE_ENV !== 'production'
+	const isDev = process.env.ROBO_DEV === 'true'
 
 	try {
 		const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
