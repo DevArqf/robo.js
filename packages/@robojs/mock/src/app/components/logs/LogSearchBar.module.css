@@ -1,0 +1,176 @@
+.container {
+	position: relative;
+	flex: 1;
+	min-width: 0;
+}
+
+.searchBox {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 10px;
+	background: var(--background-tertiary);
+	border: 1px solid var(--background-modifier-accent);
+	border-radius: var(--radius-sm);
+	transition: border-color 0.15s ease;
+}
+
+.searchBox:focus-within {
+	border-color: var(--brand-500);
+}
+
+.searchIcon {
+	flex-shrink: 0;
+	color: var(--text-muted);
+}
+
+/* Active filter chips */
+.chips {
+	display: flex;
+	gap: 4px;
+	flex-shrink: 0;
+}
+
+.chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 6px;
+	font-size: 11px;
+	font-family: 'JetBrains Mono', 'Fira Code', monospace;
+	color: var(--chip-color, var(--text-normal));
+	background: color-mix(in srgb, var(--chip-color, var(--brand-500)) 20%, transparent);
+	border-radius: var(--radius-xs);
+}
+
+.chipRemove {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	margin-left: 2px;
+	color: inherit;
+	opacity: 0.7;
+	transition: opacity 0.1s ease;
+}
+
+.chipRemove:hover {
+	opacity: 1;
+}
+
+/* Search input */
+.input {
+	flex: 1;
+	min-width: 0;
+	padding: 0;
+	font-size: 13px;
+	color: var(--text-normal);
+	background: transparent;
+	border: none;
+	outline: none;
+}
+
+.input::placeholder {
+	color: var(--text-muted);
+}
+
+/* Clear button */
+.clearButton {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	color: var(--text-muted);
+	border-radius: var(--radius-xs);
+	transition: all 0.1s ease;
+}
+
+.clearButton:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+/* Dropdown */
+.dropdown {
+	position: absolute;
+	top: calc(100% + 4px);
+	left: 0;
+	right: 0;
+	background: var(--background-floating);
+	border: 1px solid var(--background-modifier-accent);
+	border-radius: var(--radius-md);
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+	z-index: 100;
+	overflow: hidden;
+}
+
+.dropdownSection {
+	padding: 8px 0;
+}
+
+.dropdownLabel {
+	display: block;
+	padding: 4px 12px 8px;
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.dropdownItem {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 8px 12px;
+	font-size: 13px;
+	color: var(--text-normal);
+	text-align: left;
+	transition: background 0.1s ease;
+}
+
+.dropdownItem:hover {
+	background: var(--background-modifier-hover);
+}
+
+.dropdownItem.active {
+	background: var(--brand-500-alpha-20);
+}
+
+.levelDot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	flex-shrink: 0;
+}
+
+.levelLabel {
+	flex: 1;
+	font-family: 'JetBrains Mono', 'Fira Code', monospace;
+	font-size: 12px;
+}
+
+.checkIcon {
+	color: var(--brand-500);
+	flex-shrink: 0;
+}
+
+.dropdownHint {
+	padding: 8px 12px;
+	font-size: 11px;
+	color: var(--text-muted);
+	background: var(--background-secondary);
+	border-top: 1px solid var(--background-modifier-accent);
+}
+
+.dropdownHint code {
+	padding: 1px 4px;
+	font-family: 'JetBrains Mono', 'Fira Code', monospace;
+	font-size: 10px;
+	color: var(--text-normal);
+	background: var(--background-tertiary);
+	border-radius: 2px;
+}

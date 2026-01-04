@@ -27,13 +27,18 @@ import type {
 	SessionRecording,
 	SessionConfig,
 	SeedMessageConfig,
-	VoiceServerState
+	VoiceServerState,
+	SessionLogEntry,
+	PermissionOverride,
+	PermissionDeniedEvent
 } from '../types/index.js'
 import { AutoModerationTriggerType } from '../types/index.js'
 import { generateSessionId, createMockToken, generateInteractionToken } from '../utils/id.js'
 import { generateSnowflake } from '../utils/snowflake.js'
 import { MockServerState, createMockUser, createMockGuild, createMockChannel } from './state.js'
 import { ActionRecorder } from './recorder.js'
+import { LogRecorder } from './log-recorder.js'
+import { saveRecording } from './recording-storage.js'
 import { mockLogger } from '../core/logger.js'
 import { getGatewayServer } from '../core/gateway.js'
 import { getStageBridge } from '../core/stage-bridge.js'
@@ -100,12 +105,16 @@ export class Session implements ISession {
 	readonly voiceServers: Map<string, VoiceServerState>
 
 	readonly recorder: ActionRecorder
+	readonly logRecorder: LogRecorder
 	private ending = false
 	private autoArchiveInterval: ReturnType<typeof setInterval> | null = null
 
 	// Rate limit simulation state
 	private _simulateRateLimit = false
 	private _rateLimitRetryAfter = 1 // seconds
+	private _rateLimitPersistent = false // If true, doesn't auto-disable after triggering
+	private _rateLimitScope: 'all' | 'messages' | 'interactions' | 'guilds' | 'channels' = 'all'
+	private _rateLimitTriggeredCount = 0 // Track how many times rate limit has been triggered
 
 	// Loop detection state
 	private messageCreateTimestamps: number[] = []
@@ -115,6 +124,12 @@ export class Session implements ISession {
 
 	// Heartbeat interval (per-session, default matches Discord's standard interval)
 	private _heartbeatInterval: number | null = null
+
+	// Permission enforcement state (runtime changeable)
+	private _permissionEnforcement: 'none' | 'basic' | 'strict' | null = null
+	private _permissionOverrides: Map<string, PermissionOverride> = new Map()
+	private _permissionDeniedEvents: PermissionDeniedEvent[] = []
+	private static readonly MAX_PERMISSION_DENIED_EVENTS = 100
 
 	// Loop detection constants
 	private static readonly LOOP_THRESHOLD = 10 // events
@@ -133,6 +148,9 @@ export class Session implements ISession {
 
 		// Initialize action recorder with optional max actions
 		this.recorder = new ActionRecorder(options?.config?.maxActions ?? 10000)
+
+		// Initialize log recorder for capturing bot logs
+		this.logRecorder = new LogRecorder(this.id, options?.config?.maxLogs ?? 10000)
 
 		// Initialize state with optional configuration
 		this.state = new MockServerState({
@@ -197,6 +215,52 @@ export class Session implements ISession {
 			this.state.addChannelToGuild(defaultGuild.id, generalChannel)
 		}
 
+		// Create users from config and add as members to all guilds
+		if (options?.config?.users && options.config.users.length > 0) {
+			const guilds = Array.from(this.state.guilds.values())
+			let firstNonBotUser: MockUser | null = null
+
+			for (const userConfig of options.config.users) {
+				const user = createMockUser({
+					username: userConfig.username ?? 'TestUser',
+					bot: userConfig.bot ?? false,
+					...userConfig
+				})
+				this.state.users.set(user.id, user)
+
+				// Track first non-bot user for current user
+				if (!firstNonBotUser && !user.bot) {
+					firstNonBotUser = user
+				}
+
+				// Add user to all guilds as a member
+				for (const guild of guilds) {
+					this.state.addMemberToGuild(guild.id, user.id, {
+						roles: [],
+						nick: null
+					})
+				}
+			}
+
+			// Set the first non-bot user as the current user
+			if (firstNonBotUser) {
+				this.state.currentUser = firstNonBotUser
+			}
+		}
+
+		// Ensure currentUser is a member of all guilds
+		// This is needed whether users were configured or not (default currentUser from getter)
+		const currentUser = this.state.currentUser
+		const allGuilds = Array.from(this.state.guilds.values())
+		for (const guild of allGuilds) {
+			if (!this.state.getGuildMember(guild.id, currentUser.id)) {
+				this.state.addMemberToGuild(guild.id, currentUser.id, {
+					roles: [],
+					nick: null
+				})
+			}
+		}
+
 		// Create commands from config (for Stage UI testing)
 		if (options?.config?.commands) {
 			for (const commandConfig of options.config.commands) {
@@ -241,8 +305,8 @@ export class Session implements ISession {
 					this.state.users.set(author.id, author)
 				}
 			} else {
-				// Use a default test user
-				author = this.state.getOrCreateTestUser()
+				// Use current user as default author
+				author = this.state.currentUser
 			}
 
 			// Create the message
@@ -389,8 +453,8 @@ export class Session implements ISession {
 				this.state.addUser(author)
 			}
 		} else {
-			// Create a default test user
-			author = this.state.getOrCreateTestUser()
+			// Use current user as default author
+			author = this.state.currentUser
 		}
 
 		// Validate channel exists
@@ -567,7 +631,8 @@ export class Session implements ISession {
 				this.state.addUser(user)
 			}
 		} else {
-			user = this.state.getOrCreateTestUser()
+			// Use current user as default
+			user = this.state.currentUser
 		}
 
 		// Determine channel - use provided or find first available
@@ -662,7 +727,8 @@ export class Session implements ISession {
 				this.state.addUser(user)
 			}
 		} else {
-			user = this.state.getOrCreateTestUser()
+			// Use current user as default
+			user = this.state.currentUser
 		}
 
 		// Derive channel and guild from message if not specified
@@ -735,7 +801,8 @@ export class Session implements ISession {
 				this.state.addUser(user)
 			}
 		} else {
-			user = this.state.getOrCreateTestUser()
+			// Use current user as default
+			user = this.state.currentUser
 		}
 
 		// Derive channel and guild from message if not specified
@@ -813,7 +880,8 @@ export class Session implements ISession {
 				this.state.addUser(user)
 			}
 		} else {
-			user = this.state.getOrCreateTestUser()
+			// Use current user as default
+			user = this.state.currentUser
 		}
 
 		// Resolve channel - use provided channelId, derive from message, or get first available
@@ -901,7 +969,8 @@ export class Session implements ISession {
 				this.state.addUser(user)
 			}
 		} else {
-			user = this.state.getOrCreateTestUser()
+			// Use current user as default
+			user = this.state.currentUser
 		}
 
 		// Resolve channel
@@ -1004,7 +1073,8 @@ export class Session implements ISession {
 				this.state.addUser(user)
 			}
 		} else {
-			user = this.state.getOrCreateTestUser()
+			// Use current user as default
+			user = this.state.currentUser
 		}
 
 		// Resolve target based on command type
@@ -1127,7 +1197,8 @@ export class Session implements ISession {
 				this.state.addUser(owner)
 			}
 		} else {
-			owner = this.state.getOrCreateTestUser()
+			// Use current user as default
+			owner = this.state.currentUser
 		}
 
 		// Determine thread type based on parent channel or explicit type
@@ -2074,6 +2145,48 @@ export class Session implements ISession {
 		this.recorder.clear()
 	}
 
+	// ============================================================================
+	// Log Recording (for Logs Panel)
+	// ============================================================================
+
+	/**
+	 * Record a log entry from a connected bot
+	 * @param entry The log entry (without id, which will be generated)
+	 */
+	recordLog(entry: Omit<SessionLogEntry, 'id'>): SessionLogEntry {
+		const logEntry = this.logRecorder.record(entry)
+
+		// Forward to Stage UI in real-time
+		try {
+			getStageBridge().onLogEntry(this.id, logEntry)
+		} catch {
+			// Stage bridge may not be initialized in some contexts
+		}
+
+		return logEntry
+	}
+
+	/**
+	 * Get all captured logs
+	 */
+	getLogs(): SessionLogEntry[] {
+		return this.logRecorder.getAll()
+	}
+
+	/**
+	 * Get logs since a timestamp
+	 */
+	getLogsSince(timestamp: number): SessionLogEntry[] {
+		return this.logRecorder.getSince(timestamp)
+	}
+
+	/**
+	 * Clear recorded logs without resetting state
+	 */
+	clearLogs(): void {
+		this.logRecorder.clear()
+	}
+
 	/**
 	 * Get the number of recorded actions
 	 */
@@ -2087,25 +2200,79 @@ export class Session implements ISession {
 
 	/**
 	 * Enable rate limit simulation for testing
-	 * When enabled, the next API request will return a 429 response
+	 * When enabled, matching API requests will return a 429 response
+	 *
+	 * @param config - Rate limit configuration or simple enabled boolean for backward compatibility
+	 * @param retryAfter - Retry-After value in seconds (only used when config is boolean)
 	 */
-	setRateLimitSimulation(enabled: boolean, retryAfter = 1): void {
-		this._simulateRateLimit = enabled
-		this._rateLimitRetryAfter = retryAfter
+	setRateLimitSimulation(
+		config: boolean | { enabled: boolean; retryAfter?: number; persistent?: boolean; scope?: 'all' | 'messages' | 'interactions' | 'guilds' | 'channels' },
+		retryAfter = 1
+	): void {
+		if (typeof config === 'boolean') {
+			// Backward compatibility: simple boolean + retryAfter
+			this._simulateRateLimit = config
+			this._rateLimitRetryAfter = retryAfter
+		} else {
+			// Full config object
+			this._simulateRateLimit = config.enabled
+			this._rateLimitRetryAfter = config.retryAfter ?? 1
+			this._rateLimitPersistent = config.persistent ?? false
+			this._rateLimitScope = config.scope ?? 'all'
+		}
+
+		// Reset triggered count when enabling
+		if (this._simulateRateLimit) {
+			this._rateLimitTriggeredCount = 0
+		}
 	}
 
 	/**
-	 * Check if rate limit simulation is enabled
-	 * If enabled, returns the retry-after value and disables simulation
-	 * Returns null if not simulating rate limit
+	 * Check if rate limit simulation should trigger for a given endpoint
+	 * If triggered, returns the retry-after value and optionally disables simulation
+	 * Returns null if not simulating rate limit or endpoint doesn't match scope
+	 *
+	 * @param endpoint - Optional endpoint path to check against scope
 	 */
-	checkRateLimit(): { retryAfter: number } | null {
-		if (this._simulateRateLimit) {
-			const retryAfter = this._rateLimitRetryAfter
-			this._simulateRateLimit = false // One-shot simulation
-			return { retryAfter }
+	checkRateLimit(endpoint?: string): { retryAfter: number } | null {
+		if (!this._simulateRateLimit) {
+			return null
 		}
-		return null
+
+		// Check if endpoint matches the configured scope
+		if (endpoint && !this.matchesRateLimitScope(endpoint)) {
+			return null
+		}
+
+		const retryAfter = this._rateLimitRetryAfter
+		this._rateLimitTriggeredCount++
+
+		// Only auto-disable if NOT in persistent mode
+		if (!this._rateLimitPersistent) {
+			this._simulateRateLimit = false
+		}
+
+		return { retryAfter }
+	}
+
+	/**
+	 * Check if an endpoint matches the configured rate limit scope
+	 */
+	private matchesRateLimitScope(endpoint: string): boolean {
+		switch (this._rateLimitScope) {
+			case 'all':
+				return true
+			case 'messages':
+				return endpoint.includes('/messages')
+			case 'interactions':
+				return endpoint.includes('/interactions')
+			case 'guilds':
+				return endpoint.includes('/guilds')
+			case 'channels':
+				return endpoint.includes('/channels')
+			default:
+				return true
+		}
 	}
 
 	/**
@@ -2113,6 +2280,25 @@ export class Session implements ISession {
 	 */
 	get isRateLimitSimulationActive(): boolean {
 		return this._simulateRateLimit
+	}
+
+	/**
+	 * Get the current rate limit configuration
+	 */
+	get rateLimitConfig(): {
+		enabled: boolean
+		retryAfter: number
+		persistent: boolean
+		scope: 'all' | 'messages' | 'interactions' | 'guilds' | 'channels'
+		triggeredCount: number
+	} {
+		return {
+			enabled: this._simulateRateLimit,
+			retryAfter: this._rateLimitRetryAfter,
+			persistent: this._rateLimitPersistent,
+			scope: this._rateLimitScope,
+			triggeredCount: this._rateLimitTriggeredCount
+		}
 	}
 
 	// ============================================================================
@@ -2176,6 +2362,135 @@ export class Session implements ISession {
 	 */
 	get heartbeatInterval(): number | null {
 		return this._heartbeatInterval
+	}
+
+	// ============================================================================
+	// Permission Enforcement (Phase 3 - Permissions Admin UI)
+	// ============================================================================
+
+	/**
+	 * Get the current permission enforcement level.
+	 * Falls back to config value if not set at runtime.
+	 */
+	get permissionEnforcement(): 'none' | 'basic' | 'strict' {
+		return this._permissionEnforcement ?? this.config?.permissionEnforcement ?? 'none'
+	}
+
+	/**
+	 * Set the permission enforcement level at runtime.
+	 * Set to null to use the config default.
+	 */
+	set permissionEnforcement(level: 'none' | 'basic' | 'strict' | null) {
+		this._permissionEnforcement = level
+		mockLogger.debug(`Session ${this.id}: Permission enforcement set to ${level ?? 'config default'}`)
+	}
+
+	/**
+	 * Get all permission overrides
+	 */
+	getPermissionOverrides(): PermissionOverride[] {
+		// Clean up expired overrides first
+		const now = Date.now()
+		for (const [id, override] of this._permissionOverrides) {
+			if (override.expiresAt && override.expiresAt < now) {
+				this._permissionOverrides.delete(id)
+			}
+		}
+		return Array.from(this._permissionOverrides.values())
+	}
+
+	/**
+	 * Get a specific permission override by ID
+	 */
+	getPermissionOverride(id: string): PermissionOverride | undefined {
+		const override = this._permissionOverrides.get(id)
+		if (override?.expiresAt && override.expiresAt < Date.now()) {
+			this._permissionOverrides.delete(id)
+			return undefined
+		}
+		return override
+	}
+
+	/**
+	 * Add a new permission override
+	 * @param override - The override to add (id will be generated if not provided)
+	 * @returns The added override with generated ID
+	 */
+	addPermissionOverride(override: Omit<PermissionOverride, 'id' | 'createdAt'> & { id?: string }): PermissionOverride {
+		const newOverride: PermissionOverride = {
+			id: override.id ?? generateSnowflake(),
+			userId: override.userId,
+			channelId: override.channelId ?? null,
+			guildId: override.guildId ?? null,
+			permissions: override.permissions,
+			expiresAt: override.expiresAt ?? null,
+			createdAt: Date.now(),
+			reason: override.reason
+		}
+		this._permissionOverrides.set(newOverride.id, newOverride)
+		mockLogger.debug(`Session ${this.id}: Added permission override ${newOverride.id} for user ${newOverride.userId}`)
+		return newOverride
+	}
+
+	/**
+	 * Remove a permission override by ID
+	 * @returns true if the override was removed, false if not found
+	 */
+	removePermissionOverride(id: string): boolean {
+		const removed = this._permissionOverrides.delete(id)
+		if (removed) {
+			mockLogger.debug(`Session ${this.id}: Removed permission override ${id}`)
+		}
+		return removed
+	}
+
+	/**
+	 * Clear all permission overrides
+	 */
+	clearPermissionOverrides(): void {
+		const count = this._permissionOverrides.size
+		this._permissionOverrides.clear()
+		mockLogger.debug(`Session ${this.id}: Cleared ${count} permission overrides`)
+	}
+
+	/**
+	 * Record a permission denied event (for Stage UI display)
+	 */
+	recordPermissionDenied(event: Omit<PermissionDeniedEvent, 'sessionId' | 'timestamp'>): PermissionDeniedEvent {
+		const fullEvent: PermissionDeniedEvent = {
+			...event,
+			sessionId: this.id,
+			timestamp: Date.now()
+		}
+
+		// Add to the beginning and trim to max size
+		this._permissionDeniedEvents.unshift(fullEvent)
+		if (this._permissionDeniedEvents.length > Session.MAX_PERMISSION_DENIED_EVENTS) {
+			this._permissionDeniedEvents.pop()
+		}
+
+		// Notify Stage UI
+		try {
+			getStageBridge().onPermissionDenied(this.id, fullEvent)
+		} catch {
+			// Stage bridge may not be initialized in some contexts
+		}
+
+		return fullEvent
+	}
+
+	/**
+	 * Get recent permission denied events
+	 */
+	getPermissionDeniedEvents(): PermissionDeniedEvent[] {
+		return [...this._permissionDeniedEvents]
+	}
+
+	/**
+	 * Clear permission denied events history
+	 */
+	clearPermissionDeniedEvents(): void {
+		this._permissionDeniedEvents = []
 	}
 
 	/**
@@ -2251,7 +2566,8 @@ export class Session implements ISession {
 				recordedAt: new Date(now).toISOString()
 			},
 			initialConfig: this.captureInitialConfig(),
-			actions: this.recorder.getAll()
+			actions: this.recorder.getAll(),
+			logs: this.logRecorder.length > 0 ? this.logRecorder.getAll() : undefined
 		}
 	}
 
@@ -2364,6 +2680,164 @@ export class Session implements ISession {
 		return archivedIds
 	}
 
+	// ============================================================================
+	// User Management API (Phase 8)
+	// ============================================================================
+
+	/**
+	 * Get the current acting user
+	 */
+	getCurrentUser(): MockUser {
+		return this.state.currentUser
+	}
+
+	/**
+	 * Set the current acting user by ID (switches to existing user)
+	 * @returns The switched user, or undefined if not found
+	 */
+	setCurrentUser(userId: string): MockUser | undefined {
+		return this.state.switchCurrentUser(userId)
+	}
+
+	/**
+	 * Create a new user and optionally set as current
+	 * @param config User configuration
+	 * @param setAsCurrent Whether to set this user as the current user (default: false)
+	 * @returns The created user
+	 */
+	createUser(config: { username: string; bot?: boolean; avatar?: string | null; status?: 'online' | 'offline' | 'idle' | 'dnd' }, setAsCurrent = false): MockUser {
+		const user = createMockUser({
+			username: config.username,
+			bot: config.bot ?? false,
+			avatar: config.avatar ?? null,
+			status: config.status
+		})
+		this.state.users.set(user.id, user)
+
+		// Add to all guilds as member
+		for (const guild of this.state.guilds.values()) {
+			this.state.addMemberToGuild(guild.id, user.id, {
+				roles: [],
+				nick: null
+			})
+		}
+
+		if (setAsCurrent) {
+			this.state.currentUser = user
+		}
+
+		return user
+	}
+
+	/**
+	 * Update a user's properties
+	 * @param userId The user ID to update
+	 * @param updates The properties to update
+	 * @returns The updated user, or undefined if not found
+	 */
+	updateUser(userId: string, updates: Partial<{ username: string; avatar: string | null; status: 'online' | 'offline' | 'idle' | 'dnd' }>): MockUser | undefined {
+		const user = this.state.users.get(userId)
+		if (!user) return undefined
+
+		const updated: MockUser = { ...user, ...updates }
+		this.state.users.set(userId, updated)
+
+		// If this is the current user, update that reference too
+		if (this.state.currentUser.id === userId) {
+			this.state.updateCurrentUser(updates)
+		}
+
+		return updated
+	}
+
+	/**
+	 * Get all users in the session
+	 */
+	getUsers(): MockUser[] {
+		return Array.from(this.state.users.values())
+	}
+
+	/**
+	 * Get a specific user by ID
+	 */
+	getUser(userId: string): MockUser | undefined {
+		return this.state.users.get(userId)
+	}
+
+	/**
+	 * Perform an action as a specific user (temporary switch)
+	 * Restores the original current user after the action completes
+	 * @param userId The user ID to act as
+	 * @param action The action to perform
+	 * @returns The result of the action
+	 */
+	async asUser<T>(userId: string, action: () => T | Promise<T>): Promise<T> {
+		const previousUser = this.state.currentUser
+		const targetUser = this.state.switchCurrentUser(userId)
+		if (!targetUser) {
+			throw new Error(`User ${userId} not found`)
+		}
+		try {
+			return await action()
+		} finally {
+			this.state.switchCurrentUser(previousUser.id)
+		}
+	}
+
+	/**
+	 * Send a message as a specific user
+	 * @param userId The user ID to send as
+	 * @param channelId The channel to send to
+	 * @param content The message content
+	 * @returns The created message
+	 */
+	async sendMessageAs(userId: string, channelId: string, content: string): Promise<MockMessage> {
+		const user = this.state.users.get(userId)
+		if (!user) throw new Error(`User ${userId} not found`)
+
+		return this.dispatchMessage({
+			channelId,
+			content,
+			author: { id: user.id, username: user.username }
+		})
+	}
+
+	/**
+	 * Invoke a command as a specific user
+	 * @param userId The user ID to invoke as
+	 * @param commandName The command name
+	 * @param options Optional command options
+	 * @returns The created interaction
+	 */
+	async invokeCommandAs(userId: string, commandName: string, options?: Record<string, string | number | boolean>): Promise<MockInteraction> {
+		const user = this.state.users.get(userId)
+		if (!user) throw new Error(`User ${userId} not found`)
+
+		return this.dispatchSlashCommand({
+			commandName,
+			options,
+			user: { id: user.id, username: user.username }
+		})
+	}
+
+	/**
+	 * Click a button as a specific user
+	 * @param userId The user ID to click as
+	 * @param messageId The message containing the button
+	 * @param customId The button's custom ID
+	 * @returns The created interaction
+	 */
+	async clickButtonAs(userId: string, messageId: string, customId: string): Promise<MockInteraction> {
+		const user = this.state.users.get(userId)
+		if (!user) throw new Error(`User ${userId} not found`)
+
+		return this.dispatchButtonClick({
+			messageId,
+			customId,
+			user: { id: user.id, username: user.username }
+		})
+	}
+
 	/**
 	 * End the session and clean up resources
 	 */
@@ -2393,11 +2867,24 @@ export class Session implements ISession {
 		// Clear voice server state
 		this.voiceServers.clear()
 
+		// Auto-save recording if in test mode and has actions
+		// IMPORTANT: Must happen BEFORE state.reset() so captureInitialConfig() has data
+		if (process.env.ROBO_MOCK_TEST_MODE === 'true' && this.recorder.length > 0) {
+			try {
+				const recording = this.exportRecording()
+				saveRecording(this.id, recording)
+				mockLogger.debug(`Auto-saved recording for session ${this.id}`)
+			} catch (error) {
+				mockLogger.warn(`Failed to auto-save recording for session ${this.id}: ${(error as Error).message}`)
+			}
+		}
+
 		// Clear state using the reset method
 		this.state.reset()
 
-		// Clear recorded actions
+		// Clear recorded actions and logs
 		this.recorder.clear()
+		this.logRecorder.clear()
 
 		mockLogger.debug(`Session ended: ${this.id}`)
 	}

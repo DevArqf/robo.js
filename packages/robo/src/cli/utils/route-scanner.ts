@@ -297,7 +297,9 @@ async function scanDirectoryRecursive(options: RecursiveScanOptions): Promise<Sc
 			const relativePath = path.relative(basePath, fullPath)
 
 			// Build file path relative to src
-			const filePath = path.join(route.directory, relativePath)
+			const filePath = modulePrefix
+				? path.join('modules', modulePrefix, route.directory, relativePath)
+				: path.join(route.directory, relativePath)
 
 			// Extract dynamic segment info from path segments
 			const dynamicInfo = extractDynamicSegments(fileSegments, config.nesting)

@@ -231,6 +231,26 @@
 	opacity: 0.5;
 }
 
+/* Log Density Visualization */
+.logDensity {
+	position: absolute;
+	bottom: -8px;
+	left: 0;
+	right: 0;
+	height: 6px;
+	pointer-events: none;
+}
+
+.logDensityBar {
+	position: absolute;
+	bottom: 0;
+	width: 2%;
+	min-height: 1px;
+	background: var(--brand-500);
+	opacity: 0.4;
+	border-radius: 1px 1px 0 0;
+}
+
 /* Speed Control */
 .speedControl {
 	display: flex;
@@ -309,6 +329,15 @@
 
 .devButton:hover {
 	background: rgba(250, 168, 26, 0.2);
+}
+
+.devButton.active {
+	color: var(--brand-500);
+	background: rgba(88, 101, 242, 0.2);
+}
+
+.devButton.active:hover {
+	background: rgba(88, 101, 242, 0.3);
 }
 
 /* Clear Button */

@@ -144,7 +144,7 @@ async function printErrorResponse(
 	interaction: ContextMenuCommandInteraction,
 	sage: ReturnType<typeof getSage>
 ): Promise<void> {
-	const DEBUG_MODE = Mode.get() === 'development'
+	const DEBUG_MODE = Mode.isDev()
 
 	// Don't print errors in production - they may contain sensitive information
 	if (!DEBUG_MODE || !sage.errorReplies) {

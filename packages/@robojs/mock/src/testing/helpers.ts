@@ -3,12 +3,24 @@
  *
  * Helper functions for writing integration tests with the mock server.
  */
+import { spawn, type ChildProcess } from 'node:child_process'
+import { basename, join } from 'node:path'
 import type { ExpectActionOptions, RecordedAction, WaitForActionOptions, CreateTestSessionConfig } from './types.js'
 import type { AssertionResult } from '../session/registry.js'
-import { getSessionActions, getMockConfig, createSession, deleteSession } from './control-api.js'
-import { recordAssertion as registryRecordAssertion, registerTestFile } from '../session/registry.js'
+import { getSessionActions, getMockConfig, createSession } from './control-api.js'
+import { recordAssertion as registryRecordAssertion, registerTestFile, setTestFileRecordingPath } from '../session/registry.js'
 import { getMockPluginPrefix } from '../utils/server.js'
 import { readServerInfo, STANDALONE_MOCK_PORT } from '../utils/server-info.js'
+
+/**
+ * Handle for managing a log drain added to the logger.
+ * Allows flushing pending writes and removing the drain.
+ */
+interface DrainHandle {
+	id: string
+	remove: () => boolean
+	flush: () => Promise<void>
+}
 
 // ============================================================================
 // Wait Helpers
@@ -25,11 +37,16 @@ export async function waitForAction(
 		typeof options === 'string' ? { type: options } : options
 	const timeout = opts.timeout ?? getMockConfig().defaultTimeout
 	const startTime = Date.now()
+	// Grace window to avoid missing actions that are recorded during the triggering
+	// request (e.g. dispatchEvent/dispatchInteraction) before this function begins polling.
+	// This can happen when the bot responds very quickly and the control API request
+	// takes longer than expected.
+	const querySince = startTime - 5000
 
 	while (Date.now() - startTime < timeout) {
 		const { actions } = await getSessionActions(sessionId, {
 			type: opts.type,
-			since: startTime
+			since: querySince
 		})
 
 		// Filter by type if specified
@@ -66,10 +83,11 @@ export async function waitForAnyAction(
 ): Promise<RecordedAction> {
 	const actualTimeout = timeout ?? getMockConfig().defaultTimeout
 	const startTime = Date.now()
+	const querySince = startTime - 5000
 
 	while (Date.now() - startTime < actualTimeout) {
 		const { actions } = await getSessionActions(sessionId, {
-			since: startTime
+			since: querySince
 		})
 
 		const match = actions.find(filter)
@@ -256,8 +274,16 @@ export async function expectAction(
 	const { description, type, expected, timeout } = options
 
 	try {
-		// Wait for the action
-		const actions = await waitForAction(sessionId, { type, timeout })
+		// Wait for an action that matches the expected data.
+		// Many bots can emit multiple actions of the same type in response to a single event
+		// (e.g. multiple `message_sent` handlers). Filtering here avoids flakey ordering issues.
+		const actions = await waitForAction(sessionId, {
+			type,
+			timeout,
+			filter: expected
+				? (action) => deepEquals(action.data, expected)
+				: undefined
+		})
 		const action = actions[0]
 		const actual = action?.data
 
@@ -384,9 +410,9 @@ export async function waitForMockServer(options?: {
 // ============================================================================
 
 /**
- * Result of starting a mock bot
+ * Result of starting a mock Robo
  */
-export interface MockBotHandle {
+export interface MockRoboHandle {
 	/** Session ID the bot is connected to */
 	sessionId: string
 	/** Session token */
@@ -399,27 +425,71 @@ export interface MockBotHandle {
 	channels: Array<{ id: string; name: string; guildId?: string; type: number }>
 	/** Default guild ID */
 	guildId: string
-	/** The Discord.js client (from @robojs/discordjs) */
+	/** The Discord.js client (from @robojs/discordjs) - null when hmr: true */
 	client: unknown
 	/** Stop the bot and clean up */
 	stop: () => Promise<void>
+	/** Child process (only when hmr: true) */
+	process?: ChildProcess
+	/** Get current HMR reload count - use before file changes to track position (only when hmr: true) */
+	getHmrCount?: () => number
+	/** Get current restart count - use before file changes to track position (only when hmr: true) */
+	getRestartCount?: () => number
+	/** Wait for HMR reload to complete (only when hmr: true). Pass fromCount from getHmrCount() captured before file changes. */
+	waitForHmrReload?: (timeout?: number, fromCount?: number) => Promise<void>
+	/** Wait for full restart to complete (only when hmr: true). Pass fromCount from getRestartCount() captured before file changes. */
+	waitForFullRestart?: (timeout?: number, fromCount?: number) => Promise<void>
 }
 
 /**
- * Options for starting a mock bot
+ * @deprecated Use MockRoboHandle instead
  */
-export interface StartMockBotOptions {
+export type MockBotHandle = MockRoboHandle
+
+/**
+ * Options for starting a mock Robo
+ */
+export interface StartMockRoboOptions {
 	/** Session name */
 	name?: string
 	/** Mock server port (auto-discovered if not specified) */
 	port?: number
 	/** Timeout for bot to connect in ms (default: 30000) */
 	timeout?: number
-	/** Enable verbose output */
+	/** Enable verbose output (shows logs in console alongside file) */
 	verbose?: boolean
-	/** Test file path for registry tracking (use __filename) */
+	/** Test file path for registry tracking and log file naming (use __filename) */
 	testFilePath?: string
+	/**
+	 * Enable file logging for this test.
+	 * - true: Auto-name from testFilePath (e.g., "ping.test.log")
+	 * - string: Custom log file path
+	 * - false: Disable file logging
+	 * - undefined: Auto-enable when running under `robo mock test` with testFilePath
+	 */
+	logFile?: boolean | string
+	/**
+	 * Log level for file output.
+	 * @default 'debug'
+	 */
+	logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error'
+	/**
+	 * Enable HMR mode - spawns `robo dev --hmr` as child process
+	 * instead of running Robo.start() directly.
+	 * Required for testing hot module replacement.
+	 *
+	 * When enabled:
+	 * - `client` will be null (runs in separate process)
+	 * - `process` will contain the child process
+	 * - `waitForHmrReload()` and `waitForFullRestart()` will be available
+	 */
+	hmr?: boolean
 }
+
+/**
+ * @deprecated Use StartMockRoboOptions instead
+ */
+export type StartMockBotOptions = StartMockRoboOptions
 
 /**
  * Discover the mock server port dynamically.
@@ -451,31 +521,248 @@ async function discoverMockPort(explicitPort?: number): Promise<number> {
 	return STANDALONE_MOCK_PORT
 }
 
+
 /**
- * Start a bot connected to the mock server
+ * Start a Robo connected to the mock server
  *
- * Starts Robo.js directly in the test process, giving you access to the
- * Discord.js client and all bot internals.
+ * When `hmr: false` (default): Runs Robo.start() directly in the test process,
+ * giving you access to the Discord.js client and all bot internals.
+ *
+ * When `hmr: true`: Spawns `robo dev --hmr` as a child process for HMR testing.
+ * The client will be null but you get `waitForHmrReload()` and `waitForFullRestart()`.
  *
  * @example
  * ```typescript
- * let bot: MockBotHandle
+ * // Standard mode - direct access to client
+ * let bot: MockRoboHandle
  *
  * beforeAll(async () => {
- *   bot = await startMockBot({ name: 'my-test', testFilePath: __filename })
+ *   bot = await startMockRobo({ name: 'my-test', testFilePath: __filename })
  * })
  *
  * afterAll(async () => {
  *   await bot.stop()
  * })
  *
- * it('can access the client directly', () => {
- *   const client = bot.client as Client
- *   expect(client.user?.username).toBe('MockBot')
+ * // HMR mode - for testing hot module replacement
+ * let bot: MockRoboHandle
+ *
+ * beforeAll(async () => {
+ *   bot = await startMockRobo({ name: 'hmr-test', testFilePath: __filename, hmr: true })
+ * })
+ *
+ * it('reloads handlers', async () => {
+ *   // Modify a file...
+ *   await bot.waitForHmrReload!()
+ *   // Test the updated handler...
  * })
  * ```
  */
-export async function startMockBot(options: StartMockBotOptions = {}): Promise<MockBotHandle> {
+export async function startMockRobo(options: StartMockRoboOptions = {}): Promise<MockRoboHandle> {
+	if (options.hmr) {
+		return startHmrMode(options)
+	}
+	return startDirectMode(options)
+}
+
+/**
+ * @deprecated Use startMockRobo instead
+ */
+export const startMockBot = startMockRobo
+
+/**
+ * HMR mode implementation - spawns robo dev --hmr as child process
+ */
+async function startHmrMode(options: StartMockRoboOptions): Promise<MockRoboHandle> {
+	const port = await discoverMockPort(options.port)
+	const prefix = getMockPluginPrefix()
+
+	// Create session
+	const sessionConfig: CreateTestSessionConfig = {}
+	if (options.name) {
+		sessionConfig.name = options.name
+	}
+
+	const session = await createSession(sessionConfig)
+	const sessionId = session.id
+
+	// Register test file if provided
+	if (options.testFilePath) {
+		registerTestFile(sessionId, options.testFilePath)
+	}
+
+		// Spawn robo dev --hmr
+		const devArgs = ['robo', 'dev', '--hmr']
+		if (options.verbose) {
+			devArgs.push('--verbose')
+		}
+		const devProcess = spawn('npx', devArgs, {
+			cwd: process.cwd(),
+			env: {
+				...process.env,
+				NODE_ENV: 'development',
+			ROBO_MOCK_MODE: 'true',
+			ROBO_MOCK_PORT: String(port),
+			ROBO_MOCK_SESSION_ID: sessionId,
+			DISCORD_TOKEN: session.token,
+			DISCORD_REST_API: `http://localhost:${port}${prefix}/api`,
+			__ROBO_MOCK_CONNECT_EXISTING: 'true',
+			__ROBO_MOCK_SERVER_PORT: String(port)
+		},
+		stdio: ['pipe', 'pipe', 'pipe']
+	})
+
+	// Track HMR and restart events via counters
+	let hmrReloadCount = 0
+	let fullRestartCount = 0
+	// eslint-disable-next-line no-control-regex
+	const ansiPattern = /\x1B\[[0-9;]*[a-zA-Z]/g
+	const stripAnsi = (str: string) => str.replace(ansiPattern, '')
+
+	const processOutput = (text: string) => {
+		const cleanText = stripAnsi(text)
+		// Count HMR reload messages
+		const hmrMatches = cleanText.match(/\[HMR\] Reloaded/g)
+		if (hmrMatches) {
+			hmrReloadCount += hmrMatches.length
+		}
+		// Count full restart messages
+		if (/Restarting Robo|full restart/.test(cleanText)) {
+			fullRestartCount++
+		}
+	}
+
+	devProcess.stdout?.on('data', (chunk: Buffer) => {
+		const text = chunk.toString()
+		processOutput(text)
+		if (options.verbose) {
+			process.stdout.write(chunk)
+		}
+	})
+	devProcess.stderr?.on('data', (chunk: Buffer) => {
+		const text = chunk.toString()
+		processOutput(text)
+		if (options.verbose) {
+			process.stderr.write(chunk)
+		}
+	})
+
+	// Wait for bot to connect
+	const timeout = options.timeout ?? 60000
+	await waitForBotConnection(sessionId, timeout)
+
+	// HMR-specific methods - use counters to detect changes regardless of timing
+	// Get current counts so tests can capture position BEFORE making file changes
+	const getHmrCount = () => hmrReloadCount
+	const getRestartCount = () => fullRestartCount
+
+	const waitForHmrReload = async (hmrTimeout = 15000, fromCount?: number): Promise<void> => {
+		// Use provided count or capture current count
+		const startCount = fromCount ?? hmrReloadCount
+		const startTime = Date.now()
+		let pollInterval = 100
+
+		// Wait at least 300ms before checking to avoid catching stale reloads from startup
+		await sleep(300)
+
+		while (Date.now() - startTime < hmrTimeout) {
+			if (hmrReloadCount > startCount) {
+				// Wait for handler to fully reload and propagate
+				// Increased from 500ms to 750ms for better reliability on slower CI systems
+				await sleep(750)
+				return
+			}
+			await sleep(pollInterval)
+			// Exponential backoff: 100ms → 120ms → 144ms → ... capped at 300ms
+			// This reduces CPU usage during longer waits while still being responsive
+			pollInterval = Math.min(Math.round(pollInterval * 1.2), 300)
+		}
+		throw new Error(`HMR reload not detected after ${hmrTimeout}ms (startCount=${startCount}, currentCount=${hmrReloadCount})`)
+	}
+
+	const waitForFullRestart = async (restartTimeout = 30000, fromCount?: number): Promise<void> => {
+		// Use provided count or capture current count
+		let startCount = fromCount ?? fullRestartCount
+		const startTime = Date.now()
+
+		// Restart log messages can be emitted without an actual disconnect/reconnect cycle
+		// (e.g. "Falling back to full restart..."). To avoid false positives, require the
+		// gateway connection count to drop to 0 and then recover.
+		while (Date.now() - startTime < restartTimeout) {
+			if (fullRestartCount > startCount) {
+				startCount = fullRestartCount
+
+				// Give the process a chance to disconnect before considering it a restart.
+				// If we never observe a disconnect, keep waiting for the next restart signal.
+				const remaining = restartTimeout - (Date.now() - startTime)
+				const disconnectTimeout = Math.min(5000, Math.max(500, remaining))
+				const didDisconnect = await waitForBotDisconnect(sessionId, disconnectTimeout).then(
+					() => true,
+					() => false
+				)
+
+				if (!didDisconnect) {
+					await sleep(100)
+					continue
+				}
+
+				// Now wait for the bot to reconnect.
+				await waitForBotConnection(sessionId, Math.min(30000, Math.max(500, remaining)))
+				return
+			}
+			await sleep(100)
+		}
+
+		throw new Error(`Full restart not detected after ${restartTimeout}ms (startCount=${fromCount ?? 'auto'}, currentCount=${fullRestartCount})`)
+	}
+
+	return {
+		sessionId,
+		token: session.token,
+		botUser: session.botUser,
+		guilds: session.guilds,
+		channels: session.channels,
+		guildId: session.guildId,
+		client: null, // Not available in HMR mode (different process)
+		process: devProcess,
+		getHmrCount,
+		getRestartCount,
+		waitForHmrReload,
+		waitForFullRestart,
+		stop: async () => {
+			devProcess.kill('SIGTERM')
+			await new Promise<void>((resolve) => {
+				const forceKillTimeout = setTimeout(() => {
+					devProcess.kill('SIGKILL')
+					resolve()
+				}, 5000)
+
+				devProcess.on('exit', () => {
+					clearTimeout(forceKillTimeout)
+					resolve()
+				})
+			})
+
+			// Save the recording
+			try {
+				const config = getMockConfig()
+				const response = await fetch(`${config.controlUrl}/sessions/${sessionId}/recording`, {
+					method: 'POST'
+				})
+				if (response.ok) {
+					setTestFileRecordingPath(sessionId, `${sessionId}.json`)
+				}
+			} catch {
+				// Recording save failed, but don't block the stop
+			}
+		}
+	}
+}
+
+/**
+ * Direct mode implementation - runs Robo.start() in test process
+ */
+async function startDirectMode(options: StartMockRoboOptions = {}): Promise<MockRoboHandle> {
 	const port = await discoverMockPort(options.port)
 	const timeout = options.timeout ?? 30000
 
@@ -496,6 +783,11 @@ export async function startMockBot(options: StartMockBotOptions = {}): Promise<M
 	// Set up environment for mock mode BEFORE importing Robo
 	// Mark as connecting to existing mock server so the plugin doesn't start its own
 	const prefix = getMockPluginPrefix()
+
+	// Set NODE_ENV to production to ensure the manifest is loaded from the correct directory
+	// The manifest is only built for 'development' and 'production' modes, not 'test'
+	// Note: ROBO_MOCK_MODE=true forces lazy loading in portal-loader.ts to avoid Jest ESM issues
+	process.env.NODE_ENV = 'production'
 	process.env.ROBO_MOCK_MODE = 'true'
 	process.env.ROBO_MOCK_PORT = String(port)
 	process.env.ROBO_MOCK_SESSION_ID = sessionId
@@ -503,6 +795,117 @@ export async function startMockBot(options: StartMockBotOptions = {}): Promise<M
 	process.env.DISCORD_REST_API = `http://localhost:${port}${prefix}/api`
 	process.env.__ROBO_MOCK_CONNECT_EXISTING = 'true'
 	process.env.__ROBO_MOCK_SERVER_PORT = String(port)
+
+	// Set verbose flag for robo.js to know whether to show console logs
+	if (options.verbose) {
+		process.env.ROBO_MOCK_VERBOSE = 'true'
+	}
+
+	// Determine if file logging should be enabled:
+	// - Explicit logFile option takes priority
+	// - Auto-enable when running under `robo mock test` with testFilePath provided
+	const isTestMode = process.env.ROBO_MOCK_TEST_MODE === 'true'
+	const shouldLogToFile = options.logFile !== false && (options.logFile || (isTestMode && !!options.testFilePath))
+
+	// Set up file logging BEFORE Robo.start() to capture startup logs
+	// We use addDrain() which persists across setup() calls (Robo.start() calls setup())
+	// Note: Console output suppression is handled automatically by robo.js when
+	// ROBO_MOCK_TEST_MODE=true and ROBO_MOCK_VERBOSE is not set
+	let fileDrainHandle: DrainHandle | null = null
+
+	if (shouldLogToFile && options.testFilePath) {
+		const { createFileDrain, logger } = await import('robo.js')
+
+		// Determine log file path
+		let logPath: string
+		if (typeof options.logFile === 'string') {
+			logPath = options.logFile
+		} else {
+			// Auto-name: extract test file name, put in .robo/logs/tests/
+			const testFileName = basename(options.testFilePath)
+				.replace(/\.(test|spec)\.(ts|js|tsx|jsx|mts|mjs)$/, '.log')
+			logPath = join('.robo', 'logs', 'tests', testFileName)
+		}
+
+		// Create file drain with blocking mode for immediate writes
+		const fileDrain = createFileDrain({
+			path: logPath,
+			level: options.logLevel ?? 'debug',
+			timestamp: 'iso',
+			blocking: true, // Ensure logs are written before test ends
+			stripAnsi: true
+		})
+
+		// Add file drain to the logger BEFORE Robo.start()
+		// addDrain() adds to the _drains Map which persists across setup() calls
+		const loggerInstance = logger()
+		fileDrainHandle = loggerInstance.addDrain(fileDrain, `test-file-${sessionId}`)
+	}
+
+	// Set up session log drain to forward logs to the mock server
+	// This enables the Logs Panel in Stage UI to show bot logs in real-time
+	let sessionLogDrainHandle: DrainHandle | null = null
+	const config = getMockConfig()
+
+	// Create a drain that POSTs logs to the control API
+	const { logger: getLogger } = await import('robo.js')
+
+	// eslint-disable-next-line no-control-regex
+	const ANSI_REGEX = /\x1b\[.*?m/g
+
+	const sessionLogDrain = async (_loggerInstance: unknown, level: string, ...data: unknown[]): Promise<void> => {
+		try {
+			// Build message, stripping ANSI codes
+			const message = data
+				.map((item) => {
+					if (item instanceof Error) {
+						return `${item.message}${item.stack ? '\n' + item.stack : ''}`
+					}
+					if (typeof item === 'string') {
+						return item.replace(ANSI_REGEX, '')
+					}
+					try {
+						return JSON.stringify(item)
+					} catch {
+						return '[unserializable]'
+					}
+				})
+				.join(' ')
+
+			// Extract structured data
+			const structuredData = data.filter((d) => typeof d === 'object' && d !== null)
+
+			// Extract prefix from logger if available
+			const loggerWithPrefix = _loggerInstance as { _prefix?: string } | undefined
+			const prefix = loggerWithPrefix?._prefix
+
+			// POST to control API (fire and forget - don't block logging)
+			fetch(`${config.controlUrl}/sessions/${sessionId}/logs`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					timestamp: Date.now(),
+					level,
+					message,
+					prefix,
+					data: structuredData.length > 0 ? structuredData : undefined,
+					source: {
+						connectionId: `direct-${sessionId}`,
+						sessionId,
+						botUserId: session.botUser?.id,
+						botUsername: session.botUser?.username
+					}
+				})
+			}).catch(() => {
+				// Ignore errors - don't block test execution
+			})
+		} catch {
+			// Ignore errors during log processing
+		}
+	}
+
+	// Add session log drain
+	sessionLogDrainHandle = getLogger().addDrain(sessionLogDrain, `session-logs-${sessionId}`)
 
 	// Import and start Robo directly
 	const { Robo } = await import('robo.js')
@@ -531,25 +934,53 @@ export async function startMockBot(options: StartMockBotOptions = {}): Promise<M
 		guildId: session.guildId,
 		client,
 		stop: async () => {
-			// Delete the session first to stop new events from being dispatched
-			try {
-				await deleteSession(sessionId)
-			} catch {
-				// Session may already be deleted
-			}
-
-			// Brief delay to let any in-flight events complete processing
-			// This prevents "Jest environment torn down" errors
-			await new Promise((resolve) => setTimeout(resolve, 100))
-
-			// In test mode, we can't call Robo.stop() because it calls process.exit()
-			// Instead, disconnect the Discord client directly if available
+			// IMPORTANT: Destroy client FIRST to stop log generation
 			if (client && typeof (client as { destroy?: () => void }).destroy === 'function') {
 				try {
 					;(client as { destroy: () => void }).destroy()
 				} catch {
 					// Client may already be destroyed
 				}
+			}
+
+			// Brief delay to let any in-flight events complete processing
+			await new Promise((resolve) => setTimeout(resolve, 100))
+
+			// Clean up drains:
+			// 1. Remove the session log drain
+			// 2. Remove the file drain from secondary drains
+			// 3. Restore console drain as primary drain (in case other code runs after tests)
+			// NOTE: We skip flush() because consoleDrain uses stream.write() callbacks
+			// which can hang if stdout has backpressure during shutdown.
+			// Since file drain uses blocking: true (synchronous writes), all logs are already on disk.
+			if (sessionLogDrainHandle) {
+				sessionLogDrainHandle.remove()
+			}
+			if (fileDrainHandle) {
+				fileDrainHandle.remove()
+			}
+
+			// Restore console drain for any subsequent logging
+			const { consoleDrain, logger } = await import('robo.js')
+			logger().setDrain(consoleDrain)
+
+			// Save the recording to disk so it can be replayed later
+			// We intentionally do NOT delete the session - sessions are kept alive so developers can:
+			// - Connect to them after tests complete
+			// - Inspect state in the Stage UI
+			// - Use the replay feature
+			// Sessions will be cleaned up when the mock server restarts.
+			try {
+				const config = getMockConfig()
+				const response = await fetch(`${config.controlUrl}/sessions/${sessionId}/recording`, {
+					method: 'POST'
+				})
+				if (response.ok) {
+					// Update the registry with the recording path so replay button is enabled
+					setTestFileRecordingPath(sessionId, `${sessionId}.json`)
+				}
+			} catch {
+				// Recording save failed, but don't block the stop
 			}
 		}
 	}
@@ -583,4 +1014,31 @@ async function waitForBotConnection(
 	}
 
 	throw new Error(`Bot not connected after ${timeout}ms`)
+}
+
+/**
+ * Wait for the bot to disconnect from the gateway (connections count reaches 0).
+ */
+async function waitForBotDisconnect(sessionId: string, timeout: number): Promise<void> {
+	const startTime = Date.now()
+	const config = getMockConfig()
+	const url = `${config.controlUrl}/sessions/${sessionId}`
+
+	while (Date.now() - startTime < timeout) {
+		try {
+			const response = await fetch(url)
+			if (response.ok) {
+				const data = (await response.json()) as { connections?: number }
+				if (!data.connections || data.connections <= 0) {
+					return
+				}
+			}
+		} catch {
+			// Server not ready yet
+		}
+
+		await sleep(200)
+	}
+
+	throw new Error(`Bot did not disconnect after ${timeout}ms`)
 }

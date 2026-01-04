@@ -752,6 +752,14 @@ async function handleInteractionWebhook(request: RoboRequest, appId: string, tok
 	}
 	interaction.followupMessageIds.push(message.id)
 
+	// 10b. Dispatch MESSAGE_CREATE event so the followup message appears in Stage UI
+	const apiMessage = mockMessageToAPIMessage(message, session.state.botUser)
+	const dispatchData: Record<string, unknown> = { ...apiMessage }
+	if (interaction.guildId) {
+		dispatchData.guild_id = interaction.guildId
+	}
+	await session.dispatch('MESSAGE_CREATE', dispatchData)
+
 	// 11. Record as 'interaction_followup' action
 	session.recorder.record(
 		'interaction_followup',

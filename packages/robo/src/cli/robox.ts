@@ -59,9 +59,14 @@ async function handler() {
 	const parsed = parseScriptArgs(process.argv)
 	const logger = defaultLogger({ level: parsed.verbose ? 'debug' : 'info' }).fork('robox')
 
+	// Infer environment mode from robo subcommand (dev → development, others → production)
+	// This ensures the correct .env.{mode} file is loaded before spawning the child process
+	const roboSubcommand = parsed.mode === 'robo' ? parsed.command?.[0] : undefined
+	const envMode = roboSubcommand === 'dev' ? 'development' : 'production'
+
 	// Load environment variables first
 	logger.debug('Loading environment variables...')
-	await Env.load()
+	await Env.load({ mode: envMode })
 
 	switch (parsed.mode) {
 		case 'script':

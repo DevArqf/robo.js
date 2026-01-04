@@ -1,0 +1,129 @@
+---
+title: "AI"
+description: "Core AI interface for Robo.js"
+---
+
+# Variable: AI
+
+```ts
+const AI: object;
+```
+
+The core AI interface. Use this to call AI features programatically.
+
+## Methods
+
+### chat()
+
+```ts
+chat: (messages, options) => Promise<void>;
+```
+
+Start an AI chat session with streaming responses.
+
+#### Parameters
+
+| Parameter | Type | Description |
+| --------- | ---- | ----------- |
+| `messages` | `ChatMessage[]` | Array of chat messages to send to the AI |
+| `options` | `ChatOptions` | Configuration for the chat session |
+
+#### Returns
+
+`Promise<void>`
+
+### chatSync()
+
+```ts
+chatSync: (messages, options) => Promise<ChatReply>;
+```
+
+Start an AI chat session but wait for the complete response.
+
+#### Parameters
+
+| Parameter | Type | Description |
+| --------- | ---- | ----------- |
+| `messages` | `ChatMessage[]` | Array of chat messages to send to the AI |
+| `options` | `Omit<ChatOptions, "onReply">` | Configuration for the chat session (without onReply handler) |
+
+#### Returns
+
+`Promise<ChatReply>` - The complete response from the AI
+
+### generateImage()
+
+```ts
+generateImage: (options) => Promise<GenerateImageResult>;
+```
+
+Generate an image using AI.
+
+#### Parameters
+
+| Parameter | Type | Description |
+| --------- | ---- | ----------- |
+| `options` | `GenerateImageOptions` | Configuration for image generation |
+
+#### Returns
+
+`Promise<GenerateImageResult>` - The result containing the generated image
+
+### isReady()
+
+```ts
+isReady: () => boolean;
+```
+
+Check if the AI service is ready to use.
+
+#### Returns
+
+`boolean` - True if the AI service is initialized and ready to use
+
+## Example
+
+```ts
+import { AI } from '@robojs/ai'
+
+// Check if AI is ready to use
+if (AI.isReady()) {
+  // Generate a chat response
+  await AI.chat([
+    { role: 'user', content: 'Hello, how are you?' }
+  ], {
+    onReply: (reply) => {
+      console.log(reply.content)
+    }
+  })
+  
+  // Generate an image
+  const imageResult = await AI.generateImage({
+    prompt: 'A cute robot in a garden',
+    size: '1024x1024'
+  })
+  
+  console.log('Image URL:', imageResult.url)
+}
+```
+
+## ChatMessage Type
+
+| Property | Type | Description |
+| -------- | ---- | ----------- |
+| `role` | `'user' \| 'assistant' \| 'system'` | The role of the message sender |
+| `content` | `string` | The content of the message |
+
+## ChatOptions Type
+
+| Property | Type | Description |
+| -------- | ---- | ----------- |
+| `onReply` | `(reply: ChatReply) => void` | Callback function for handling replies |
+| `model` | `string` | Optional model to use for the chat |
+| `temperature` | `number` | Optional temperature setting (0-1) |
+
+## Notes
+
+- The AI variable is a singleton - the same instance is used throughout your application
+- The AI capabilities require proper configuration in your Robo.js project
+- Image generation may not be available in all environments or configurations

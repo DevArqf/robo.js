@@ -1,7 +1,8 @@
 import { useMemo, useState, useCallback } from 'react'
 import type { StageMember, StageRole, StageUser, StageApplicationCommand } from '../../types/stage'
-import { useSession } from '../../hooks/useSession'
+import { useStageData } from '../../hooks/useStageData'
 import { useContextMenu } from '../../hooks/useContextMenu'
+import { getAvatarUrl } from '../../utils/avatar'
 import { UserProfilePopout } from './UserProfilePopout'
 import { ContextMenu } from '../context/ContextMenu'
 import styles from './MemberList.module.css'
@@ -19,7 +20,7 @@ interface MemberGroup {
 
 export function MemberList({ members, roles }: MemberListProps) {
 	const [selectedMember, setSelectedMember] = useState<StageMember | null>(null)
-	const { commands, invokeContextCommand, openDM } = useSession()
+	const { commands, invokeContextCommand, openDM } = useStageData()
 	const { menu: contextMenu, showMenu: showContextMenu, hideMenu: hideContextMenu } = useContextMenu()
 
 	// Context menu handlers
@@ -217,11 +218,15 @@ function MemberItem({ member, color, onClick, onContextMenu }: MemberItemProps) 
 	return (
 		<div className={styles.member} onClick={onClick} onContextMenu={(e) => onContextMenu(e, user)}>
 			<div className={styles.avatar}>
-				{user.avatar ? (
-					<img src={getAvatarUrl(user.id, user.avatar)} alt="" className={styles.avatarImage} />
-				) : (
-					<div className={styles.defaultAvatar}>{displayName[0].toUpperCase()}</div>
-				)}
+				<img
+					src={getAvatarUrl(user.id, user.avatar ?? null)}
+					alt=""
+					className={styles.avatarImage}
+					onError={(e) => {
+						const target = e.target as HTMLImageElement
+						target.src = getAvatarUrl(user.id, null)
+					}}
+				/>
 				<span className={`${styles.statusDot} ${styles[status]}`} />
 			</div>
 			<div className={styles.info}>
@@ -258,13 +263,6 @@ function getActivityText(activities?: { name: string; type: number; state?: stri
 	}
 	const prefix = prefixes[activity.type] ?? ''
 	return prefix + activity.name
-}
-
-function getAvatarUrl(userId: string, avatar: string): string {
-	if (avatar.startsWith('http') || avatar.startsWith('data:')) {
-		return avatar
-	}
-	return `https://cdn.discordapp.com/avatars/${userId}/${avatar}.png?size=32`
 }
 
 function VerifiedCheckIcon() {

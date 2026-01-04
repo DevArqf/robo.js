@@ -1,0 +1,55 @@
+---
+title: "Godot"
+description: A Discord Activity template for Godot games.
+---
+
+# Godot
+
+Build Discord Activities with the **Godot** game engine. This template provides the integration layer between Godot HTML5 exports and Discord's Embedded App SDK.
+
+<Cards>
+  <Card href="https://godotengine.org/" title="Godot" description="Open-source game engine." />
+  <Card href="/docs/discord-activities" title="Documentation" description="Getting started with Robo.js" />
+</Cards>
+
+## Getting Started
+
+Create a project with this template:
+
+```package-install
+npx create-robo <project-name> --template discord-activities/godot
+```
+
+Then navigate into your project directory:
+
+```bash
+cd <project-name>
+```
+
+Run development mode:
+
+```bash
+npm run dev
+```
+
+## Godot Setup
+
+1. Create your Godot project separately
+2. Configure it for HTML5 export
+3. Build and copy the output to `/public/godot`
+4. The Robo.js wrapper handles Discord SDK integration
+
+## Discord SDK Integration
+
+The template includes JavaScript bridge code that communicates between Godot and Discord.
+
+## Hosting
+
+```bash
+npm run deploy
+```
+
+<Cards>
+  <Card href="/docs/hosting/roboplay" title="RoboPlay" description="Deploy with as little as one command." />
+  <Card href="https://github.com/Wave-Play/robo.js/tree/main/templates/discord-activities/godot" title="GitHub Repository" description="Explore source code on GitHub." />
+</Cards>

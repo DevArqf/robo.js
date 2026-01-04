@@ -1,9 +1,9 @@
 import { execSync } from 'node:child_process'
 import { getServerEngine } from '@robojs/server'
-import type { StartContext, HandlerEntry } from 'robo.js'
-import { Manifest, getPluginOptions } from 'robo.js'
+import type { StartContext, DrainHandle } from 'robo.js'
+import { logger } from 'robo.js'
+import { emit, isCapable } from 'robo.js/ipc'
 import { getStageBridge } from '../core/stage-bridge.js'
-import { getStageServer } from '../core/stage.js'
 import { startVoiceGateway, VOICE_GATEWAY_PORT } from '../core/voice-gateway.js'
 import { mockLogger } from '../core/logger.js'
 import { getMockModeState } from './init.js'
@@ -13,12 +13,20 @@ import { resolveBotUser } from '../utils/bot-user-resolver.js'
 import { DEFAULT_MOCK_PLUGIN_CONFIG, type MockPluginConfig } from '../types/plugin.js'
 import { registerWebSocketHandlers, areHandlersRegistered, markHandlersRegistered } from './prepare.js'
 import type { Session } from '../session/session.js'
+import { createSessionLogDrain } from '../session/log-drain.js'
+import type { SessionLogLevel } from '../types/index.js'
 
 /**
  * Global reference to the mock mode session.
  * Used for shutdown cleanup and summary.
  */
 let mockModeSession: Session | null = null
+
+/**
+ * Global reference to the log drain handle.
+ * Used for cleanup when the session ends.
+ */
+let mockModeLogDrainHandle: DrainHandle | null = null
 
 /**
  * Gets the current mock mode session (if any).
@@ -33,6 +41,11 @@ export function getMockModeSession(): Session | null {
  * Called during cleanup.
  */
 export function clearMockModeSession(): void {
+	// Clean up log drain if it exists
+	if (mockModeLogDrainHandle) {
+		mockModeLogDrainHandle.remove()
+		mockModeLogDrainHandle = null
+	}
 	mockModeSession = null
 }
 
@@ -48,7 +61,7 @@ export default async (context: StartContext<MockPluginConfig>) => {
 	const config = { ...DEFAULT_MOCK_PLUGIN_CONFIG, ...pluginConfig }
 
 	// In standalone mode, skip all start hook logic.
-	// The CLI command (robo mock) manages server lifecycle directly.
+	// The CLI command (robo mock start) manages server lifecycle directly.
 	if (process.env.__ROBO_MOCK_STANDALONE === 'true') {
 		mockLogger.debug('Standalone mode - start hook deferred to CLI command')
 		return
@@ -123,13 +136,50 @@ export default async (context: StartContext<MockPluginConfig>) => {
 			config: sessionConfig
 		})
 
-		// Register commands to mock server via HTTP
-		await registerCommandsToMockServer(mockModeSession)
+		// Override DISCORD_TOKEN with the mock session token.
+		// This ensures @robojs/discordjs uses the correct token format for REST API calls.
+		// The mock server expects tokens in a specific format that includes the session ID.
+		process.env.DISCORD_TOKEN = mockModeSession.token
+		mockLogger.debug('Set DISCORD_TOKEN to mock session token for REST API authentication')
 
-		// Refresh Stage UI state after commands are registered
-		// This ensures connected clients see the real commands, not stale seed data
-		const stageServer = getStageServer()
-		stageServer.refreshSessionState(mockModeSession.id)
+		// Override DISCORD_CLIENT_ID to match the session's application ID.
+		// This ensures command registration works even with fake/missing credentials.
+		// The session's applicationId is derived from the resolved bot user (real API, explicit config, or generated).
+		process.env.DISCORD_CLIENT_ID = mockModeSession.state.applicationId
+		mockLogger.debug('Set DISCORD_CLIENT_ID to match session applicationId for command registration')
+
+		// Wire log drain to capture logs from the Robo process
+		// This enables the Stage UI to display logs in real-time
+		const sessionForDrain = mockModeSession
+		const logDrain = createSessionLogDrain({
+			sessionId: sessionForDrain.id,
+			connectionId: 'dev-mode', // Single connection in dev mode
+			botInfo: {
+				userId: resolvedBotUser.config.id,
+				username: resolvedBotUser.config.username
+			},
+			onLog: (entry) => {
+				// Record to session's log recorder which forwards to Stage UI
+				sessionForDrain.recordLog(entry)
+			}
+		})
+
+		// Capture cutoff time before drain processes new logs
+		const drainCutoff = Date.now()
+
+		// Add drain to the main logger and store handle for cleanup
+		mockModeLogDrainHandle = logger().addDrain(logDrain, `mock-session-${sessionForDrain.id}`)
+
+		// Replay buffered historical logs (from before drain was installed)
+		replayHistoricalLogs(sessionForDrain, drainCutoff, {
+			id: resolvedBotUser.config.id ?? '',
+			username: resolvedBotUser.config.username ?? 'MockBot'
+		})
+
+		mockLogger.debug('Log drain installed for dev mode')
+
+		// Commands are registered by @robojs/discordjs in its start hook
+		// Stage UI gets state via state_sync when it connects
 
 		// Log the Stage UI URL for easy access
 		const stageUrl = getStageUIUrl(mockModeSession.token)
@@ -140,11 +190,18 @@ export default async (context: StartContext<MockPluginConfig>) => {
 			// Small delay to ensure server is fully ready
 			await new Promise((resolve) => setTimeout(resolve, 500))
 
-			try {
-				openBrowser(stageUrl)
-				mockLogger.debug('Opened Stage UI in browser')
-			} catch (error) {
-				mockLogger.warn(`Could not open browser: ${(error as Error).message}`)
+			// Try IPC first (for sandboxed environments like WebContainers)
+			if (isCapable('open:url')) {
+				emit('open:url', { url: stageUrl, target: 'preview', source: 'mock-stage' })
+				mockLogger.debug('Emitted IPC open:url for Stage UI')
+			} else {
+				// Fallback to native browser open
+				try {
+					openBrowser(stageUrl)
+					mockLogger.debug('Opened Stage UI in browser')
+				} catch (error) {
+					mockLogger.warn(`Could not open browser: ${(error as Error).message}`)
+				}
 			}
 		}
 	}
@@ -170,142 +227,57 @@ function openBrowser(url: string): void {
 }
 
 /**
- * Register commands to the mock server via HTTP.
- * Uses the same Discord.js REST client but pointed at the mock server.
- * This ensures the mock server's REST API is properly tested.
+ * Replays buffered historical logs to the session.
+ * These are logs that occurred before the drain was installed.
  */
-async function registerCommandsToMockServer(session: Session): Promise<void> {
-	try {
-		// Dynamically import @robojs/discordjs (it's optional but expected in mock mode)
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const discordjs: any = await import('@robojs/discordjs' as string).catch(() => null)
-		if (!discordjs) {
-			mockLogger.debug('Skipping command registration - @robojs/discordjs not installed')
-			return
-		}
+function replayHistoricalLogs(
+	session: Session,
+	cutoffTime: number,
+	botUser: { id: string; username: string }
+): void {
+	// Get buffered logs (returns newest-first, may contain undefined slots)
+	const bufferedLogs = logger().getRecentLogs(100)
 
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const { REST, Routes } = await import('discord.js') as any
+	// Filter and reverse to get chronological order
+	const historicalLogs = bufferedLogs
+		.filter((entry) => entry && entry.timestamp.getTime() < cutoffTime)
+		.reverse()
 
-		// Load command entries from manifest
-		const commandEntries = await Manifest.routes('discordjs', 'commands')
-		const contextEntries = await Manifest.routes('discordjs', 'context')
-
-		if (commandEntries.length === 0 && contextEntries.length === 0) {
-			mockLogger.debug('No commands to register to mock server')
-			return
-		}
-
-		// Convert entries to command format
-		const commands = entriesToCommands(commandEntries)
-		const userContext = entriesToContext(contextEntries, 'user')
-		const messageContext = entriesToContext(contextEntries, 'message')
-
-		// Get Discord config for defaults
-		const discordConfig = getPluginOptions('@robojs/discordjs') as Record<string, unknown> | undefined
-
-		// Build command structures using @robojs/discordjs utilities
-		const slashCommands = discordjs.buildSlashCommands(commands, discordConfig)
-		const userContextCommands = discordjs.buildContextCommands(userContext, 'user', discordConfig)
-		const messageContextCommands = discordjs.buildContextCommands(messageContext, 'message', discordConfig)
-
-		const commandData = [
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			...slashCommands.map((cmd: any) => cmd.toJSON()),
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			...userContextCommands.map((cmd: any) => cmd.toJSON()),
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			...messageContextCommands.map((cmd: any) => cmd.toJSON())
-		]
-
-		if (commandData.length === 0) {
-			mockLogger.debug('No commands to register')
-			return
-		}
-
-		// Create REST client pointed at mock server
-		const mockApiUrl = process.env.DISCORD_REST_API
-		if (!mockApiUrl) {
-			mockLogger.warn('DISCORD_REST_API not set - cannot register commands to mock server')
-			return
-		}
-
-		const rest = new REST({ version: '10' }).setToken(session.token)
-
-		// Override the API URL to point to mock server
-		rest.options.api = mockApiUrl
-
-		// Register commands using bulk PUT (same as Discord API)
-		const clientId = session.state.applicationId
-		await rest.put(Routes.applicationCommands(clientId), { body: commandData })
-
-		mockLogger.info(`Registered ${commandData.length} commands to mock server`)
-	} catch (error) {
-		mockLogger.warn(`Failed to register commands to mock server: ${(error as Error).message}`)
-		mockLogger.debug('Command registration error:', error)
-	}
-}
-
-/**
- * Convert handler entries to command format.
- * Copied from @robojs/discordjs build/complete.ts to avoid tight coupling.
- */
-function entriesToCommands(entries: HandlerEntry[]): Record<string, Record<string, unknown>> {
-	const commands: Record<string, Record<string, unknown>> = {}
-
-	for (const entry of entries) {
-		const keyParts = entry.key.split(' ')
-		const rootName = keyParts[0]
-
-		if (keyParts.length === 1) {
-			// Top-level command
-			commands[rootName] = {
-				...entry.metadata
-			}
-		} else if (keyParts.length === 2) {
-			// Subcommand
-			if (!commands[rootName]) {
-				commands[rootName] = { subcommands: {} }
-			}
-			if (!commands[rootName].subcommands) {
-				commands[rootName].subcommands = {}
-			}
-			;(commands[rootName].subcommands as Record<string, unknown>)[keyParts[1]] = entry.metadata
-		} else if (keyParts.length === 3) {
-			// Subcommand group
-			if (!commands[rootName]) {
-				commands[rootName] = { subcommands: {} }
-			}
-			if (!commands[rootName].subcommands) {
-				commands[rootName].subcommands = {}
-			}
-			const subcommands = commands[rootName].subcommands as Record<string, Record<string, unknown>>
-			if (!subcommands[keyParts[1]]) {
-				subcommands[keyParts[1]] = { subcommands: {} }
-			}
-			if (!subcommands[keyParts[1]].subcommands) {
-				subcommands[keyParts[1]].subcommands = {}
-			}
-			;(subcommands[keyParts[1]].subcommands as Record<string, unknown>)[keyParts[2]] = entry.metadata
-		}
+	if (historicalLogs.length === 0) {
+		return
 	}
 
-	return commands
-}
+	mockLogger.debug(`Replaying ${historicalLogs.length} historical logs`)
 
-/**
- * Convert handler entries to context menu format.
- * Copied from @robojs/discordjs build/complete.ts to avoid tight coupling.
- */
-function entriesToContext(entries: HandlerEntry[], type: 'user' | 'message'): Record<string, Record<string, unknown>> {
-	const contextType = type === 'user' ? 2 : 3
-	const result: Record<string, Record<string, unknown>> = {}
+	for (const entry of historicalLogs) {
+		// Build message from data array (same as log-drain.ts)
+		const message = entry.data
+			.map((item) => {
+				if (item instanceof Error) {
+					return `${item.message}${item.stack ? '\n' + item.stack : ''}`
+				}
+				if (typeof item === 'string') {
+					return item
+				}
+				try {
+					return JSON.stringify(item)
+				} catch {
+					return '[unserializable]'
+				}
+			})
+			.join(' ')
 
-	for (const entry of entries) {
-		if ((entry.metadata as Record<string, unknown>)?.contextType === contextType) {
-			result[entry.key] = entry.metadata as Record<string, unknown>
-		}
+		// Record to session (id will be assigned by LogRecorder)
+		session.recordLog({
+			timestamp: entry.timestamp.getTime(),
+			level: entry.level as SessionLogLevel,
+			message,
+			source: {
+				connectionId: 'dev-mode',
+				sessionId: session.id,
+				botUserId: botUser.id,
+				botUsername: botUser.username
+			}
+		})
 	}
-
-	return result
 }

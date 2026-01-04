@@ -1,6 +1,6 @@
 import { initTRPC } from '@trpc/server'
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch'
-import { serverPrefix } from '../../events/_start.js'
+import { serverPrefix } from '../../robo/start.js'
 import { trpcLogger } from '../../core/loggers.js'
 import type { RoboReply, RoboRequest } from '@robojs/server'
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSession } from '../../hooks/useSession'
+import { useStageData } from '../../hooks/useStageData'
 import styles from './ConnectionStatusOverlay.module.css'
 
 interface ConnectionStatusOverlayProps {
@@ -8,12 +8,12 @@ interface ConnectionStatusOverlayProps {
 }
 
 export function ConnectionStatusOverlay({ onChangeSession }: ConnectionStatusOverlayProps) {
-	const { isConnected, isConnecting, hasGivenUp, isSessionInvalid, retryCount, retry, error } = useSession()
+	const { isConnected, isConnecting, hasGivenUp, isSessionInvalid, retryCount, retry, error, isPlaybackMode } = useStageData()
 	const [isCollapsed, setIsCollapsed] = useState(false)
 
 	// Keyboard shortcut: Cmd/Ctrl+K to change session
 	useEffect(() => {
-		if (isConnected) return
+		if (isConnected || isPlaybackMode) return
 
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -24,10 +24,11 @@ export function ConnectionStatusOverlay({ onChangeSession }: ConnectionStatusOve
 
 		window.addEventListener('keydown', handleKeyDown)
 		return () => window.removeEventListener('keydown', handleKeyDown)
-	}, [isConnected, onChangeSession])
+	}, [isConnected, isPlaybackMode, onChangeSession])
 
-	// Don't show anything if connected
-	if (isConnected) {
+	// Don't show anything if connected OR in playback mode
+	// Playback mode intentionally disconnects since we're viewing recorded data
+	if (isConnected || isPlaybackMode) {
 		return null
 	}
 

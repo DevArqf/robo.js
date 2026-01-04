@@ -1,0 +1,137 @@
+---
+title: Middleware
+description: Intercept and modify commands and events before they execute
+---
+
+In the heart of your Robo, there lies a potent feature known as Middleware. These are functions that are executed before each and every command or event, granting you the ability to manipulate data, introduce conditional flows, and even halt execution of events or commands based on custom criteria.
+
+They are like the night's watch, ever-vigilant before every event and command, including those nested inside modules and plugins!
+
+<Callout type="warn" title="Experimental">
+Middleware is still an experimental feature, and the API might change before we hit v1. Presently, it operates for all events, but future updates could let you specify target events. Stay tuned for updates!
+</Callout>
+
+## Crafting Middleware
+
+Crafting middleware for your Robo is simple and straightforward. Create files inside the `/src/middleware` directory. The filenames don't really matter but remember they run alphabetically. Number prefixes can control the order (like `01-preliminary.js`). Even if placed inside modules, middleware files still impact your entire Robo!
+
+<Files>
+  <Folder name="src" defaultOpen disabled>
+    <Folder name="middleware" defaultOpen>
+      <File name="01-check-roles.js" />
+      <File name="02-set-timestamp.js" />
+      <File name="03-example-logger.js" />
+    </Folder>
+  </Folder>
+</Files>
+
+## The MiddlewareData Parcel
+
+Each middleware function gets a `MiddlewareData{:ts}` object which contains a `payload{:ts}` array and a `record{:ts}` object. The `payload{:ts}` carries interaction objects that are passed to the event or command, while `record{:ts}` provides insights about what's being intercepted.
+
+The `record{:ts}` object has key information:
+
+- `auto{:ts}` shows if the record was automatically generated.
+- `handler{:ts}` is a reference to the file handling the interaction. It usually contains a `default{:ts}` function and might have a `config{:ts}` object.
+- `key{:ts}` is a unique string representing a command or event. Subcommands appear as `'parent/child'{:ts}`.
+- `module{:ts}` points to the module of the record. Nested modules appear as `'parent/child'{:ts}`.
+- `path{:ts}` locates the handler file.
+- `plugin{:ts}` contains name and path if the record is part of a plugin.
+- `type{:ts}` indicates if the record is a 'command', 'context', or 'event'.
+
+## Manipulating Payloads
+
+Middleware is empowered to mutate the interaction objects, thus impacting the way events and commands behave:
+
+<Tabs groupId="examples-script" items={['Javascript', 'Typescript']} persist>
+  <Tab value="Javascript">
+```javascript title="/src/middleware/01-example.middleware.js" showLineNumbers
+export default function (data) {
+	const [interaction] = data.payload
+	interaction.middlewareTimestamp = Date.now()
+}
+```
+  </Tab>
+  <Tab value="Typescript">
+```typescript title="/src/middleware/01-example.middleware.ts" showLineNumbers
+export default function (data: MiddlewareData) {
+	const [interaction] = data.payload
+	interaction.middlewareTimestamp = Date.now()
+}
+```
+  </Tab>
+</Tabs>
+
+## Gatekeeping with Middleware
+
+Middleware can be a gatekeeper, deciding if an event or command should proceed. If a middleware function returns `{ abort: true }{:ts}`, the event or command execution is halted. Here's an example:
+
+<Tabs groupId="examples-script" items={['Javascript', 'Typescript']} persist>
+  <Tab value="Javascript">
+```javascript title="/src/middleware/02-example.middleware.js" showLineNumbers
+import { isModuleEnabled } from './utils.js'
+
+export default async function (data) {
+	const moduleStatus = await isModuleEnabled(data.record.module)
+
+	if (!moduleStatus) {
+		return { abort: true }
+	}
+}
+```
+  </Tab>
+  <Tab value="Typescript">
+```typescript title="/src/middleware/02-example.middleware.ts" showLineNumbers
+import { isModuleEnabled } from './utils.js'
+
+export default async function (data: MiddlewareData) {
+	const moduleStatus = await isModuleEnabled(data.record.module)
+
+	if (!moduleStatus) {
+		return { abort: true }
+	}
+}
+```
+  </Tab>
+</Tabs>
+
+## Command Control with Middleware
+
+This ability can be leveraged for user roles-based access control:
+
+<Tabs groupId="examples-script" items={['Javascript', 'Typescript']} persist>
+  <Tab value="Javascript">
+```javascript title="/src/middleware/03-admin.middleware.js" showLineNumbers
+export default function (data) {
+	const [interaction] = data.payload
+	const userRoles = interaction.member.roles.cache.map((role) => role.name)
+
+	if (data.record.key.startsWith('admin/') && !userRoles.includes('Admin')) {
+		interaction.reply('Sorry, this command is only for Admins!')
+		return { abort: true }
+	}
+}
+```
+  </Tab>
+  <Tab value="Typescript">
+```typescript title="/src/middleware/03-admin.middleware.ts" showLineNumbers
+export default function (data: MiddlewareData) {
+	const [interaction] = data.payload
+	const userRoles = interaction.member.roles.cache.map((role) => role.name)
+
+	if (data.record.key.startsWith('admin/') && !userRoles.includes('Admin')) {
+		interaction.reply('Sorry, this command is only for Admins!')
+		return { abort: true }
+	}
+}
+```
+  </Tab>
+</Tabs>
+
+## Efficient Middleware
+
+Remember to keep your middleware lean and efficient. The execution of events and commands is on hold until middleware finishes. Keep the bot responsive!
+
+## Error Handling
+
+A crucial thing to note is that any errors thrown within a middleware will halt the execution of the associated event or command. Therefore, it's essential to implement robust error handling within your middleware to prevent unwanted disruptions.

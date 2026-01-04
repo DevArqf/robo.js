@@ -1,0 +1,80 @@
+---
+title: "React (JavaScript)"
+description: A JavaScript Discord Activity template using React.
+---
+
+# React (JavaScript)
+
+Welcome to your fresh **[Robo.js](https://robojs.dev)** project!
+
+Build, deploy, and maintain your **Discord Activities** with ease. With **Robo.js** as your guide, you'll experience a seamless, **[file-based setup](/docs/discord-activities/file-structure)**, an **[integrated database](/docs/robojs/flashcore)**, and a **[rich ecosystem](/docs/plugins)**.
+
+<Cards>
+  <Card href="/docs/discord-activities" title="Documentation" description="Getting started with Robo.js" />
+  <Card href="https://robojs.dev/discord" title="Discord" description="Robo - Imagine Magic" />
+</Cards>
+
+## Getting Started
+
+Create a project with this template:
+
+```package-install
+npx create-robo <project-name> --template discord-activities/react-js
+```
+
+Then navigate into your project directory:
+
+```bash
+cd <project-name>
+```
+
+Run development mode:
+
+```bash
+npm run dev
+```
+
+<Callout>
+A free Cloudflare tunnel is included for easy testing.
+</Callout>
+
+<Cards>
+  <Card href="/docs/discord-activities/beginner-guide" title="Beginner Guide" description="New to Discord Activities with Robo? Start here!" />
+  <Card href="/docs/robojs/mode#default-modes" title="Run Modes" description="Define profiles for your Robo session." />
+</Cards>
+
+## App Development
+
+You can find your client-side code in the `/src/app` folder. This is where you can build your web app using React.
+
+Things are powered by Vite under the hood, so you get the latest ES modules, hot module reloading, and more!
+
+## Backend Development
+
+Your server-side code is located in the `/src/api` folder. This is where you can build your API, webhooks, and other server-side features.
+
+This backend is powered by [**@robojs/server**](/docs/plugins/server).
+
+```js
+export default () => {
+	return { status: 'ok' }
+}
+```
+
+## Hosting
+
+```bash
+npm run deploy
+```
+
+<Cards>
+  <Card href="/docs/hosting/roboplay" title="RoboPlay" description="Deploy with as little as one command." />
+  <Card href="/docs/hosting" title="Self-Hosting" description="Learn how to host and maintain it yourself." />
+</Cards>
+
+## Learn More
+
+<Cards>
+  <Card href="/templates" title="Explore Templates" description="Discover more templates for a quick start." />
+  <Card href="https://github.com/Wave-Play/robo.js/tree/main/templates/discord-activities/react-js" title="GitHub Repository" description="Explore source code on GitHub." />
+</Cards>

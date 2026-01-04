@@ -4,7 +4,7 @@ import { sessionManager } from '../../../../core/manager.js'
 import { parseMockToken } from '../../../../utils/id.js'
 import { createMockChannel } from '../../../../session/state.js'
 import { mockChannelToAPIChannel } from '../../../../discord/payloads.js'
-import { getGatewayServer } from '../../../../core/gateway.js'
+import { getStageServer } from '../../../../core/stage.js'
 import { enforcePermissions } from '../../../../utils/permission-check.js'
 
 /**
@@ -163,9 +163,9 @@ export default async (request: RoboRequest) => {
 			}
 		)
 
-		// Dispatch CHANNEL_CREATE event
+		// Dispatch CHANNEL_CREATE event (uses session.dispatch to reach both gateway and stage)
 		const apiChannel = mockChannelToAPIChannel(channel)
-		getGatewayServer().dispatchToSession(session.id, 'CHANNEL_CREATE', apiChannel, guildId)
+		await session.dispatch('CHANNEL_CREATE', apiChannel)
 
 		// Return the channel object directly (Robo.js server will serialize it)
 		return apiChannel
@@ -211,9 +211,9 @@ export default async (request: RoboRequest) => {
 					channel.parentId = update.parent_id
 				}
 
-				// Dispatch CHANNEL_UPDATE for each updated channel
+				// Dispatch CHANNEL_UPDATE for each updated channel (uses session.dispatch to reach both gateway and stage)
 				const apiChannel = mockChannelToAPIChannel(channel)
-				getGatewayServer().dispatchToSession(session.id, 'CHANNEL_UPDATE', apiChannel, guildId)
+				await session.dispatch('CHANNEL_UPDATE', apiChannel)
 			}
 		}
 
@@ -228,6 +228,16 @@ export default async (request: RoboRequest) => {
 				endpoint: `PATCH /guilds/${guildId}/channels`,
 				method: 'PATCH'
 			}
+		)
+
+		// Broadcast control action for toast notification
+		const stageServer = getStageServer()
+		stageServer.broadcastControlAction(
+			session.id,
+			'channel_reorder',
+			'Channels were reordered',
+			'success',
+			{ type: 'user', name: 'Stage UI' }
 		)
 
 		// Return all channels for this guild

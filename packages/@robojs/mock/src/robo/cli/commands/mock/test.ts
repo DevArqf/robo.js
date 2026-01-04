@@ -224,7 +224,7 @@ function detectTestRunner(): 'jest' | 'node' {
  */
 async function startMockServer(port: number, verbose?: boolean): Promise<ChildProcess> {
 	return new Promise((resolve, reject) => {
-		const args = ['mock', '--port', String(port), '--no-browser']
+		const args = ['mock', 'start', '--port', String(port), '--no-browser']
 		if (verbose) {
 			args.push('--verbose')
 		}

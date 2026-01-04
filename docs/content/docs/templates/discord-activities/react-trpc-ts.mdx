@@ -1,0 +1,65 @@
+---
+title: "tRPC"
+description: A Discord Activity template with tRPC for type-safe APIs.
+---
+
+# tRPC
+
+A Discord Activity template using **tRPC** for end-to-end type-safe APIs.
+
+<Cards>
+  <Card href="https://trpc.io/" title="tRPC" description="End-to-end type-safe APIs." />
+  <Card href="/docs/plugins/trpc" title="@robojs/trpc" description="tRPC plugin for Robo.js." />
+</Cards>
+
+## Getting Started
+
+Create a project with this template:
+
+```package-install
+npx create-robo <project-name> --template discord-activities/react-trpc-ts
+```
+
+Then navigate into your project directory:
+
+```bash
+cd <project-name>
+```
+
+Run development mode:
+
+```bash
+npm run dev
+```
+
+## Features
+
+- tRPC pre-configured
+- End-to-end type safety
+- React Query integration
+- TypeScript support
+
+## How It Works
+
+Define your API procedures in the server and call them from the client with full type safety:
+
+```typescript
+// Server
+export const appRouter = router({
+  hello: publicProcedure.query(() => 'Hello, world!')
+})
+
+// Client
+const { data } = trpc.hello.useQuery()
+```
+
+## Hosting
+
+```bash
+npm run deploy
+```
+
+<Cards>
+  <Card href="/docs/hosting/roboplay" title="RoboPlay" description="Deploy with as little as one command." />
+  <Card href="https://github.com/Wave-Play/robo.js/tree/main/templates/discord-activities/react-trpc-ts" title="GitHub Repository" description="Explore source code on GitHub." />
+</Cards>

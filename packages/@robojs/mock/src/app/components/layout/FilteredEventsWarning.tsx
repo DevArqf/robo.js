@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useSession } from '../../hooks/useSession'
+import { useStageData } from '../../hooks/useStageData'
 import { usePlaybackControls } from '../../stores/playbackStore'
 import type { FilteredEvent, LoopWarning } from '../../stores/sessionStore'
 import styles from './FilteredEventsWarning.module.css'
@@ -14,7 +14,8 @@ const LOOP_WARNING_DISPLAY_MS = 60_000
  * Each event is clickable to jump to that moment in playback.
  */
 export function FilteredEventsWarning() {
-	const { filteredEvents, clearFilteredEvents, loopWarning, clearLoopWarning } = useSession()
+	const { filteredEvents, clearFilteredEvents, loopWarning, clearLoopWarning } = useStageData()
+	// Keep usePlaybackControls for seeking/events access (raw playback functionality)
 	const { events: recordedEvents, setMode, seek } = usePlaybackControls()
 	const [isOpen, setIsOpen] = useState(false)
 	const [isCooldownActive, setIsCooldownActive] = useState(true)

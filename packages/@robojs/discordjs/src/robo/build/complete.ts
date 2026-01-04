@@ -3,16 +3,22 @@
  *
  * Runs after manifest generation. Handles:
  * - Metadata aggregation for permissions, intents, scopes
- * - Command/context menu registration with Discord API
+ * - Command/context menu registration with Discord API (with hash-based caching)
  * - Intent inference and validation
  * - Discord build summary output
  */
+import crypto from 'node:crypto'
 import type { BuildCompleteContext, HandlerEntry, ProcessedEntry } from 'robo.js'
-import { color, Env } from 'robo.js'
+import { color, Env, Flashcore, Mode } from 'robo.js'
 import { GatewayIntentBits, REST } from 'discord.js'
 import { discordLogger } from '../../core/logger.js'
 import { inferIntents, getIntentNames, REQUIRED_INTENTS } from '../../core/intents.js'
-import { buildSlashCommands, buildContextCommands, registerCommandsToDiscord } from '../../core/commands.js'
+import {
+	buildSlashCommands,
+	buildContextCommands,
+	registerCommandsToDiscord,
+	FLASHCORE_KEY_COMMAND_HASH_PREFIX
+} from '../../core/commands.js'
 import type { DiscordConfig, DiscordjsAggregatedMetadata } from '../../types/index.js'
 
 // Indigo color for context menus
@@ -36,10 +42,67 @@ const intentBitToName = Object.fromEntries(
 		.map(([key, value]) => [value, key])
 ) as Record<number, string>
 
+/**
+ * Recursively sorts object keys for deterministic JSON output.
+ * Also converts BigInt values to strings since JSON.stringify cannot serialize BigInt.
+ */
+function sortObjectKeys(obj: unknown): unknown {
+	if (obj === null || typeof obj !== 'object') {
+		// Convert BigInt to string for JSON serialization
+		if (typeof obj === 'bigint') {
+			return obj.toString()
+		}
+		return obj
+	}
+	if (Array.isArray(obj)) {
+		return obj.map(sortObjectKeys)
+	}
+	const sorted: Record<string, unknown> = {}
+	for (const key of Object.keys(obj).sort()) {
+		sorted[key] = sortObjectKeys((obj as Record<string, unknown>)[key])
+	}
+	return sorted
+}
+
+/**
+ * Compute a hash of command data from manifest entries.
+ * Includes credentials to ensure hash differs when switching bots.
+ */
+export function computeCommandHash(
+	commandEntries: ProcessedEntry[],
+	contextEntries: ProcessedEntry[],
+	defaults: DiscordConfig['defaults'] | undefined,
+	clientId: string,
+	token: string,
+	guildId: string | undefined
+): string {
+	const data = {
+		clientId,
+		token,
+		guildId: guildId ?? null,
+		defaults: defaults ?? {},
+		commands: commandEntries.map((e) => ({ key: e.key, metadata: e.metadata })),
+		context: contextEntries.map((e) => ({ key: e.key, metadata: e.metadata }))
+	}
+
+	// Sort keys recursively for deterministic output
+	const hashInput = JSON.stringify(sortObjectKeys(data))
+
+	return crypto.createHash('sha256').update(hashInput).digest('hex').slice(0, 16)
+}
+
+/**
+ * Get the Flashcore key for storing command hash.
+ */
+function getCommandHashKey(guildId: string | undefined): string {
+	const scope = guildId ? `guild:${guildId}` : 'global'
+	return `${FLASHCORE_KEY_COMMAND_HASH_PREFIX}${scope}`
+}
+
 export default async function (context: BuildCompleteContext) {
 	const { entries, mode, store, registerMetadataAggregator } = context
 	const discordConfig = context.config as unknown as DiscordConfig | undefined
-	const envData = Env.data()
+	const envData = Env.data() ?? {}
 
 	// Register metadata aggregator for discordjs namespace
 	registerMetadataAggregator<DiscordjsAggregatedMetadata>('discordjs', (handlerEntries, pluginDefaults) => {
@@ -53,8 +116,10 @@ export default async function (context: BuildCompleteContext) {
 
 	discordLogger.debug(`Found ${commandEntries.length} commands, ${contextEntries.length} context menus, ${eventEntries.length} events`)
 
-	// Print Discord build summary
-	printDiscordSummary(commandEntries, contextEntries, eventEntries)
+	// Print Discord build summary (skip in dev mode)
+	if (!Mode.isDev()) {
+		printDiscordSummary(commandEntries, contextEntries, eventEntries)
+	}
 
 	// Analyze and validate intents
 	const eventNames = eventEntries.map((e: ProcessedEntry) => e.key)
@@ -70,7 +135,7 @@ export default async function (context: BuildCompleteContext) {
 
 	// Skip registration in mock mode - commands will be registered to mock server at runtime
 	if (process.env.ROBO_MOCK_MODE === 'true') {
-		discordLogger.debug('Mock mode detected - skipping real Discord API registration')
+		discordLogger.debug('Mock mode - deferring registration to start hook')
 		return
 	}
 
@@ -102,10 +167,56 @@ export default async function (context: BuildCompleteContext) {
 		return
 	}
 
-	// Build command structures
-	const clientId = envData.DISCORD_CLIENT_ID!
-	const token = envData.DISCORD_TOKEN!
-	const guildId = envData.DISCORD_GUILD_ID ?? discordConfig?.testServers?.[0]
+	// Get credentials
+	// Fallback to process.env for tools like Doppler that inject directly
+	const clientId = envData.DISCORD_CLIENT_ID ?? process.env.DISCORD_CLIENT_ID
+	const token = envData.DISCORD_TOKEN ?? process.env.DISCORD_TOKEN
+	const guildId = envData.DISCORD_GUILD_ID ?? process.env.DISCORD_GUILD_ID ?? discordConfig?.testServers?.[0]
+
+	if (!clientId || !token) {
+		discordLogger.warn('Cannot register commands: missing DISCORD_CLIENT_ID or DISCORD_TOKEN')
+		return
+	}
+	const scope = guildId ? `guild ${guildId}` : 'global'
+
+	// Compute hash from manifest data (includes credentials to detect bot changes)
+	const currentHash = computeCommandHash(
+		commandEntries,
+		contextEntries,
+		discordConfig?.defaults,
+		clientId,
+		token,
+		guildId
+	)
+	discordLogger.debug(`Command hash: ${currentHash} (scope: ${scope})`)
+
+	// Ensure Flashcore is initialized for build-time use
+	// (normally initialized at runtime, but we need it during build for caching)
+	try {
+		await Flashcore.$init({})
+	} catch {
+		// Already initialized or failed - continue anyway
+	}
+
+	// Check cached hash to skip registration if unchanged
+	const hashKey = getCommandHashKey(guildId)
+	const cachedHash = await Flashcore.get<string>(hashKey)
+
+	// Allow forcing re-registration via CLI flag (--force) or environment variable
+	const forceRegister = process.env.DISCORD_FORCE_REGISTER === 'true'
+
+	if (cachedHash === currentHash && !forceRegister) {
+		discordLogger.debug('Cached hash matches, skipping registration')
+		return
+	}
+
+	if (forceRegister) {
+		discordLogger.info('Force registration requested via --force flag')
+	}
+
+	// Hash differs or no cached hash - need to register
+	const reason = cachedHash ? 'Commands changed' : 'No cached commands'
+	discordLogger.info(`${reason}, registering with Discord...`)
 
 	try {
 		// Convert entries to command format
@@ -126,6 +237,8 @@ export default async function (context: BuildCompleteContext) {
 
 		if (commandData.length === 0) {
 			discordLogger.debug('No commands to register')
+			// Still store hash so subsequent builds with no commands hit cache
+			await Flashcore.set(hashKey, currentHash)
 			return
 		}
 
@@ -133,9 +246,13 @@ export default async function (context: BuildCompleteContext) {
 		const rest = new REST({ version: '10' }).setToken(token)
 		await registerCommandsToDiscord(rest, clientId, guildId, commandData, false)
 
-		const scope = guildId ? `guild ${guildId}` : 'global'
 		discordLogger.info(`Registered ${commandData.length} ${scope} commands`)
+
+		// Store hash after successful registration
+		await Flashcore.set(hashKey, currentHash)
+		discordLogger.debug(`Stored command hash: ${currentHash}`)
 	} catch (error) {
+		// Don't store hash on failure - retry on next build
 		discordLogger.error('Failed to register Discord commands:', error)
 	}
 }

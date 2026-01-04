@@ -7,13 +7,13 @@
 
 export const MOCK_CONFIG = {
 	/** REST API URL (without /v10 - discord.js adds it) */
-	REST_URL: process.env.MOCK_REST_URL ?? 'http://localhost:3000/api',
+	REST_URL: process.env.MOCK_REST_URL ?? 'http://localhost:3000/mock/api',
 
 	/** WebSocket Gateway URL */
 	WS_URL: process.env.MOCK_WS_URL ?? 'ws://localhost:3000',
 
 	/** Control API URL */
-	CONTROL_URL: process.env.MOCK_CONTROL_URL ?? 'http://localhost:3000/api/control',
+	CONTROL_URL: process.env.MOCK_CONTROL_URL ?? 'http://localhost:3000/mock/api/control',
 
 	/** Server port */
 	SERVER_PORT: parseInt(process.env.MOCK_PORT ?? '3000', 10),

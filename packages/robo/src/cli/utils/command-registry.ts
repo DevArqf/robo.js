@@ -87,6 +87,7 @@ export const COMMANDS: CommandMetadata[] = [
 		description: 'Ready, set, code your Robo to life! Starts development mode.',
 		options: [
 			{ alias: '-h', name: '--help', description: 'Shows the available command options' },
+			{ alias: '-H', name: '--hmr', description: 'Enable hot module replacement for handlers (experimental)' },
 			{ alias: '-id', name: '--instance-id', description: 'specify the instance ID to use' },
 			{ alias: '-l', name: '--log-level', description: 'specify the log level to use (debug, info, warn, error)' },
 			{ alias: '-m', name: '--mode', description: 'specify the mode(s) to run in (dev, beta, prod, etc...)' },
@@ -159,6 +160,13 @@ export const COMMANDS: CommandMetadata[] = [
 		options: [{ alias: '-i', name: '--inspect', description: 'Show all registered CLI commands and extensions' }],
 		positionalArgs: true,
 		modulePath: '../commands/cli.js'
+	},
+	{
+		name: 'db',
+		description: 'Manage Flashcore database schemas and migrations.',
+		options: [],
+		hasSubcommands: true,
+		modulePath: '../commands/db/index.js'
 	}
 ]
 
@@ -242,6 +250,16 @@ export function createLazyCommand(meta: CommandMetadata): Command {
 					}
 				}
 			}
+
+			// Load environment variables before running extension hooks
+			// This ensures plugins can access env vars like DISCORD_TOKEN in their before hooks
+			const { Env } = await import('../../core/env.js')
+			const { resolveCliMode } = await import('../../core/mode.js')
+			// Infer default mode from command name - dev uses development, others use production
+			// This ensures the correct .env.{mode} file is loaded before the command handler runs
+			const inferredMode = meta.name === 'dev' ? 'development' : 'production'
+			const envMode = resolveCliMode((context.options as Record<string, unknown>).mode as string | undefined) ?? inferredMode
+			await Env.load({ mode: envMode })
 
 			// Run before hooks (highest priority first, already sorted)
 			for (const ext of extensions) {

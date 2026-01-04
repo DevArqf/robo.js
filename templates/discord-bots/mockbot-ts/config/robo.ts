@@ -4,6 +4,5 @@ export default <Config>{
 	clientOptions: {
 		intents: ['Guilds', 'GuildMessages']
 	},
-	plugins: ['@robojs/mock', '@robojs/discordjs', '@robojs/server'],
 	type: 'robo'
 }

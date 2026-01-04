@@ -39,6 +39,22 @@ const config: Config = {
 			moduleNameMapper: {
 				'^(\\.{1,2}/.*)\\.js$': '$1'
 			}
+		},
+		{
+			displayName: 'hmr',
+			testMatch: ['<rootDir>/__tests__/hmr/**/*.test.ts'],
+			transform: {
+				'^.+\\.tsx?$': [
+					'ts-jest',
+					{
+						useESM: true
+					}
+				]
+			},
+			extensionsToTreatAsEsm: ['.ts'],
+			moduleNameMapper: {
+				'^(\\.{1,2}/.*)\\.js$': '$1'
+			}
 		}
 	],
 
@@ -49,8 +65,8 @@ const config: Config = {
 	// Shared settings
 	verbose: true,
 	testEnvironment: 'node',
-	// Longer timeout for integration tests
-	testTimeout: 30000
+	// Longer timeout for integration and HMR tests
+	testTimeout: 120000
 }
 
 export default config

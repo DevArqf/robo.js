@@ -1,0 +1,229 @@
+/* Panel container - right side panel that pushes content */
+.panel {
+	display: flex;
+	flex-direction: column;
+	background: var(--background-secondary);
+	border-left: 1px solid var(--background-modifier-accent);
+	animation: slideInRight 0.15s ease;
+	position: relative;
+	min-width: 320px;
+	max-width: 60vw;
+}
+
+.panel.closing {
+	animation: slideOutRight 0.15s ease forwards;
+}
+
+@keyframes slideInRight {
+	from {
+		transform: translateX(100%);
+		opacity: 0;
+	}
+	to {
+		transform: translateX(0);
+		opacity: 1;
+	}
+}
+
+@keyframes slideOutRight {
+	from {
+		transform: translateX(0);
+		opacity: 1;
+	}
+	to {
+		transform: translateX(100%);
+		opacity: 0;
+	}
+}
+
+/* Resize handle on left edge */
+.resizeHandle {
+	position: absolute;
+	top: 0;
+	left: 0;
+	bottom: 0;
+	width: 8px;
+	cursor: ew-resize;
+	z-index: 10;
+	transform: translateX(-50%);
+}
+
+.resizeHandle::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 50%;
+	bottom: 0;
+	width: 1px;
+	background: var(--background-modifier-accent);
+	transform: translateX(-50%);
+	transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.resizeHandle:hover::before {
+	transform: translateX(-50%) scaleX(4);
+	background: var(--brand-500);
+}
+
+/* Header */
+.header {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 12px;
+	background: var(--background-tertiary);
+	border-bottom: 1px solid var(--background-modifier-accent);
+}
+
+.headerTop {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.count {
+	font-weight: 400;
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.closeButton {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	border-radius: var(--radius-sm);
+	color: var(--text-muted);
+	transition: all 0.1s ease;
+}
+
+.closeButton:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+/* Controls row */
+.controls {
+	display: flex;
+	gap: 8px;
+	align-items: stretch;
+}
+
+.searchBar {
+	flex: 1;
+	min-width: 0;
+}
+
+.timePicker {
+	flex-shrink: 0;
+}
+
+/* Column headers */
+.columnHeaders {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 6px 12px;
+	font-size: 10px;
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	background: var(--background-primary);
+	border-bottom: 1px solid var(--background-modifier-accent);
+}
+
+.colTime {
+	flex-shrink: 0;
+	width: 180px;
+}
+
+.colSource {
+	flex-shrink: 0;
+	width: 80px;
+}
+
+.colLevel {
+	flex-shrink: 0;
+	width: 60px;
+}
+
+.colMessage {
+	flex: 1;
+	min-width: 0;
+}
+
+/* Log list */
+.logList {
+	flex: 1;
+	overflow-y: auto;
+	overflow-x: hidden;
+	background: var(--background-primary);
+}
+
+.empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 48px 16px;
+	color: var(--text-muted);
+	font-size: 13px;
+	flex-direction: column;
+	gap: 8px;
+}
+
+/* Scroll to bottom button */
+.scrollToBottom {
+	position: absolute;
+	bottom: 16px;
+	left: 50%;
+	transform: translateX(-50%);
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 12px;
+	background: var(--brand-500);
+	color: white;
+	font-size: 12px;
+	font-weight: 500;
+	border-radius: var(--radius-md);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+	transition: all 0.15s ease;
+	z-index: 10;
+}
+
+.scrollToBottom:hover {
+	background: var(--brand-600);
+}
+
+/* Responsive - overlay panel on small screens */
+@media (max-width: 768px) {
+	.panel {
+		position: fixed;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 200;
+		box-shadow: -4px 0 16px rgba(0, 0, 0, 0.4);
+		min-width: 280px;
+		max-width: 90vw;
+	}
+
+	.columnHeaders {
+		display: none;
+	}
+
+	.controls {
+		flex-direction: column;
+	}
+}

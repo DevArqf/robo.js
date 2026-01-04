@@ -163,7 +163,7 @@ function getPluginData(pluginName: string): PluginData | undefined {
  * Print error response to Discord (development mode only)
  */
 function printErrorResponse(error: unknown, firstArg: unknown, message?: string): void {
-	const DEBUG_MODE = Mode.get() === 'development'
+	const DEBUG_MODE = Mode.isDev()
 
 	// Don't print errors in production
 	if (!DEBUG_MODE) {

@@ -1,18 +1,25 @@
 import { useCallback, useState, useEffect } from 'react'
 import { usePlaybackControls, type RecordedEvent } from '../../stores/playbackStore'
-import { useSession } from '../../hooks/useSession'
+import { useStageData } from '../../hooks/useStageData'
 import { useSessionDispatch, type PendingInteraction } from '../../stores/sessionStore'
 import { useToaster } from '../common/Toaster'
 import type { StageEventType, StageMessage, StageChannel, StageMember, StageGuild, StateSyncPayload } from '../../types/stage'
 import styles from './ToolsPanel.module.css'
 
 export function ToolsPanel() {
-	const { selectedChannelId, selectedGuildId, sessionId } = useSession()
+	const { selectedChannelId, selectedGuildId, sessionId } = useStageData()
 	const sessionDispatch = useSessionDispatch()
 	const { addEvents } = usePlaybackControls()
 	const { showToast } = useToaster()
 	const [isGenerating, setIsGenerating] = useState(false)
 	const [loopProtectionEnabled, setLoopProtectionEnabled] = useState(true)
+
+	// Rate limit simulation state
+	const [rateLimitEnabled, setRateLimitEnabled] = useState(false)
+	const [rateLimitRetryAfter, setRateLimitRetryAfter] = useState(1)
+	const [rateLimitPersistent, setRateLimitPersistent] = useState(false)
+	const [rateLimitScope, setRateLimitScope] = useState<'all' | 'messages' | 'interactions' | 'guilds' | 'channels'>('all')
+	const [rateLimitTriggeredCount, setRateLimitTriggeredCount] = useState(0)
 
 	// Detect API prefix from current URL (e.g., /mock/stage -> /mock)
 	const getApiPrefix = useCallback(() => {
@@ -68,6 +75,78 @@ export function ToolsPanel() {
 			showToast('Failed to toggle loop protection', 'error')
 		}
 	}, [sessionId, loopProtectionEnabled, getApiPrefix, showToast])
+
+	// Fetch initial rate limit status
+	useEffect(() => {
+		if (!sessionId) return
+
+		const fetchRateLimitStatus = async () => {
+			const apiPrefix = getApiPrefix()
+			try {
+				const response = await fetch(`${apiPrefix}/api/control/sessions/${sessionId}/rate-limit`)
+				if (response.ok) {
+					const data = await response.json()
+					setRateLimitEnabled(data.enabled)
+					setRateLimitRetryAfter(data.retry_after)
+					setRateLimitPersistent(data.persistent)
+					setRateLimitScope(data.scope)
+					setRateLimitTriggeredCount(data.triggered_count || 0)
+				}
+			} catch {
+				// Ignore errors - default to disabled
+			}
+		}
+
+		fetchRateLimitStatus()
+	}, [sessionId, getApiPrefix])
+
+	// Update rate limit settings
+	const updateRateLimit = useCallback(async (updates: {
+		enabled?: boolean
+		retry_after?: number
+		persistent?: boolean
+		scope?: 'all' | 'messages' | 'interactions' | 'guilds' | 'channels'
+	}) => {
+		if (!sessionId) {
+			showToast('No active session', 'warning')
+			return
+		}
+
+		const apiPrefix = getApiPrefix()
+
+		try {
+			const response = await fetch(`${apiPrefix}/api/control/sessions/${sessionId}/rate-limit`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					enabled: updates.enabled ?? rateLimitEnabled,
+					retry_after: updates.retry_after ?? rateLimitRetryAfter,
+					persistent: updates.persistent ?? rateLimitPersistent,
+					scope: updates.scope ?? rateLimitScope
+				})
+			})
+
+			if (response.ok) {
+				const data = await response.json()
+				setRateLimitEnabled(data.enabled)
+				setRateLimitRetryAfter(data.retry_after)
+				setRateLimitPersistent(data.persistent)
+				setRateLimitScope(data.scope)
+				setRateLimitTriggeredCount(0) // Reset count on update
+
+				if (updates.enabled !== undefined) {
+					showToast(
+						`Rate limit simulation ${data.enabled ? 'enabled' : 'disabled'}`,
+						data.enabled ? 'warning' : 'success'
+					)
+				}
+			} else {
+				showToast('Failed to update rate limit settings', 'error')
+			}
+		} catch {
+			showToast('Failed to update rate limit settings', 'error')
+		}
+	}, [sessionId, rateLimitEnabled, rateLimitRetryAfter, rateLimitPersistent, rateLimitScope, getApiPrefix, showToast])
 
 	// Generate test data for visual testing (moved from PlaybackControls)
 	const generateTestData = useCallback(async () => {
@@ -765,7 +844,8 @@ export function ToolsPanel() {
 			messages: {},
 			users: testUsers,
 			commands: [],
-			voice_states: []
+			voice_states: [],
+			currentUser: testUser1
 		}
 
 		// Add state_sync as the first event
@@ -937,6 +1017,86 @@ export function ToolsPanel() {
 					<p className={styles.warning}>
 						Loop protection is disabled. The server will not prevent infinite loops.
 					</p>
+				)}
+			</section>
+
+			{/* Rate Limit Simulation */}
+			<section className={styles.section}>
+				<h3 className={styles.sectionTitle}>
+					<ClockIcon /> Rate Limit Simulation
+				</h3>
+				<p className={styles.description}>
+					Simulate Discord API rate limits to test bot retry logic.
+				</p>
+				<div className={styles.toggleRow}>
+					<label className={styles.toggleLabel}>
+						<span>Status</span>
+						<button
+							className={`${styles.toggleButton} ${rateLimitEnabled ? styles.enabled : styles.disabled}`}
+							onClick={() => updateRateLimit({ enabled: !rateLimitEnabled })}
+							title={rateLimitEnabled ? 'Click to disable rate limit' : 'Click to enable rate limit'}
+						>
+							<span className={styles.toggleIcon}>
+								{rateLimitEnabled ? <ToggleCheckIcon /> : <ToggleOffIcon />}
+							</span>
+							<span className={styles.toggleText}>
+								{rateLimitEnabled ? 'Active' : 'Disabled'}
+							</span>
+						</button>
+					</label>
+				</div>
+				<div className={styles.inputRow}>
+					<span>Retry After</span>
+					<input
+						type="number"
+						min={1}
+						max={60}
+						value={rateLimitRetryAfter}
+						onChange={(e) => {
+							const value = Math.max(1, Math.min(60, parseInt(e.target.value) || 1))
+							setRateLimitRetryAfter(value)
+							updateRateLimit({ retry_after: value })
+						}}
+						title="Retry-After value in seconds"
+					/>
+					<span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>sec</span>
+				</div>
+				<div className={styles.toggleRow}>
+					<label className={styles.toggleLabel}>
+						<span>Mode</span>
+						<button
+							className={`${styles.toggleButton} ${rateLimitPersistent ? styles.enabled : styles.disabled}`}
+							onClick={() => updateRateLimit({ persistent: !rateLimitPersistent })}
+							title={rateLimitPersistent ? 'Persistent: keeps returning 429' : 'One-shot: auto-disables after first 429'}
+						>
+							<span className={styles.toggleText}>
+								{rateLimitPersistent ? 'Persistent' : 'One-shot'}
+							</span>
+						</button>
+					</label>
+				</div>
+				<div className={styles.selectRow}>
+					<span>Scope</span>
+					<select
+						value={rateLimitScope}
+						onChange={(e) => updateRateLimit({ scope: e.target.value as typeof rateLimitScope })}
+						title="Which endpoints to rate limit"
+					>
+						<option value="all">All Endpoints</option>
+						<option value="messages">Messages</option>
+						<option value="interactions">Interactions</option>
+						<option value="guilds">Guilds</option>
+						<option value="channels">Channels</option>
+					</select>
+				</div>
+				{rateLimitEnabled && (
+					<div className={styles.activeIndicator}>
+						<span className={styles.pulsingDot} />
+						<span>
+							Rate limit active - next {rateLimitScope === 'all' ? '' : rateLimitScope + ' '}request returns 429
+							{rateLimitTriggeredCount > 0 && ` (triggered ${rateLimitTriggeredCount}×)`}
+						</span>
+					</div>
 				)}
 			</section>
 
@@ -1782,6 +1942,15 @@ function ShieldIcon() {
 		<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
 			<path d="M5.338 1.59a61.44 61.44 0 0 0-2.837.856.481.481 0 0 0-.328.39c-.554 4.157.726 7.19 2.253 9.188a10.725 10.725 0 0 0 2.287 2.233c.346.244.652.42.893.533.12.057.218.095.293.118a.55.55 0 0 0 .101.025.615.615 0 0 0 .1-.025c.076-.023.174-.061.294-.118.24-.113.547-.29.893-.533a10.726 10.726 0 0 0 2.287-2.233c1.527-1.997 2.807-5.031 2.253-9.188a.48.48 0 0 0-.328-.39c-.651-.213-1.75-.56-2.837-.855C9.552 1.29 8.531 1.067 8 1.067c-.53 0-1.552.223-2.662.524zM5.072.56C6.157.265 7.31 0 8 0s1.843.265 2.928.56c1.11.3 2.229.655 2.887.87a1.54 1.54 0 0 1 1.044 1.262c.596 4.477-.787 7.795-2.465 9.99a11.775 11.775 0 0 1-2.517 2.453 7.159 7.159 0 0 1-1.048.625c-.28.132-.581.24-.877.24s-.596-.108-.877-.24a7.158 7.158 0 0 1-1.048-.625 11.777 11.777 0 0 1-2.517-2.453C1.928 10.487.545 7.169 1.141 2.692A1.54 1.54 0 0 1 2.185 1.43 62.456 62.456 0 0 1 5.072.56z" />
 			<path d="M10.854 5.146a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 1 1 .708-.708L7.5 7.793l2.646-2.647a.5.5 0 0 1 .708 0z" />
+		</svg>
+	)
+}
+
+function ClockIcon() {
+	return (
+		<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+			<path d="M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5z" />
+			<path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z" />
 		</svg>
 	)
 }

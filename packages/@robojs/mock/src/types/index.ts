@@ -47,6 +47,12 @@ export interface Session {
 	reset(): void
 	startAutoArchive(intervalMs?: number): void
 	stopAutoArchive(): void
+
+	// Log Recording
+	recordLog(entry: Omit<SessionLogEntry, 'id'>): SessionLogEntry
+	getLogs(): SessionLogEntry[]
+	getLogsSince(timestamp: number): SessionLogEntry[]
+	clearLogs(): void
 }
 
 /**
@@ -81,6 +87,14 @@ export interface SessionState {
 	botUser: MockUser
 	applicationId: Snowflake
 	sequence: number
+
+	// Current User Management
+	/** Current "acting" user for Stage UI interactions (separate from botUser) */
+	currentUser: MockUser
+	/** Update the current user's properties without changing their ID */
+	updateCurrentUser(updates: Partial<Omit<MockUser, 'id'>>): MockUser
+	/** Switch to a different user as the current user */
+	switchCurrentUser(userId: Snowflake): MockUser | undefined
 
 	// Sequence Management
 	nextSequence(): number
@@ -333,6 +347,16 @@ export interface ConnectionState {
 	lastHeartbeat: number
 	heartbeatInterval: number
 	missedHeartbeats: number
+	/**
+	 * Per-connection bot identity (resolved during IDENTIFY)
+	 * Each bot connection gets its own identity, auto-detected from Discord token or generated
+	 */
+	botUser?: MockUser
+	/**
+	 * Original Discord token for identity resolution
+	 * Stored so we can fetch the bot's real identity from Discord API
+	 */
+	realToken?: string
 }
 
 // ============================================================================
@@ -364,6 +388,8 @@ export interface SessionConfig {
 	commands?: MockApplicationCommandConfig[]
 	/** Maximum number of recorded actions before LRU eviction (default: 10000) */
 	maxActions?: number
+	/** Maximum number of recorded logs before LRU eviction (default: 10000) */
+	maxLogs?: number
 	/**
 	 * Whether to filter events based on declared intents.
 	 * - false (default): All events sent regardless of intents
@@ -392,6 +418,53 @@ export interface SessionConfig {
 	 * Useful for testing permission error handling in your bot.
 	 */
 	permissionEnforcement?: 'none' | 'basic' | 'strict'
+}
+
+/**
+ * Permission override for testing permission scenarios
+ * Allows granting or denying specific permissions to users/roles
+ */
+export interface PermissionOverride {
+	/** Unique identifier for this override */
+	id: string
+	/** User ID to apply override to, or '*' for all users */
+	userId: string
+	/** Optional channel ID scope (null = guild-wide) */
+	channelId?: string | null
+	/** Optional guild ID scope */
+	guildId?: string | null
+	/** Permission values: 'grant' | 'deny' | 'inherit' */
+	permissions: Record<string, 'grant' | 'deny' | 'inherit'>
+	/** Optional TTL timestamp for auto-cleanup */
+	expiresAt?: number | null
+	/** When the override was created */
+	createdAt: number
+	/** Optional note explaining why the override exists */
+	reason?: string
+}
+
+/**
+ * Permission denied event data for Stage UI
+ */
+export interface PermissionDeniedEvent {
+	/** Session ID */
+	sessionId: string
+	/** Timestamp of the denial */
+	timestamp: number
+	/** HTTP method */
+	method: string
+	/** Request path */
+	path: string
+	/** Missing permission name(s) */
+	missingPermissions: string[]
+	/** Discord error code */
+	code: number
+	/** Error message */
+	message: string
+	/** Channel ID context (if applicable) */
+	channelId?: string
+	/** Guild ID context (if applicable) */
+	guildId?: string
 }
 
 /**
@@ -477,6 +550,8 @@ export interface MockChannel {
 	rtcRegion?: string | null // Voice channel region
 	videoQualityMode?: number | null // Voice channel video quality (1 = auto, 2 = full)
 	defaultAutoArchiveDuration?: number // Default thread auto-archive duration
+	/** For DM channels: IDs of the users in this DM (always 2 for regular DMs) */
+	recipientIds?: Snowflake[]
 }
 
 /**
@@ -1453,6 +1528,8 @@ export interface MockMessageCall {
 export interface MockMessageInteractionMetadata {
 	id: Snowflake
 	type: number
+	/** Command name for slash commands (Stage UI extension) */
+	name?: string
 	user: MockUser
 	authorizing_integration_owners?: Record<number, Snowflake>
 	original_response_message_id?: Snowflake
@@ -1735,6 +1812,10 @@ export interface MockUser {
 	globalName: string | null
 	avatar: string | null
 	bot: boolean
+	/** User's online status (for Stage UI display) */
+	status?: 'online' | 'offline' | 'idle' | 'dnd'
+	/** User's activities (for Stage UI display) */
+	activities?: Array<{ name: string; type: number; state?: string; url?: string }>
 }
 
 /**
@@ -1747,6 +1828,10 @@ export interface MockUserConfig {
 	globalName?: string | null
 	avatar?: string | null
 	bot?: boolean
+	/** User's online status (for Stage UI display) */
+	status?: 'online' | 'offline' | 'idle' | 'dnd'
+	/** User's activities (for Stage UI display) */
+	activities?: Array<{ name: string; type: number; state?: string; url?: string }>
 }
 
 // ============================================================================
@@ -1965,6 +2050,71 @@ export interface SessionRecording {
 	initialConfig: SessionConfig
 	/** All recorded actions in order */
 	actions: RecordedAction[]
+	/** Captured logs from connected bots (optional, for log replay) */
+	logs?: SessionLogEntry[]
+}
+
+// ============================================================================
+// Session Log Types (for Logs Panel)
+// ============================================================================
+
+/**
+ * Log level types captured from bots
+ */
+export type SessionLogLevel = 'trace' | 'debug' | 'info' | 'wait' | 'event' | 'ready' | 'warn' | 'error'
+
+/**
+ * A captured log entry from a connected bot
+ */
+export interface SessionLogEntry {
+	/** Unique log entry ID */
+	id: string
+	/** Unix timestamp in milliseconds (for sync with playback) */
+	timestamp: number
+	/** Log level */
+	level: SessionLogLevel
+	/** The log message (may contain ANSI escape codes for colored rendering) */
+	message: string
+	/** Structured data for expandable details (objects, errors, etc.) */
+	data?: unknown[]
+	/** Logger prefix if using forked logger (e.g., 'mock', 'discordjs') */
+	prefix?: string
+	/** Source identifier for multi-bot scenarios */
+	source: LogSource
+}
+
+/**
+ * Identifies which bot/project generated a log entry
+ */
+export interface LogSource {
+	/** Gateway connection ID (unique per bot connection) */
+	connectionId: string
+	/** Session ID this log belongs to */
+	sessionId: string
+	/** Bot user ID (if known) */
+	botUserId?: string
+	/** Bot username for display */
+	botUsername?: string
+}
+
+/**
+ * Interface for log recording and management
+ */
+export interface ILogRecorder {
+	/** Record a new log entry */
+	record(entry: Omit<SessionLogEntry, 'id'>): SessionLogEntry
+	/** Get all logs */
+	getAll(): SessionLogEntry[]
+	/** Get logs since a timestamp */
+	getSince(timestamp: number): SessionLogEntry[]
+	/** Get logs by level */
+	getByLevel(level: SessionLogLevel): SessionLogEntry[]
+	/** Get logs by connection ID (for multi-bot filtering) */
+	getByConnection(connectionId: string): SessionLogEntry[]
+	/** Clear all logs */
+	clear(): void
+	/** Get the number of recorded logs */
+	readonly length: number
 }
 
 /**

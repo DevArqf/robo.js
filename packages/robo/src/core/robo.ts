@@ -1,7 +1,8 @@
 import { registerProcessEvents } from './process.js'
 import { getConfig, loadConfig } from './config.js'
 import { FLASHCORE_KEYS } from './constants.js'
-import { logger, LogLevel } from './logger.js'
+import { consoleDrain, createLevelFilteredDrain, createMultiDrain, logger, LogLevel } from './logger.js'
+import { createFileDrain } from './drains.js'
 import { Env } from './env.js'
 import { executeEventHandler } from './handlers.js'
 import { Nanocore } from '../internal/nanocore.js'
@@ -11,7 +12,7 @@ import { Manifest } from './manifest-api.js'
 import { Mode } from './mode.js'
 import { loadState } from './state.js'
 import { portal, populatePortal } from './portal.js'
-import { isMainThread, parentPort } from 'node:worker_threads'
+import { isMainThread } from 'node:worker_threads'
 import type { PluginData } from '../types/index.js'
 import type { BuildCommandOptions } from '../cli/commands/build/index.js'
 import type { CliContext } from '../types/cli.js'
@@ -36,6 +37,14 @@ export { portal }
 
 // Be careful, plugins may contain sensitive data in their config
 let plugins: Map<string, PluginData>
+
+/**
+ * Get the currently loaded plugins.
+ * @internal - Used by HMR hooks
+ */
+export function getPlugins(): Map<string, PluginData> {
+	return plugins ?? new Map()
+}
 
 interface StartOptions {
 	logLevel?: LogLevel
@@ -71,6 +80,16 @@ async function start(options?: StartOptions) {
 	const pid = process.pid
 	const id = String(process.env.ROBO_INSTANCE_ID ?? pid)
 
+	// In mock test mode (without verbose), suppress console output immediately
+	// This must happen before any other code that might use the logger
+	const isMockTestMode = process.env.ROBO_MOCK_TEST_MODE === 'true'
+	const isMockVerbose = process.env.ROBO_MOCK_VERBOSE === 'true'
+	const noOpDrain = async () => {}
+
+	if (isMockTestMode && !isMockVerbose) {
+		logger({ drain: noOpDrain })
+	}
+
 	try {
 		const { logLevel, stateLoad } = options ?? {}
 
@@ -80,14 +99,61 @@ async function start(options?: StartOptions) {
 
 		// 1. Load config first (needed for plugin list and logger config)
 		const config = await loadConfig()
+
+		// 2. Get mode early (needed for logger setup and init hooks)
+		const mode = Mode.get()
+
+		// Set up file drains based on config
+		const fileDrains: ReturnType<typeof createFileDrain>[] = []
+
+		if (config?.logger?.files?.length) {
+			// Create file drains from config
+			for (const fileConfig of config.logger.files) {
+				fileDrains.push(
+					createFileDrain({
+						path: fileConfig.path,
+						level: fileConfig.level,
+						timestamp: fileConfig.timestamp ?? config.logger.timestamp,
+						maxSize: fileConfig.maxSize,
+						maxFiles: fileConfig.maxFiles,
+						format: fileConfig.format,
+						colorMap: fileConfig.colorMap ?? config.logger.colorMap
+					})
+				)
+			}
+		} else if (config?.logger?.files === undefined && !isMockTestMode) {
+			// Auto-create log file for any mode if files is undefined (not explicitly empty)
+			// Uses .robo/logs/{mode}.log (e.g., .robo/logs/development.log, .robo/logs/production.log)
+			const logMode = mode || 'default'
+			fileDrains.push(
+				createFileDrain({
+					path: `.robo/logs/${logMode}.log`,
+					level: 'debug',
+					timestamp: 'short',
+					colorMap: config?.logger?.colorMap
+				})
+			)
+		}
+
+		// Combine console + file drains
+		// In mock test mode (without verbose), use no-op drain - tests set up their own file drain
+		const baseDrain = isMockTestMode && !isMockVerbose ? noOpDrain : (config?.logger?.drain ?? consoleDrain)
+
+		// When combining with file drains, filter console output to info+ level
+		// This allows file drains to capture debug messages while console stays at info level
+		const consoleLevel = config?.logger?.level ?? 'info'
+		const filteredBaseDrain = fileDrains.length > 0 && baseDrain !== noOpDrain
+			? createLevelFilteredDrain(baseDrain, consoleLevel)
+			: baseDrain
+		const combinedDrain = fileDrains.length > 0 ? createMultiDrain([filteredBaseDrain, ...fileDrains]) : baseDrain
+
 		logger({
-			drain: config?.logger?.drain,
+			drain: combinedDrain,
 			enabled: config?.logger?.enabled,
 			level: logLevel ?? config?.logger?.level
 		}).debug('Starting Robo...')
 
-		// 2. Get mode and load environment early (needed for init hooks)
-		const mode = Mode.get()
+		// Load environment (needed for init hooks)
 		await Env.load({ mode })
 
 		// 3. Load plugin data early (needed for init hooks)
@@ -170,10 +236,8 @@ async function stop(exitCode = 0, reason?: 'signal' | 'error' | 'restart') {
 		if (isMainThread) {
 			process.exit(exitCode)
 		} else {
+			// Flush logs before returning - spirit message handler will send 'exit' and exit
 			await logger.flush()
-			parentPort?.postMessage({ event: 'stop', payload: 'exit' })
-			parentPort?.close()
-			process.exit(exitCode)
 		}
 	}
 }
@@ -195,11 +259,9 @@ async function restart() {
 		if (isMainThread) {
 			process.exit(0)
 		} else {
+			// Update status and flush logs before returning - spirit message handler will send 'exit' and exit
 			await Nanocore.update('watch', { status: 'restarting' })
 			await logger.flush()
-			parentPort?.postMessage({ event: 'stop', payload: 'exit' })
-			parentPort?.close()
-			process.exit()
 		}
 	}
 }

@@ -1,0 +1,67 @@
+---
+title: "Plugin Starter"
+description: A basic JavaScript plugin template for Robo.js.
+---
+
+# Plugin Starter
+
+A basic JavaScript plugin for Robo.js.
+
+<Cards>
+  <Card href="/docs/framework/plugins/create" title="Creating Plugins" description="Learn how to build plugins." />
+  <Card href="/docs/plugins" title="Plugin Directory" description="Browse existing plugins." />
+</Cards>
+
+## Getting Started
+
+Create a plugin with this template:
+
+```package-install
+npx create-robo <plugin-name> --template plugins/starter-js
+```
+
+Then navigate into your project directory:
+
+```bash
+cd <plugin-name>
+```
+
+Run development mode:
+
+```bash
+npm run dev
+```
+
+## Plugin Structure
+
+```
+/src
+├── /commands      # Slash commands
+├── /events        # Event handlers
+├── /api           # API routes (if server plugin)
+└── index.js       # Plugin exports
+```
+
+## Configuration
+
+Configure your plugin in `robo.mjs`:
+
+```javascript title="robo.mjs"
+export default {
+  // Plugin configuration
+}
+```
+
+## Publishing
+
+Build and publish your plugin to npm:
+
+```bash
+npm run build
+npm publish
+```
+
+<Cards>
+  <Card href="/docs/framework/plugins/create" title="Creating Plugins" description="Full guide to plugin development." />
+  <Card href="https://github.com/Wave-Play/robo.js/tree/main/templates/plugins/starter-js" title="GitHub Repository" description="Explore source code on GitHub." />
+</Cards>

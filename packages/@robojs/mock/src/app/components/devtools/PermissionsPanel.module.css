@@ -1,0 +1,311 @@
+.container {
+	display: flex;
+	flex-direction: row;
+	gap: 24px;
+	padding: 16px;
+	overflow-x: auto;
+	height: 100%;
+}
+
+.section {
+	flex: 0 0 auto;
+	min-width: 220px;
+	max-width: 320px;
+	padding: 12px;
+	background: var(--background-tertiary);
+	border-radius: var(--radius-md);
+	border: 1px solid var(--background-accent);
+}
+
+.sectionHeader {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 0;
+}
+
+.sectionTitle {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0 0 8px 0;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 18px;
+	height: 18px;
+	padding: 0 5px;
+	margin-left: 6px;
+	background: var(--brand-500);
+	color: white;
+	font-size: 11px;
+	font-weight: 600;
+	border-radius: 9px;
+}
+
+.description {
+	margin: 0 0 12px 0;
+	font-size: 12px;
+	color: var(--text-muted);
+	line-height: 1.4;
+}
+
+.runtimeNote {
+	margin: 8px 0 0 0;
+	padding: 6px 8px;
+	background: rgba(88, 101, 242, 0.1);
+	border-radius: var(--radius-sm);
+	font-size: 11px;
+	color: var(--brand-400);
+}
+
+/* Enforcement Level Buttons */
+.levelButtons {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.levelButton {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	padding: 10px 12px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-accent);
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.levelButton:hover {
+	background: var(--background-modifier-hover);
+	border-color: var(--background-modifier-hover);
+}
+
+.levelButton.active {
+	background: var(--brand-500);
+	border-color: var(--brand-560);
+}
+
+.levelLabel {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.levelButton.active .levelLabel {
+	color: white;
+}
+
+.levelDesc {
+	font-size: 10px;
+	color: var(--text-muted);
+	margin-top: 2px;
+}
+
+.levelButton.active .levelDesc {
+	color: rgba(255, 255, 255, 0.7);
+}
+
+/* Quick Actions */
+.quickActions {
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid var(--background-accent);
+}
+
+.quickTitle {
+	margin: 0 0 8px 0;
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+.buttonGroup {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.quickButton {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 6px 10px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-accent);
+	border-radius: var(--radius-sm);
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--text-normal);
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.quickButton:hover {
+	background: var(--background-modifier-hover);
+}
+
+/* Overrides List */
+.overridesList {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-height: 200px;
+	overflow-y: auto;
+}
+
+.overrideItem {
+	padding: 8px;
+	background: var(--background-primary);
+	border-radius: var(--radius-sm);
+	border: 1px solid var(--background-accent);
+}
+
+.overrideHeader {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 6px;
+}
+
+.overrideUser {
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--text-normal);
+}
+
+.removeButton {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	color: var(--text-muted);
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.removeButton:hover {
+	background: var(--background-modifier-hover);
+	color: var(--red-400);
+}
+
+.overridePermissions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.permTag {
+	display: inline-block;
+	padding: 2px 6px;
+	background: var(--background-modifier-accent);
+	border-radius: var(--radius-xs, 2px);
+	font-size: 10px;
+	color: var(--text-muted);
+}
+
+.permTag.grant {
+	background: rgba(67, 181, 129, 0.2);
+	color: var(--green-400);
+}
+
+.permTag.deny {
+	background: rgba(237, 66, 69, 0.2);
+	color: var(--red-400);
+}
+
+.overrideReason {
+	margin: 6px 0 0 0;
+	font-size: 10px;
+	color: var(--text-muted);
+	font-style: italic;
+}
+
+.emptyState {
+	margin: 0;
+	padding: 16px;
+	text-align: center;
+	font-size: 12px;
+	color: var(--text-muted);
+	background: var(--background-primary);
+	border-radius: var(--radius-sm);
+}
+
+/* Events List */
+.eventsList {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	max-height: 200px;
+	overflow-y: auto;
+}
+
+.eventItem {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 8px;
+	background: var(--background-primary);
+	border-radius: var(--radius-sm);
+	font-size: 11px;
+}
+
+.eventTime {
+	color: var(--text-muted);
+	font-family: var(--font-mono);
+	flex-shrink: 0;
+}
+
+.eventMethod {
+	padding: 2px 4px;
+	background: var(--background-modifier-accent);
+	border-radius: var(--radius-xs, 2px);
+	color: var(--text-normal);
+	font-weight: 500;
+	flex-shrink: 0;
+}
+
+.eventPath {
+	color: var(--text-muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	flex: 1;
+	min-width: 0;
+}
+
+.eventMissing {
+	color: var(--red-400);
+	flex-shrink: 0;
+}
+
+.clearButton {
+	padding: 4px 8px;
+	background: transparent;
+	border: 1px solid var(--background-accent);
+	border-radius: var(--radius-sm);
+	font-size: 11px;
+	color: var(--text-muted);
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.clearButton:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}

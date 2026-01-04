@@ -134,7 +134,7 @@ export type PluginRegistry = Record<string, PluginInfo>
 export interface RouteDefinitionConfig {
 	/** Key generation configuration */
 	key: {
-		style: 'filename' | 'filepath'
+		style: 'filename' | 'filepath' | 'parentOrFilename'
 		separator?: string
 		nested?: 'camelCase' | 'dotNotation'
 	}
@@ -172,7 +172,7 @@ export interface RouteDefinition {
 	directory: string
 	/** Key generation configuration */
 	key: {
-		style: 'filename' | 'filepath'
+		style: 'filename' | 'filepath' | 'parentOrFilename'
 		separator?: string
 		nested?: 'camelCase' | 'dotNotation'
 	}

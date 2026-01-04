@@ -1,5 +1,6 @@
 import type { RoboRequest } from '@robojs/server'
 import { sessionManager } from '../../../../../../core/manager.js'
+import { getStageServer } from '../../../../../../core/stage.js'
 import { parseMockToken } from '../../../../../../utils/id.js'
 import { mockCommandToAPICommand } from '../../../../../../discord/payloads.js'
 import { CommandLimits, ApplicationCommandType } from '../../../../../../types/index.js'
@@ -157,6 +158,8 @@ export default async (request: RoboRequest) => {
 			// Discord returns the existing command if name matches (upsert behavior)
 			const updated = session.state.updateCommand(existingCommand.id, body)
 			if (updated) {
+				// Broadcast command update to Stage UI
+				getStageServer().broadcastCommandsUpdate(sessionId)
 				return new Response(JSON.stringify(mockCommandToAPICommand(updated)), {
 					status: 200,
 					headers: { 'Content-Type': 'application/json' }
@@ -203,6 +206,9 @@ export default async (request: RoboRequest) => {
 				method: 'POST'
 			}
 		)
+
+		// Broadcast command update to Stage UI
+		getStageServer().broadcastCommandsUpdate(sessionId)
 
 		return new Response(JSON.stringify(mockCommandToAPICommand(command)), {
 			status: 201,
@@ -287,6 +293,9 @@ export default async (request: RoboRequest) => {
 				method: 'PUT'
 			}
 		)
+
+		// Broadcast command update to Stage UI
+		getStageServer().broadcastCommandsUpdate(sessionId)
 
 		return commands.map((cmd) => mockCommandToAPICommand(cmd))
 	}

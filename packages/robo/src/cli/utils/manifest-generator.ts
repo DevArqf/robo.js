@@ -512,6 +512,7 @@ export class ManifestGenerator {
 
 	private async writeJson(relativePath: string, data: unknown): Promise<void> {
 		const fullPath = path.join(this.basePath, relativePath)
+		await fs.mkdir(path.dirname(fullPath), { recursive: true })
 		await fs.writeFile(fullPath, this.safeStringify(data))
 	}
 
@@ -742,16 +743,19 @@ export class ManifestGenerator {
 	}
 
 	private inferNamespace(pluginName: string): string {
+		// Normalize path separators to forward slashes for Windows compatibility
+		const normalizedName = pluginName.split(path.sep).join('/')
+
 		// @robojs/discord → discord
 		// @robojs/server → server
 		// robo-plugin-analytics → analytics
-		if (pluginName.startsWith('@robojs/')) {
-			return pluginName.replace('@robojs/', '')
+		if (normalizedName.startsWith('@robojs/')) {
+			return normalizedName.replace('@robojs/', '')
 		}
-		if (pluginName.startsWith('robo-plugin-')) {
-			return pluginName.replace('robo-plugin-', '')
+		if (normalizedName.startsWith('robo-plugin-')) {
+			return normalizedName.replace('robo-plugin-', '')
 		}
-		return pluginName
+		return normalizedName
 	}
 
 	private getPluginDefaults(pluginName: string): Record<string, unknown> {

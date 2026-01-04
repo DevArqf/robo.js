@@ -40,11 +40,14 @@ export async function populatePortal(mode: string, options?: PopulateOptions): P
 	// 1. Options override
 	// 2. Config setting (portal.loading)
 	// 3. Default based on mode
+	// 4. Force lazy loading in mock/test mode to avoid Jest ESM module linking issues
 	let eager: boolean
 	if (options?.eager !== undefined) {
 		eager = options.eager
 	} else if (config?.portal?.loading) {
 		eager = config.portal.loading === 'eager'
+	} else if (process.env.ROBO_MOCK_MODE === 'true') {
+		eager = false
 	} else {
 		eager = mode === 'production'
 	}

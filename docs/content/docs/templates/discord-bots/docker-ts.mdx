@@ -1,0 +1,72 @@
+---
+title: "Docker"
+description: A Discord bot starter template containerized with Docker.
+---
+
+# Docker
+
+Starter template containerized with Docker for consistent deployments.
+
+<Cards>
+  <Card href="https://www.docker.com/" title="Docker" description="Container platform." />
+  <Card href="/docs/discord-bots" title="Documentation" description="Getting started with Robo.js" />
+</Cards>
+
+## Getting Started
+
+Create a project with this template:
+
+```package-install
+npx create-robo <project-name> --template discord-bots/docker-ts
+```
+
+Then navigate into your project directory:
+
+```bash
+cd <project-name>
+```
+
+Run with Docker:
+
+```bash
+docker-compose up
+```
+
+Or run locally:
+
+```bash
+npm run dev
+```
+
+## Features
+
+- Dockerfile included
+- docker-compose configuration
+- Multi-stage builds for smaller images
+- Production-ready setup
+
+## Docker Commands
+
+```bash
+# Build the image
+docker build -t my-robo-bot .
+
+# Run the container
+docker run -d my-robo-bot
+
+# Use docker-compose
+docker-compose up -d
+```
+
+## Hosting
+
+Deploy to any Docker-compatible platform or use RoboPlay:
+
+```bash
+npm run deploy
+```
+
+<Cards>
+  <Card href="/docs/hosting/roboplay" title="RoboPlay" description="Deploy with as little as one command." />
+  <Card href="https://github.com/Wave-Play/robo.js/tree/main/templates/discord-bots/docker-ts" title="GitHub Repository" description="Explore source code on GitHub." />
+</Cards>

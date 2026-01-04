@@ -28,6 +28,7 @@ export class Spirits {
 	private spirits: Record<string, Spirit> = {}
 	private taskQueue: Task[] = []
 	private spiritIndex = 0
+	private isShuttingDown = false
 
 	// There are always a limited number of spirits running at once
 	private activeSpirits: Spirit[] = []
@@ -89,6 +90,16 @@ export class Spirits {
 			const retry = spirit.task?.onExit?.(exitCode)
 			spirit.isTerminated = true
 
+			// Don't create new spirits or retry tasks during shutdown
+			if (this.isShuttingDown) {
+				if (exitCode === 0) {
+					spirit.task?.resolve(spirit.id)
+				} else {
+					spirit.task?.reject(new Error(`Spirit exited with error code ${exitCode}`))
+				}
+				return
+			}
+
 			if (retry) {
 				this.newSpirit(spirit)
 				const value = await this.newTask(spirit.task)
@@ -111,6 +122,11 @@ export class Spirits {
 			const spirit = this.spirits[newSpirit.id]
 			spirit.task?.reject(err)
 			spirit.isTerminated = true
+
+			// Don't create new spirits or retry tasks during shutdown
+			if (this.isShuttingDown) {
+				return
+			}
 
 			// Delegate exit callback and check if we should retry
 			const retry = spirit.task?.onExit?.(1)
@@ -232,20 +248,27 @@ export class Spirits {
 
 		// If the worker isn't doing anything or if forced, terminate it immediately
 		if (force || !spirit.task) {
-			spirit.worker.terminate()
-			return Promise.resolve()
+			await spirit.worker.terminate()
+			return
 		}
 
 		// If the worker is busy, send a "stop" message to it and let it terminate itself
 		return new Promise<void>((resolve) => {
-			spirit.worker.once('exit', resolve)
+			// Always wait for the worker to actually exit before resolving
+			// This ensures all logs are written before we continue
+			spirit.worker.once('exit', () => {
+				resolve()
+				// Only create replacement spirits if not shutting down
+				if (!this.isShuttingDown) {
+					this.newSpirit(spirit)
+					this.tryNextTask()
+				}
+			})
 			spirit.worker.on('message', (message: SpiritMessage) => {
 				if (message.payload === 'exit') {
 					spirit.task?.resolve()
 					spirit.isTerminated = true
-					resolve()
-					this.newSpirit(spirit)
-					this.tryNextTask()
+					// Don't resolve here - wait for the 'exit' event above
 				}
 			})
 			spirit.worker.postMessage({ event: 'stop' })
@@ -253,6 +276,7 @@ export class Spirits {
 	}
 
 	public async stopAll() {
+		this.isShuttingDown = true
 		const promises = Object.values(this.spirits).map((spirit) => this.stop(spirit.id))
 		return Promise.all(promises)
 	}

@@ -1,5 +1,6 @@
 import PinIcon from '../icons/pin'
 import { DropdownContainer } from '../base'
+import { assetUrl } from '../../utils/api'
 import styles from './PinnedMessagesDropdown.module.css'
 
 interface PinnedMessage {
@@ -32,7 +33,7 @@ export function PinnedMessagesDropdown({ messages = [], onClose }: PinnedMessage
 					{messages.map((message) => (
 						<div key={message.id} className={styles.messageCard}>
 							<img
-								src={message.authorAvatar || 'https://cdn.discordapp.com/embed/avatars/0.png'}
+								src={message.authorAvatar || assetUrl('/avatars/0.png')}
 								alt={message.authorName}
 								className={styles.avatar}
 							/>

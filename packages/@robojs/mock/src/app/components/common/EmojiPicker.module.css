@@ -1,5 +1,41 @@
 .picker {
 	padding: 8px;
+	min-width: 200px;
+}
+
+.tabs {
+	display: flex;
+	gap: 4px;
+	margin-bottom: 8px;
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--background-modifier-accent);
+}
+
+.tab {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	font-size: 18px;
+	line-height: 1;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	opacity: 0.5;
+	transition: background-color 0.1s ease, opacity 0.1s ease;
+}
+
+.tab:hover {
+	background: var(--background-modifier-hover);
+	opacity: 0.8;
+}
+
+.activeTab {
+	opacity: 1;
+	background: var(--background-modifier-selected);
 }
 
 .grid {
@@ -36,4 +72,22 @@
 .emoji:focus-visible {
 	outline: 2px solid var(--brand-500);
 	outline-offset: -2px;
+}
+
+.emojiImage {
+	object-fit: contain;
+}
+
+.guildSection {
+	min-height: 64px;
+}
+
+.empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-muted);
+	font-size: 12px;
+	padding: 16px 8px;
+	text-align: center;
 }

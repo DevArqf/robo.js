@@ -18,6 +18,11 @@ let _modeColor: Styler | undefined
  *  // Do something
  * }
  *
+ * // Check if running via `robo dev` CLI (regardless of --mode)
+ * if (Mode.isDev()) {
+ *  // Development tooling is available
+ * }
+ *
  * // Colorize text based on the current mode
  * console.log(Mode.color('Hello, world!'))
  * ```
@@ -26,7 +31,7 @@ let _modeColor: Styler | undefined
  *
  * [**Learn more:** Mode](https://robojs.dev/robojs/mode)
  */
-export const Mode = Object.freeze({ color: colorMode, get, is })
+export const Mode = Object.freeze({ color: colorMode, get: getMode, is, isDev })
 
 /**
  * @internal
@@ -147,8 +152,10 @@ export function colorMode(text: string) {
  * This is set by the `--mode` CLI flag.
  *
  * Defaults to `production` for `robo start` and `development` for `robo dev`.
+ *
+ * @internal - Use Mode.get() for public API
  */
-function get(): string {
+export function getMode(): string {
 	// Default to NODE_ENV
 	if (!_mode && process.env.NODE_ENV) {
 		_mode = process.env.NODE_ENV
@@ -164,5 +171,16 @@ function get(): string {
  * @returns `true` if the current mode matches the provided mode.
  */
 function is(mode: string) {
-	return get() === mode
+	return getMode() === mode
+}
+
+/**
+ * Returns true if the Robo was started using the `robo dev` CLI command.
+ * This is independent of the mode setting and custom `--mode` flags.
+ *
+ * Use this to detect development tooling (watcher, HMR, debug features)
+ * rather than the deployment environment (which is what `Mode.get()` provides).
+ */
+function isDev() {
+	return process.env.ROBO_DEV === 'true'
 }

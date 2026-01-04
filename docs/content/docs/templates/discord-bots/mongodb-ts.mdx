@@ -1,0 +1,57 @@
+---
+title: "MongoDB"
+description: A Discord bot template using MongoDB for data persistence.
+---
+
+# MongoDB
+
+A bot using **MongoDB** and TypeScript for flexible data storage.
+
+<Cards>
+  <Card href="https://www.mongodb.com/" title="MongoDB" description="Document database." />
+  <Card href="/docs/discord-bots" title="Documentation" description="Getting started with Robo.js" />
+</Cards>
+
+## Getting Started
+
+Create a project with this template:
+
+```package-install
+npx create-robo <project-name> --template discord-bots/mongodb-ts
+```
+
+Then navigate into your project directory:
+
+```bash
+cd <project-name>
+```
+
+Configure MongoDB connection in `.env`:
+
+```bash
+MONGODB_URI=mongodb://localhost:27017/mybot
+```
+
+Run development mode:
+
+```bash
+npm run dev
+```
+
+## Features
+
+- MongoDB integration
+- Connection pooling
+- TypeScript models
+- Flexible document storage
+
+## Hosting
+
+```bash
+npm run deploy
+```
+
+<Cards>
+  <Card href="/docs/hosting/roboplay" title="RoboPlay" description="Deploy with as little as one command." />
+  <Card href="https://github.com/Wave-Play/robo.js/tree/main/templates/discord-bots/mongodb-ts" title="GitHub Repository" description="Explore source code on GitHub." />
+</Cards>

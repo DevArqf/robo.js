@@ -196,3 +196,91 @@
 	color: var(--red-400);
 	line-height: 1.4;
 }
+
+/* Input row styles for rate limit settings */
+.inputRow {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 8px;
+	font-size: 12px;
+	color: var(--text-normal);
+}
+
+.inputRow input[type="number"] {
+	width: 70px;
+	padding: 6px 8px;
+	border-radius: var(--radius-sm);
+	background: var(--background-primary);
+	border: 1px solid var(--background-accent);
+	color: var(--text-normal);
+	font-size: 12px;
+	text-align: center;
+}
+
+.inputRow input[type="number"]:focus {
+	outline: none;
+	border-color: var(--brand-500);
+}
+
+.selectRow {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 8px;
+	font-size: 12px;
+	color: var(--text-normal);
+}
+
+.selectRow select {
+	flex: 1;
+	max-width: 140px;
+	padding: 6px 8px;
+	border-radius: var(--radius-sm);
+	background: var(--background-primary);
+	border: 1px solid var(--background-accent);
+	color: var(--text-normal);
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.selectRow select:focus {
+	outline: none;
+	border-color: var(--brand-500);
+}
+
+/* Active indicator for rate limit */
+.activeIndicator {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	margin-top: 8px;
+	background: rgba(250, 166, 26, 0.1);
+	border: 1px solid rgba(250, 166, 26, 0.3);
+	border-radius: var(--radius-sm);
+	color: var(--yellow-400, #faa61a);
+	font-size: 11px;
+	line-height: 1.4;
+}
+
+.pulsingDot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--yellow-400, #faa61a);
+	animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+	0%, 100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+	50% {
+		opacity: 0.5;
+		transform: scale(1.2);
+	}
+}

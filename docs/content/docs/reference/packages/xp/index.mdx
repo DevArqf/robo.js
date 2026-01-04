@@ -1,0 +1,78 @@
+---
+title: "@robojs/xp"
+description: API reference for the XP and leveling plugin.
+---
+
+# @robojs/xp
+
+Experience points and leveling system for Discord bots.
+
+<Cards>
+  <Card href="/docs/plugins/xp" title="Plugin Guide" description="Full documentation and usage examples." />
+</Cards>
+
+## Main Exports
+
+### XP
+
+The main XP manager for tracking and managing experience points.
+
+```typescript
+import { XP } from '@robojs/xp'
+
+// Get user XP
+const xp = await XP.get(userId, guildId)
+
+// Add XP to user
+await XP.add(userId, guildId, amount)
+
+// Get user level
+const level = await XP.getLevel(userId, guildId)
+```
+
+### Levels
+
+Level configuration and calculations.
+
+```typescript
+import { Levels } from '@robojs/xp'
+
+// Get level thresholds
+const threshold = Levels.getThreshold(level)
+
+// Calculate level from XP
+const level = Levels.fromXP(xpAmount)
+```
+
+### Leaderboard
+
+Leaderboard functionality for ranking users.
+
+```typescript
+import { Leaderboard } from '@robojs/xp'
+
+// Get top users
+const top = await Leaderboard.getTop(guildId, 10)
+```
+
+## Configuration
+
+Configure the plugin in `config/plugins/robojs/xp.mjs`:
+
+```javascript
+export default {
+  levelRoles: {
+    5: 'role-id-for-level-5',
+    10: 'role-id-for-level-10'
+  },
+  multipliers: {
+    channels: {
+      'channel-id': 2.0
+    }
+  }
+}
+```
+
+<Cards>
+  <Card href="/docs/plugins/xp" title="Plugin Guide" description="See full configuration options." />
+</Cards>

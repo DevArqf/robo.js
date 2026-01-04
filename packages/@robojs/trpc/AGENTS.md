@@ -24,10 +24,10 @@ Note: This file is for AI agents and maintainers, not end users.
   - `src/core/types.ts` – Context type definition with RoboRequest/RoboReply
   - `src/core/Provider.tsx` – TRPCProvider React component
   - `src/core/loggers.ts` – Forked logger instance
-  - `src/events/_start.ts` – Lifecycle hook for server prefix detection
+  - `src/robo/start.ts` – Lifecycle hook for server prefix detection
   - `seed/trpc/server.ts` – Boilerplate tRPC router with example procedures
   - `seed/trpc/client.ts` – Boilerplate client setup (both modes)
-  - `seed/events/_start/trpc.ts` – Stub event to trigger router registration
+  - `seed/robo/start/trpc.ts` – Stub hook to trigger router registration
   - `config/robo.mjs` – Plugin configuration
 
 ### High-level flow (Mermaid)
@@ -35,7 +35,7 @@ Note: This file is for AI agents and maintainers, not end users.
 ```mermaid
 sequenceDiagram
     participant User as Developer
-    participant Start as _start Event
+    participant Start as start Hook
     participant Server as /trpc/server.ts
     participant Init as Custom initTRPC
     participant Router as appRouter Variable
@@ -109,7 +109,7 @@ sequenceDiagram
 - Rationale: tRPC needs an HTTP endpoint; `@robojs/server` supplies file-based API routes
 
 ### Server Prefix Detection
-- Location: `src/events/_start.ts`
+- Location: `src/robo/start.ts`
 - Process:
   1. Get plugin options for `@robojs/server` via `getPluginOptions()`
   2. Extract `prefix` option from server plugin config
@@ -269,7 +269,7 @@ function App() {
 - Export `trpc`, `trpcClient`, and `trpcQueryClient`
 - Reminder: adjust `/api` if server prefix changes
 
-### Start Event: `/events/_start/trpc.ts`
+### Start Hook: `/robo/start/trpc.ts`
 - Single purpose: `export default () => import('../../trpc/server.js')`
 - Ensures router is registered at startup
 
@@ -315,7 +315,7 @@ procedure.query((opts) => {
 - Import from `@robojs/trpc/server.js` only; otherwise the router won’t register and API calls fail with guidance to correct import.
 
 ### Router registration timing
-- Triggered by importing `/trpc/server.ts` (seeded) via `_start` event; without it, `appRouter` is null.
+- Triggered by importing `/trpc/server.ts` (seeded) via `start` hook; without it, `appRouter` is null.
 
 ### Server prefix synchronization
 - Client URL must match detected `serverPrefix`; otherwise 404s. Seed client notes this.
@@ -329,7 +329,7 @@ procedure.query((opts) => {
 ## Common Gotchas & Pitfalls
 
 1) Wrong `initTRPC` import → use `@robojs/trpc/server.js`.
-2) Missing seed `_start` event → router never registers.
+2) Missing seed `start` hook → router never registers.
 3) Prefix mismatch between server and client → 404; fix client URL.
 4) Missing `@robojs/server` install → no API route handling.
 5) `AppRouter` type not exported → client TS errors.
@@ -361,7 +361,7 @@ procedure.query((opts) => {
 When modifying core files, always reflect changes here:
 - API handler (`src/api/trpc/[trpc].ts`): route/wrapper/ctx changes
 - TRPCProvider (`src/core/Provider.tsx`): props/behavior/examples
-- Prefix detection (`src/events/_start.ts`): precedence/defaults
+- Prefix detection (`src/robo/start.ts`): precedence/defaults
 - Context type (`src/core/types.ts`): properties/structure
 - Seed files: examples/structure/comments/locations
 - Dependencies: versions/peer requirements and integration impacts
@@ -399,14 +399,14 @@ packages/@robojs/trpc/
 │   │   ├── types.ts              # Context type definition
 │   │   ├── Provider.tsx          # TRPCProvider component
 │   │   └── loggers.ts            # Forked logger
-│   └── events/
-│       └── _start.ts             # Server prefix detection
+│   └── robo/
+│       └── start.ts              # Server prefix detection
 ├── seed/
 │   ├── trpc/
 │   │   ├── server.ts             # Boilerplate router
 │   │   └── client.ts             # Boilerplate clients
-│   └── events/
-│       └── _start/
+│   └── robo/
+│       └── start/
 │           └── trpc.ts           # Router registration stub
 ├── config/
 │   └── robo.mjs                  # Plugin configuration

@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
 import { usePlaybackControls, formatTime } from '../../stores/playbackStore'
+import { useLogs } from '../../stores/logsStore'
 import { useDevTools } from '../devtools/DevToolsPanel'
 import { FilteredEventsWarning } from '../layout/FilteredEventsWarning'
 import type { StageEventType } from '../../types/stage'
@@ -61,8 +62,15 @@ const TerminalIcon = () => (
 	</svg>
 )
 
+const LogsIcon = () => (
+	<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+		<path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h11A1.5 1.5 0 0 1 15 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 13.5v-11zM3 4v1h10V4H3zm0 3v1h10V7H3zm0 3v1h5v-1H3z" />
+	</svg>
+)
+
 export function PlaybackControls() {
 	const { toggle: toggleDevTools } = useDevTools()
+	const { toggle: toggleLogs, isOpen: logsOpen, getLogDensity, logs } = useLogs()
 	const {
 		mode,
 		isPlaying,
@@ -70,6 +78,7 @@ export function PlaybackControls() {
 		duration,
 		speed,
 		eventCount,
+		events,
 		setMode,
 		togglePlay,
 		seek,
@@ -80,6 +89,16 @@ export function PlaybackControls() {
 
 	const [isDragging, setIsDragging] = useState(false)
 	const scrubberRef = useRef<HTMLDivElement>(null)
+
+	// Calculate log density for timeline visualization
+	const logDensity = (() => {
+		if (!logsOpen || logs.length === 0 || events.length === 0 || duration === 0) {
+			return []
+		}
+		const startTime = events[0].timestamp
+		const endTime = startTime + duration
+		return getLogDensity(50, startTime, endTime)
+	})()
 
 	// Handle scrubber interaction
 	const handleScrubberChange = useCallback(
@@ -223,6 +242,26 @@ export function PlaybackControls() {
 									))}
 								</div>
 
+								{/* Log Density Visualization */}
+								{logDensity.length > 0 && (
+									<div className={styles.logDensity}>
+										{logDensity.map((count, i) => {
+											const maxDensity = Math.max(...logDensity, 1)
+											const height = (count / maxDensity) * 100
+											return (
+												<div
+													key={i}
+													className={styles.logDensityBar}
+													style={{
+														left: `${(i / logDensity.length) * 100}%`,
+														height: `${height}%`
+													}}
+												/>
+											)
+										})}
+									</div>
+								)}
+
 								{/* Thumb */}
 								<div className={styles.scrubberThumb} style={{ left: `${progress}%` }} />
 							</div>
@@ -275,6 +314,16 @@ export function PlaybackControls() {
 			<div className={styles.actions}>
 				{/* Filtered Events Warning */}
 				<FilteredEventsWarning />
+
+				{/* Logs Button */}
+				<button
+					className={`${styles.devButton} ${logsOpen ? styles.active : ''}`}
+					onClick={toggleLogs}
+					title="Toggle Logs Panel (Ctrl+Shift+L)"
+				>
+					<LogsIcon />
+					Logs
+				</button>
 
 				{/* Dev Tools Button */}
 				<button

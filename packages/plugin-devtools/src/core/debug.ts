@@ -11,13 +11,13 @@ import {
 	EmbedBuilder,
 	codeBlock
 } from 'discord.js'
-import { getPluginOptions } from 'robo.js'
+import { getPluginOptions, Mode } from 'robo.js'
 import { devLogger } from './helpers.js'
 import type { ButtonInteraction, Client, CommandInteraction, Message, TextChannel } from 'discord.js'
 import type { DevPluginConfig } from '../types.js'
 
-// Debug mode is enabled when not in production
-export const DEBUG_MODE = process.env.NODE_ENV !== 'production'
+// Debug mode is enabled when running via `robo dev`
+export const DEBUG_MODE = Mode.isDev()
 
 // Debug error response button ID prefix
 const DEBUG_ID_PREFIX = '__robo_debug_'
