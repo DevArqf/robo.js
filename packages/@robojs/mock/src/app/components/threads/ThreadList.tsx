@@ -1,3 +1,4 @@
+import { DropdownContainer } from '../base'
 import ThreadIcon from '../icons/thread'
 import styles from './ThreadList.module.css'
 
@@ -29,10 +30,11 @@ function SearchIcon() {
 
 export function ThreadList({ threads = [], onClose }: ThreadListProps) {
 	return (
-		<div className={styles.container}>
+		<DropdownContainer placement="bottom-end" className={styles.dropdown} role="dialog" aria-label="Threads">
+			<div className={styles.container}>
 			<div className={styles.header}>
 				<div className={styles.headerIcon}>
-					<ThreadIcon width={24} height={24} fill="var(--interactive-normal)" />
+					<ThreadIcon width={20} height={20} fill="var(--interactive-normal)" />
 				</div>
 				<h2 className={styles.headerTitle}>Threads</h2>
 				<div className={styles.searchContainer}>
@@ -52,13 +54,11 @@ export function ThreadList({ threads = [], onClose }: ThreadListProps) {
 			{threads.length === 0 ? (
 				<div className={styles.emptyWrap}>
 					<div className={styles.emptyIcon}>
-						<ThreadIcon width={44} height={44} fill="var(--interactive-normal)" />
+						<ThreadIcon width={32} height={32} fill="var(--interactive-normal)" />
 					</div>
 					<div className={styles.emptyTitle}>There are no threads.</div>
 					<div className={styles.emptySub}>
-						Stay focused on a conversation with a thread - a temporary
-						<br />
-						text channel.
+						Stay focused on a conversation with a thread - a temporary text channel.
 					</div>
 					<button className={styles.emptyCta} type="button">
 						Create Thread
@@ -100,7 +100,8 @@ export function ThreadList({ threads = [], onClose }: ThreadListProps) {
 					</div>
 				</>
 			)}
-		</div>
+			</div>
+		</DropdownContainer>
 	)
 }
 

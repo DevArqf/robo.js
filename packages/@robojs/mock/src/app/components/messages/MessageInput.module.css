@@ -22,8 +22,8 @@
 }
 
 .inputWrapper:focus-within {
-	border-color: var(--brand-500);
-	box-shadow: 0 0 0 1px var(--brand-500);
+	border-color: var(--interactive-muted);
+	box-shadow: none;
 }
 
 .inner {
@@ -108,6 +108,10 @@
 	width: 100%;
 	white-space: pre-wrap;
 	overflow-wrap: break-word;
+}
+
+.input:focus-visible {
+	outline: none;
 }
 
 .placeholder {

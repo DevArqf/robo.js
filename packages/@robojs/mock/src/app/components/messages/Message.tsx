@@ -55,6 +55,7 @@ function getJoinMessage(userId: string, username: string): string {
 
 interface MessageProps {
 	message: StageMessage
+	replyMessage?: StageMessage
 	isFirstInGroup: boolean
 	isHighlighted?: boolean
 	onDismissEphemeral?: (messageId: string) => void
@@ -68,6 +69,7 @@ interface MessageProps {
 
 export function Message({
 	message,
+	replyMessage,
 	isFirstInGroup,
 	isHighlighted,
 	onDismissEphemeral,
@@ -86,11 +88,20 @@ export function Message({
 		interaction_metadata?: { user?: StageUser }
 		interactionMetadata?: { user?: StageUser }
 		interaction?: { user?: StageUser; name?: string }
+		referenced_message?: StageMessage
+		referencedMessage?: StageMessage
 	}
 	const interactionMetadata = rawMessage.interaction_metadata ?? rawMessage.interactionMetadata
 	const interactionUser = interactionMetadata?.user ?? rawMessage.interaction?.user
 	const interactionName = rawMessage.interaction?.name
 	const interactionMeta = interactionUser ? { user: interactionUser, name: interactionName } : undefined
+	const resolvedReplyMessage = replyMessage ?? rawMessage.referenced_message ?? rawMessage.referencedMessage
+	const replyAuthorName = resolvedReplyMessage?.author?.global_name ?? resolvedReplyMessage?.author?.username ?? 'Unknown'
+	const replySnippet = getReplySnippet(resolvedReplyMessage)
+	const replyAvatarUrl = resolvedReplyMessage
+		? getAvatarUrl(resolvedReplyMessage.author.id, resolvedReplyMessage.author.avatar)
+		: null
+	const hasReply = Boolean(message_reference || resolvedReplyMessage)
 
 	// Render system message (member join)
 	if (isSystemMessage) {
@@ -139,13 +150,6 @@ export function Message({
 					<MoreIcon />
 				</button>
 			</div>
-			{/* Reply reference indicator */}
-			{message_reference && (
-				<div className={styles.replyReference}>
-					<ReplyIcon />
-					<span className={styles.replyText}>Replying to a message</span>
-				</div>
-			)}
 			{isFirstInGroup ? (
 				<>
 					<div className={styles.avatar}>
@@ -169,6 +173,29 @@ export function Message({
 						/>
 					</div>
 					<div className={styles.content}>
+						{hasReply && (
+							<div className={styles.replyReference}>
+								{resolvedReplyMessage ? (
+									<>
+										{replyAvatarUrl && (
+											<img
+												src={replyAvatarUrl}
+												alt=""
+												className={styles.replyAvatar}
+												onError={(e) => {
+													const target = e.target as HTMLImageElement
+													target.src = getAvatarUrl(resolvedReplyMessage.author.id, null)
+												}}
+											/>
+										)}
+										<span className={styles.replyAuthor}>@{replyAuthorName}</span>
+										<span className={styles.replySnippet}>{replySnippet}</span>
+									</>
+								) : (
+									<span className={styles.replyText}>Replying to a message</span>
+								)}
+							</div>
+						)}
 						<div className={styles.header}>
 							<span
 								className={styles.author}
@@ -218,6 +245,29 @@ export function Message({
 						<span className={styles.hoverTimestamp}>{formatTimestamp(timestamp, 'short')}</span>
 					</div>
 					<div className={styles.content}>
+						{hasReply && (
+							<div className={styles.replyReference}>
+								{resolvedReplyMessage ? (
+									<>
+										{replyAvatarUrl && (
+											<img
+												src={replyAvatarUrl}
+												alt=""
+												className={styles.replyAvatar}
+												onError={(e) => {
+													const target = e.target as HTMLImageElement
+													target.src = getAvatarUrl(resolvedReplyMessage.author.id, null)
+												}}
+											/>
+										)}
+										<span className={styles.replyAuthor}>@{replyAuthorName}</span>
+										<span className={styles.replySnippet}>{replySnippet}</span>
+									</>
+								) : (
+									<span className={styles.replyText}>Replying to a message</span>
+								)}
+							</div>
+						)}
 						<MessageContent
 							content={content}
 							editedTimestamp={edited_timestamp}
@@ -384,19 +434,35 @@ function MessageContent({
 	)
 }
 
+function getReplySnippet(message?: StageMessage): string {
+	if (!message) return 'Replying to a message'
+
+	const trimmedContent = (message.content || '').trim()
+	if (trimmedContent) {
+		return trimmedContent.replace(/\s+/g, ' ')
+	}
+
+	const attachments = message.attachments as Array<{ content_type?: string; filename?: string }> | undefined
+	if (attachments?.length) {
+		const attachment = attachments[0]
+		if (attachment.content_type?.startsWith('image/')) return 'Image'
+		if (attachment.content_type?.startsWith('video/')) return 'Video'
+		if (attachment.content_type?.startsWith('audio/')) return 'Audio'
+		if (attachment.filename) return attachment.filename
+		return 'Attachment'
+	}
+
+	if ((message.embeds ?? []).length > 0) return 'Embed'
+	if ((message.components ?? []).length > 0) return 'Interaction'
+
+	return 'Message'
+}
+
 // Icon components for message indicators
 function PinIcon() {
 	return (
 		<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
 			<path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l5.59-5.59L19 10l-7 7z" />
-		</svg>
-	)
-}
-
-function ReplyIcon() {
-	return (
-		<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-			<path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z" />
 		</svg>
 	)
 }

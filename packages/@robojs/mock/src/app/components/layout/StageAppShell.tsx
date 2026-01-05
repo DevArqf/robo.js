@@ -7,7 +7,6 @@ import { Header } from './Header'
 import { StatusBar } from './StatusBar'
 import { MessageArea } from '../messages/MessageArea'
 import { MemberList } from '../members/MemberList'
-import { ThreadList } from '../threads/ThreadList'
 import { PlaybackControls } from '../playback/PlaybackControls'
 import { DevToolsPanel } from '../devtools/DevToolsPanel'
 import styles from './AppShell.module.css'
@@ -29,9 +28,11 @@ export function StageAppShell() {
 		selectedChannel,
 		selectedGuild,
 		botUser,
+		currentUser,
 		sessionId,
 		joinVoice,
-		leaveVoice
+		leaveVoice,
+		updateVoiceState
 	} = useSession()
 
 	// Mobile sidebar state
@@ -138,11 +139,13 @@ export function StageAppShell() {
 						voiceStates={guildVoiceStates}
 						users={allUsers}
 						members={guildMembers}
-						currentUser={botUser}
+						currentUser={currentUser}
 						availableUsers={allUsers}
 						onJoinVoice={joinVoice}
 						onLeaveVoice={leaveVoice}
-						currentUserId={botUser?.id}
+						onUpdateVoiceState={updateVoiceState}
+						currentUserId={currentUser?.id}
+						isPlaybackMode={isPlaybackMode}
 					/>
 					<div className={styles.main}>
 						<Header
@@ -162,7 +165,6 @@ export function StageAppShell() {
 						<div className={styles.content}>
 							<MessageArea channelId={selectedChannelId} />
 
-							{showThreads && <ThreadList onClose={() => setShowThreads(false)} />}
 							{showMembers && <MemberList members={displayMembers} roles={guildRoles} />}
 						</div>
 					</div>

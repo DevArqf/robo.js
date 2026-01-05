@@ -12,6 +12,7 @@ export type StageEventType =
 	// Connection lifecycle
 	| 'connected'              // Initial connection established
 	| 'state_sync'             // Full state on connect
+	| 'current_user_update'    // Current user updated
 	| 'command_response'       // Response to a command
 
 	// Message events
@@ -107,6 +108,7 @@ export interface StateSyncPayload {
 	users: StageUser[]
 	commands: StageApplicationCommand[]  // Phase 5G: Available slash commands
 	voice_states: StageVoiceState[]  // Phase 5P: Voice channel states
+	currentUser?: StageUser
 }
 
 /**

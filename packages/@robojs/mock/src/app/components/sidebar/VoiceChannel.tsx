@@ -1,6 +1,8 @@
 import type { StageChannel, StageMember, StageVoiceState, StageUser } from '../../types/stage'
 import { getDisplayName } from '../../utils'
 import styles from './VoiceChannel.module.css'
+import CogwheelIcon from '../icons/cogwheel'
+import InviteIcon from '../icons/invite'
 
 interface VoiceChannelProps {
 	channel: StageChannel
@@ -21,15 +23,28 @@ export function VoiceChannel({ channel, voiceStates, users, members, onJoin, onL
 
 	return (
 		<div className={styles.container}>
-			<button
-				className={styles.header}
-				onClick={isCurrentUserInChannel ? onLeave : onJoin}
-				aria-label={`Voice channel: ${channel.name}${membersInChannel.length > 0 ? `, ${membersInChannel.length} connected` : ''}`}
-			>
-				<VoiceIcon className={styles.channelIcon} />
-				<span className={styles.channelName}>{channel.name}</span>
-				{membersInChannel.length > 0 && <span className={styles.memberCount}>{membersInChannel.length}</span>}
-			</button>
+			<div className={styles.row}>
+				<button
+					className={styles.header}
+					onClick={isCurrentUserInChannel ? onLeave : onJoin}
+					aria-label={`Voice channel: ${channel.name}${membersInChannel.length > 0 ? `, ${membersInChannel.length} connected` : ''}`}
+				>
+					<VoiceIcon className={styles.channelIcon} />
+					<span className={styles.channelName}>{channel.name}</span>
+					{membersInChannel.length > 0 && <span className={styles.memberCount}>{membersInChannel.length}</span>}
+				</button>
+				<div className={styles.actions}>
+					<button type="button" aria-label="Open voice chat">
+						<ChatBubbleIcon className={styles.actionIcon} />
+					</button>
+					<button type="button" aria-label="Create invite">
+						<InviteIcon width={16} height={16} />
+					</button>
+					<button type="button" aria-label="Edit channel settings">
+						<CogwheelIcon width={16} height={16} />
+					</button>
+				</div>
+			</div>
 
 			{membersInChannel.length > 0 && (
 				<div className={styles.members}>
@@ -84,7 +99,23 @@ function VoiceMember({ voiceState, user, member }: VoiceMemberProps) {
 function VoiceIcon({ className }: { className?: string }) {
 	return (
 		<svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-			<path d="M12 3C10.34 3 9 4.37 9 6.07V12C9 13.66 10.34 15 12 15C13.66 15 15 13.66 15 12V6.07C15 4.37 13.66 3 12 3ZM5.5 11C5.5 14.53 8.36 17.38 11.75 17.89V21H12.25V17.89C15.64 17.38 18.5 14.53 18.5 11H17C17 14.03 14.54 16.5 11.88 16.5C9.21 16.5 7 14.03 7 11H5.5Z" />
+			<path d="M3 9v6h4l5 5V4L7 9H3z" />
+			<path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+			<path d="M14 8.03v8.05c1.48-.74 2.5-2.26 2.5-4.02s-1.02-3.29-2.5-4.03z" />
+		</svg>
+	)
+}
+
+function ChatBubbleIcon({ className }: { className?: string }) {
+	return (
+		<svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none">
+			<path
+				d="M8 19l-4 3V7a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4v7a4 4 0 0 1-4 4H8z"
+				stroke="currentColor"
+				strokeWidth="1.25"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			/>
 		</svg>
 	)
 }

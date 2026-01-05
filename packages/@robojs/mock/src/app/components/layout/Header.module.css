@@ -86,7 +86,13 @@
 .actions {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 12px;
+}
+
+.iconGroup {
+	display: flex;
+	align-items: center;
+	gap: 10px;
 }
 
 .iconButton {

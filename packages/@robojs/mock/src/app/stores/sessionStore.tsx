@@ -79,6 +79,7 @@ export interface SessionState {
 	messages: Record<string, StageMessage[]>
 	commands: StageApplicationCommand[] // Phase 5G: Available slash commands
 	botUser: StageUser | null
+	currentUser: StageUser | null
 
 	// UI state
 	selectedGuildId: string | null
@@ -127,6 +128,7 @@ type SessionAction =
 	| { type: 'SELECT_GUILD'; payload: string | null }
 	| { type: 'SELECT_CHANNEL'; payload: string | null }
 	| { type: 'TOGGLE_MEMBERS' }
+	| { type: 'SET_CURRENT_USER'; payload: StageUser }
 	| { type: 'INCREMENT_EVENT_COUNT' }
 	| { type: 'SET_HEARTBEAT'; payload: number }
 	| { type: 'RESET' }
@@ -164,6 +166,7 @@ const initialState: SessionState = {
 	messages: {},
 	commands: [],
 	botUser: null,
+	currentUser: null,
 	selectedGuildId: null,
 	selectedChannelId: null,
 	showMembers: true,
@@ -194,7 +197,8 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 			return { ...state, error: action.payload, isConnecting: false, isConnected: false }
 
 		case 'HANDLE_STATE_SYNC': {
-			const { session, guilds, channels, members, roles, messages, users, commands, voice_states } = action.payload
+			const { session, guilds, channels, members, roles, messages, users, commands, voice_states, currentUser } =
+				action.payload
 			const firstGuild = guilds[0]
 			// Find first text channel (type 0) or announcement channel (type 5), not categories (type 4) or voice (type 2)
 			const firstChannel = firstGuild
@@ -218,6 +222,7 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 				messages: filteredMessages,
 				commands: commands || [],
 				botUser: session.bot,
+				currentUser: currentUser ?? null,
 				selectedGuildId: state.selectedGuildId || firstGuild?.id || null,
 				selectedChannelId: state.selectedChannelId || firstChannel?.id || null,
 				eventCount: state.eventCount + 1
@@ -430,6 +435,23 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 
 		case 'TOGGLE_MEMBERS':
 			return { ...state, showMembers: !state.showMembers }
+
+		case 'SET_CURRENT_USER': {
+			const updatedUser = action.payload
+			const users = state.users.some((user) => user.id === updatedUser.id)
+				? state.users.map((user) => (user.id === updatedUser.id ? updatedUser : user))
+				: [...state.users, updatedUser]
+			const members = state.members.map((member) =>
+				member.user.id === updatedUser.id ? { ...member, user: updatedUser } : member
+			)
+
+			return {
+				...state,
+				currentUser: updatedUser,
+				users,
+				members
+			}
+		}
 
 		case 'INCREMENT_EVENT_COUNT':
 			return { ...state, eventCount: state.eventCount + 1 }
@@ -682,6 +704,14 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 				case 'state_sync':
 					dispatch({ type: 'HANDLE_STATE_SYNC', payload: event.data as StateSyncPayload })
 					break
+
+				case 'current_user_update': {
+					const updateData = event.data as { user?: StageUser }
+					if (updateData.user) {
+						dispatch({ type: 'SET_CURRENT_USER', payload: updateData.user })
+					}
+					break
+				}
 
 				case 'message_create': {
 					const msgData = event.data as StageMessageCreateData

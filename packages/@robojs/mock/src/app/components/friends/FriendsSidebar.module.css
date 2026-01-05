@@ -2,7 +2,9 @@
 	padding: 10px;
 	border-bottom: 1px solid var(--background-modifier-accent);
 	background: var(--background-secondary);
+    border-top-left-radius: 10px;
 }
+
 
 .nav {
 	padding: 8px;

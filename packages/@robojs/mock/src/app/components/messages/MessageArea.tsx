@@ -73,6 +73,13 @@ function VirtualizedMessageList({
 
 	// Group consecutive messages from same author
 	const groupedMessages = useMemo(() => groupMessages(messages), [messages])
+	const messageLookup = useMemo(() => {
+		const lookup = new Map<string, StageMessage>()
+		messages.forEach((message) => {
+			lookup.set(message.id, message)
+		})
+		return lookup
+	}, [messages])
 
 	// Virtual scrolling for performance
 	const virtualizer = useVirtualizer({
@@ -163,10 +170,19 @@ function VirtualizedMessageList({
 			// Date divider adds ~40px (16px margin + 24px content)
 			const dateDividerHeight = group.showDateDivider ? 40 : 0
 
-			return dateDividerHeight + (hasHeader ? 44 : 0) + contentHeight + embedHeight + attachmentHeight + v1ComponentHeight + 8
+			const rawMessage = message as StageMessage & { referenced_message?: StageMessage; referencedMessage?: StageMessage }
+			const replyHeight = (message.message_reference || rawMessage.referenced_message || rawMessage.referencedMessage) ? 18 : 0
+
+			return dateDividerHeight + (hasHeader ? 44 : 0) + replyHeight + contentHeight + embedHeight + attachmentHeight + v1ComponentHeight + 8
 		},
 		overscan: 10
 	})
+	const virtualItems = virtualizer.getVirtualItems()
+	const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0
+	const paddingBottom =
+		virtualItems.length > 0
+			? virtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end
+			: 0
 
 	// Auto-scroll to bottom on new messages
 	useEffect(() => {
@@ -246,22 +262,16 @@ function VirtualizedMessageList({
 				<div
 					className={styles.virtualContainer}
 					style={{
-						height: virtualizer.getTotalSize(),
-						position: 'relative'
+						paddingTop,
+						paddingBottom
 					}}
 				>
-					{virtualizer.getVirtualItems().map((virtualItem) => {
+					{virtualItems.map((virtualItem) => {
 						const group = groupedMessages[virtualItem.index]
+						const referencedMessageId = group.message.message_reference?.message_id
+						const replyMessage = referencedMessageId ? messageLookup.get(referencedMessageId) : undefined
 						return (
-							<div
-								key={group.message.id}
-								style={{
-									position: 'absolute',
-									top: virtualItem.start,
-									left: 0,
-									right: 0
-								}}
-							>
+							<div key={group.message.id}>
 								{group.showDateDivider && (
 									<div className={styles.dateDivider}>
 										<span className={styles.dateDividerText}>{group.showDateDivider}</span>
@@ -269,6 +279,7 @@ function VirtualizedMessageList({
 								)}
 								<Message
 									message={group.message}
+									replyMessage={replyMessage}
 									isFirstInGroup={group.isFirstInGroup}
 										isHighlighted={group.isHighlighted}
 										onButtonClick={onButtonClick}

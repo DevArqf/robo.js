@@ -345,8 +345,8 @@ export function useSession() {
 			throw new Error('No guild selected')
 		}
 
-		// Use provided userId, or fall back to bot user
-		const targetUserId = userId || state.botUser?.id
+		// Use provided userId, or fall back to current user, then bot user
+		const targetUserId = userId || state.currentUser?.id || state.botUser?.id
 
 		return sendCommand('join_voice', {
 			channel_id: channelId,
@@ -362,11 +362,31 @@ export function useSession() {
 			throw new Error('No guild selected')
 		}
 
-		// Use provided userId, or fall back to bot user
-		const targetUserId = userId || state.botUser?.id
+		// Use provided userId, or fall back to current user, then bot user
+		const targetUserId = userId || state.currentUser?.id || state.botUser?.id
 
 		return sendCommand('leave_voice', {
 			guild_id: targetGuildId,
+			user: targetUserId ? { id: targetUserId } : undefined
+		})
+	}
+
+	// Update voice state (mute/deafen) (Phase 5P)
+	const updateVoiceState = async (
+		guildId?: string,
+		updates?: { selfMute?: boolean; selfDeaf?: boolean; userId?: string }
+	) => {
+		const targetGuildId = guildId || state.selectedGuildId
+		if (!targetGuildId) {
+			throw new Error('No guild selected')
+		}
+
+		const targetUserId = updates?.userId || state.currentUser?.id || state.botUser?.id
+
+		return sendCommand('update_voice_state', {
+			guild_id: targetGuildId,
+			self_mute: updates?.selfMute,
+			self_deaf: updates?.selfDeaf,
 			user: targetUserId ? { id: targetUserId } : undefined
 		})
 	}
@@ -432,6 +452,7 @@ export function useSession() {
 		clearFilteredEvents,
 		clearLoopWarning,
 		joinVoice,
-		leaveVoice
+		leaveVoice,
+		updateVoiceState
 	}
 }
