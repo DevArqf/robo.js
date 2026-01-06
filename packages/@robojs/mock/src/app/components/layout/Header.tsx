@@ -1,5 +1,5 @@
-import { useRef, useEffect } from 'react'
-import type { StageChannel } from '../../types/stage'
+import { useRef, useEffect, useMemo } from 'react'
+import type { StageChannel, StageGuild, StageUser } from '../../types/stage'
 import MagnifyingGlass from '../icons/magnifying_glass'
 import ThreadIcon from '../icons/thread'
 import NotificationIcon from '../icons/notification'
@@ -11,6 +11,8 @@ import styles from './Header.module.css'
 
 interface HeaderProps {
 	channel: StageChannel | null
+	guild?: StageGuild | null
+	currentUser?: StageUser | null
 	onToggleMembers: () => void
 	showMembers: boolean
 	onToggleThreads: () => void
@@ -25,6 +27,8 @@ interface HeaderProps {
 
 export function Header({
 	channel,
+	guild,
+	currentUser,
 	onToggleMembers,
 	showMembers,
 	onToggleThreads,
@@ -40,6 +44,37 @@ export function Header({
 	const pinnedRef = useRef<HTMLDivElement>(null)
 	const threadsRef = useRef<HTMLDivElement>(null)
 	const ChannelIcon = channel ? getChannelIcon(channel.type) : null
+
+	// Generate dynamic search placeholder
+	const searchPlaceholder = useMemo(() => {
+		// For group DMs (channel type 3)
+		if (channel?.type === ChannelType.GROUP_DM && currentUser) {
+			// Get recipient names from the channel
+			const recipients = channel.recipients || []
+			if (recipients.length > 0) {
+				const firstRecipient = recipients[0]
+				return `Search ${currentUser.username}, ${firstRecipient.username}`
+			}
+			return `Search ${currentUser.username}`
+		}
+
+		// For DMs (channel type 1)
+		if (channel?.type === ChannelType.DM && currentUser) {
+			const recipients = channel.recipients || []
+			if (recipients.length > 0) {
+				return `Search ${recipients[0].username}`
+			}
+			return `Search ${currentUser.username}`
+		}
+
+		// For server channels - use guild name
+		if (guild?.name) {
+			return `Search ${guild.name}`
+		}
+
+		// Default fallback
+		return 'Search'
+	}, [channel, guild, currentUser])
 
 	useEffect(() => {
 		const handleClickOutside = (event: MouseEvent) => {
@@ -153,7 +188,7 @@ export function Header({
 					</button>
 				</div>
 				<div className={styles.inputContainer}>
-					<input className={styles.headerInput} placeholder="search"></input>
+					<input className={styles.headerInput} placeholder={searchPlaceholder}></input>
 					<div className={styles.headerInputIcon}>
 						<MagnifyingGlass width={15} height={15} fill="#aaaab0" />
 					</div>
@@ -165,7 +200,9 @@ export function Header({
 
 const ChannelType = {
 	GUILD_TEXT: 0,
+	DM: 1,
 	GUILD_VOICE: 2,
+	GROUP_DM: 3,
 	GUILD_CATEGORY: 4,
 	GUILD_ANNOUNCEMENT: 5,
 	ANNOUNCEMENT_THREAD: 10,

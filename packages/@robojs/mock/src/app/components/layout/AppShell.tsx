@@ -230,6 +230,8 @@ export function AppShell() {
 							<div className={styles.main}>
 								<Header
 									channel={selectedChannel}
+									guild={selectedGuild}
+									currentUser={currentUser}
 									onToggleMembers={toggleMembers}
 									showMembers={showMembers}
 									onToggleThreads={handleToggleThreads}

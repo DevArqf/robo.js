@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import type { StageChannel, StageGuild, StageMember, StageVoiceState, StageUser } from '../../types/stage'
 import { VoiceChannel } from './VoiceChannel'
 import { VoiceControlDock } from './VoiceControlDock'
+import { ServerMenu } from './ServerMenu'
 import styles from './ChannelList.module.css'
 import CogwheelIcon from '../icons/cogwheel'
 import InviteIcon from '../icons/invite'
@@ -61,6 +62,20 @@ export function ChannelList({
 }: ChannelListProps) {
 	const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
 	const [showArchivedThreads, setShowArchivedThreads] = useState(false)
+	const [showServerMenu, setShowServerMenu] = useState(false)
+	const headerRef = useRef<HTMLDivElement>(null)
+
+	// Handle click outside to close server menu
+	useEffect(() => {
+		const handleClickOutside = (event: MouseEvent) => {
+			if (showServerMenu && headerRef.current && !headerRef.current.contains(event.target as Node)) {
+				setShowServerMenu(false)
+			}
+		}
+
+		document.addEventListener('mousedown', handleClickOutside)
+		return () => document.removeEventListener('mousedown', handleClickOutside)
+	}, [showServerMenu])
 
 	// Separate threads from regular channels
 	const isThread = (type: number) =>
@@ -138,10 +153,19 @@ export function ChannelList({
 	return (
 		<div className={styles.container}>
 			{/* Server header */}
-
-			<div className={styles.header}>
-				<span className={styles.serverName}>{guild?.name ?? 'Select a server'}</span>
-				<ChevronDown className={styles.headerIcon} />
+			<div className={styles.headerWrapper} ref={headerRef}>
+				<div className={styles.header} onClick={() => setShowServerMenu(!showServerMenu)}>
+					<span className={styles.serverName}>{guild?.name ?? 'Select a server'}</span>
+					<ChevronDown className={styles.headerIcon} />
+				</div>
+				{showServerMenu && (
+					<ServerMenu
+						onClose={() => setShowServerMenu(false)}
+						onCreateChannel={() => console.log('Create Channel')}
+						onCreateCategory={() => console.log('Create Category')}
+						onInviteToServer={() => console.log('Invite to Server')}
+					/>
+				)}
 			</div>
 
 			{/* Channel list */}
