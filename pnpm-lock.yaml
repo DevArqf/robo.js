@@ -741,6 +741,9 @@ importers:
       ws:
         specifier: ^8.18.0
         version: 8.18.3
+      zod:
+        specifier: ^4.0.0
+        version: 4.2.1
     devDependencies:
       '@swc/core':
         specifier: ^1.11.29

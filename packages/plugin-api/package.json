@@ -57,7 +57,8 @@
 		"test": "NODE_OPTIONS=\"--experimental-vm-modules --disable-warning=ExperimentalWarning\" jest"
 	},
 	"dependencies": {
-		"ws": "^8.18.0"
+		"ws": "^8.18.0",
+		"zod": "^4.0.0"
 	},
 	"devDependencies": {
 		"@swc/core": "^1.11.29",
@@ -70,23 +71,18 @@
 		"prettier": "^2.8.5",
 		"robo.js": "workspace:*",
 		"typescript": "^5.0.0",
-		"vite": "^5.2.0",
-		"zod": "^3.22.0"
+		"vite": "^5.2.0"
 	},
 	"peerDependencies": {
 		"fastify": "^4.15.0",
 		"robo.js": ">=0.10.0",
-		"vite": "^5.2.0",
-		"zod": "^3.22.0"
+		"vite": "^5.2.0"
 	},
 	"peerDependenciesMeta": {
 		"fastify": {
 			"optional": true
 		},
 		"vite": {
-			"optional": true
-		},
-		"zod": {
 			"optional": true
 		}
 	}
